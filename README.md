@@ -1,4 +1,4 @@
-# ARIA — Adaptive Real-time Intelligence Avatar
+# ARIA – Adaptive Real-time Intelligence Avatar
 
 A multimodal AGI avatar system combining real-time vision, gesture recognition, speech processing, and Claude-powered cognition in a live interactive interface.
 
