@@ -3,6 +3,7 @@ package vision
 import (
 	"bufio"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -59,6 +60,8 @@ func (w *Worker) Start(ctx context.Context) error {
 
 func (w *Worker) run(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, w.pythonBin, w.scriptPath)
+	cmd.Dir = "/Users/sucheetboppana/aria/backend"
+	cmd.Env = append(os.Environ(), "PYTHONPATH=/Users/sucheetboppana/aria/backend")
 	w.cmd = cmd
 
 	stdout, err := cmd.StdoutPipe()
