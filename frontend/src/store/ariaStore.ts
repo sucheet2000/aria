@@ -3,6 +3,7 @@ import { create } from "zustand";
 export interface VisionFrame {
   face_landmarks: number[][];
   emotion: string;
+  emotion_confidence?: number;
   head_pose: { pitch: number; yaw: number; roll: number };
   hand_landmarks: number[][];
   timestamp: number;
@@ -18,12 +19,16 @@ export interface ARIAStore {
   headPose: { pitch: number; yaw: number; roll: number };
   handLandmarks: number[][];
   emotion: string;
+  emotionConfidence: number;
   lastFrameTimestamp: number;
 
   // Avatar state (derived/controlled)
   avatarEmotion: string;
   isSpeaking: boolean;
   isListening: boolean;
+
+  // API state
+  processingMs: number;
 
   // Conversation
   transcript: string;
@@ -38,6 +43,8 @@ export interface ARIAStore {
   setIsListening: (v: boolean) => void;
   setTranscript: (v: string) => void;
   addMessage: (role: "user" | "assistant", content: string) => void;
+  setEmotionConfidence: (v: number) => void;
+  setProcessingMs: (v: number) => void;
 }
 
 export const useAriaStore = create<ARIAStore>((set) => ({
@@ -48,11 +55,14 @@ export const useAriaStore = create<ARIAStore>((set) => ({
   headPose: { pitch: 0, yaw: 0, roll: 0 },
   handLandmarks: [],
   emotion: "neutral",
+  emotionConfidence: 0,
   lastFrameTimestamp: 0,
 
   avatarEmotion: "neutral",
   isSpeaking: false,
   isListening: false,
+
+  processingMs: 0,
 
   transcript: "",
   conversationHistory: [],
@@ -65,6 +75,7 @@ export const useAriaStore = create<ARIAStore>((set) => ({
       headPose: frame.head_pose,
       handLandmarks: frame.hand_landmarks,
       emotion: frame.emotion,
+      emotionConfidence: frame.emotion_confidence ?? 0,
       avatarEmotion: frame.emotion,
       lastFrameTimestamp: frame.timestamp,
     }),
@@ -76,4 +87,6 @@ export const useAriaStore = create<ARIAStore>((set) => ({
     set((state) => ({
       conversationHistory: [...state.conversationHistory, { role, content }],
     })),
+  setEmotionConfidence: (v) => set({ emotionConfidence: v }),
+  setProcessingMs: (v) => set({ processingMs: v }),
 }));
