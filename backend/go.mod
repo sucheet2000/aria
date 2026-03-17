@@ -6,6 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.27.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
