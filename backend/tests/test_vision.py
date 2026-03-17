@@ -10,8 +10,22 @@ import pytest
 
 from app.models.schemas import VisionState
 from app.pipeline.vision import VisionPipeline
+from app.pipeline.emotion import EmotionClassifier
 
 WORKER = Path(__file__).parent.parent / "app" / "pipeline" / "vision_worker.py"
+
+VALID_EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "fearful", "disgusted"]
+
+
+class _FakeLandmark:
+    def __init__(self, x: float = 0.5, y: float = 0.5, z: float = 0.0) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+
+
+def _make_landmarks(count: int = 478) -> list[_FakeLandmark]:
+    return [_FakeLandmark() for _ in range(count)]
 
 
 def test_vision_state_defaults() -> None:
@@ -95,3 +109,37 @@ def test_worker_synthetic_face_landmarks_count() -> None:
     )
     for point in first["face_landmarks"]:
         assert len(point) == 3
+
+
+def test_emotion_classifier_returns_valid_emotion() -> None:
+    classifier = EmotionClassifier()
+    landmarks = _make_landmarks(478)
+    emotion, confidence = classifier.classify(landmarks)
+    assert emotion in EmotionClassifier.EMOTIONS
+    assert 0.0 <= confidence <= 1.0
+
+
+def test_emotion_classifier_is_deterministic() -> None:
+    classifier = EmotionClassifier()
+    classifier.reset()
+    landmarks = _make_landmarks(478)
+    result_a = classifier.classify(landmarks)
+    classifier.reset()
+    result_b = classifier.classify(landmarks)
+    assert result_a == result_b
+
+
+def test_worker_synthetic_output_includes_emotion_confidence() -> None:
+    result = subprocess.run(
+        [sys.executable, str(WORKER), "--synthetic", "--duration", "1"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
+    lines = [l for l in result.stdout.splitlines() if l.strip()]
+    assert len(lines) > 0, "worker produced no output lines"
+
+    parsed = json.loads(lines[0])
+    assert "emotion_confidence" in parsed
+    assert parsed["emotion"] in VALID_EMOTIONS

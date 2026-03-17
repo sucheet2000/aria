@@ -16,6 +16,8 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from app.pipeline.emotion import EmotionClassifier
+
 # 6-point 3D face model in mm (nose tip, chin, eye corners, mouth corners)
 FACE_3D_MODEL = np.array(
     [
@@ -105,6 +107,7 @@ def run_synthetic(args: argparse.Namespace) -> None:
         state = {
             "face_landmarks": fake_face,
             "emotion": "neutral",
+            "emotion_confidence": 1.0,
             "head_pose": fake_pose,
             "hand_landmarks": [],
             "timestamp": round(now, 3),
@@ -113,6 +116,7 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
 
 def run_camera(args: argparse.Namespace) -> None:
+    classifier = EmotionClassifier()
     mp_face_mesh = mp.solutions.face_mesh
     mp_hands = mp.solutions.hands
 
@@ -162,6 +166,8 @@ def run_camera(args: argparse.Namespace) -> None:
 
             face_landmarks_list: list[list[float]] = []
             head_pose: dict[str, float] = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+            emotion = "neutral"
+            emotion_confidence = 0.0
             if face_results.multi_face_landmarks:
                 lm = face_results.multi_face_landmarks[0]
                 face_landmarks_list = [
@@ -169,6 +175,7 @@ def run_camera(args: argparse.Namespace) -> None:
                     for p in lm.landmark
                 ]
                 head_pose = solve_head_pose(lm.landmark, args.width, args.height)
+                emotion, emotion_confidence = classifier.classify(lm.landmark)
 
             hand_landmarks_list: list[list[float]] = []
             if hand_results.multi_hand_landmarks:
@@ -180,7 +187,8 @@ def run_camera(args: argparse.Namespace) -> None:
 
             state = {
                 "face_landmarks": face_landmarks_list,
-                "emotion": "neutral",
+                "emotion": emotion,
+                "emotion_confidence": round(emotion_confidence, 3),
                 "head_pose": head_pose,
                 "hand_landmarks": hand_landmarks_list,
                 "timestamp": round(now, 3),
