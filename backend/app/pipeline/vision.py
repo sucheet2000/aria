@@ -1,3 +1,4 @@
+# Used for unit tests. Production vision runs via vision_worker.py subprocess.
 from __future__ import annotations
 
 import asyncio
