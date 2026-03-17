@@ -50,3 +50,4 @@ next-env.d.ts
 *.onnx
 models/
 !backend/app/models/
+backend/server
