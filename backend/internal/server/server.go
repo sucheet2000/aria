@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
+	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 )
 
@@ -40,11 +41,19 @@ func (s *Server) Start(ctx context.Context) error {
 		ServeWs(s.hub, w, r)
 	})
 
+	cogClient := cognition.New(s.cfg.AnthropicKey, log.Logger)
+	cogHandler := cognition.NewHandler(cogClient, log.Logger)
+
+	s.router.Route("/api", func(r chi.Router) {
+		r.Use(corsMiddleware)
+		r.Post("/cognition", cogHandler.ServeHTTP)
+	})
+
 	s.httpServer = &http.Server{
 		Addr:         s.cfg.Addr(),
 		Handler:      s.router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -74,5 +83,22 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
 		"version": "0.1.0",
+	})
+}
+
+// corsMiddleware adds permissive CORS headers for all /api/* routes so the
+// frontend origin can reach the API during development.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
