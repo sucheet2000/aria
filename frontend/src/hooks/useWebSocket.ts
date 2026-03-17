@@ -1,74 +1,90 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
-const WS_URL = "ws://localhost:8000/ws";
-const MAX_BACKOFF_MS = 30_000;
+const WS_URL = "ws://localhost:8080/ws";
+const INITIAL_DELAY_MS = 500;
+const MAX_DELAY_MS = 30_000;
+const BACKOFF_MULTIPLIER = 1.5;
+const JITTER_FACTOR = 0.2;
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attemptRef = useRef(0);
-  const { setWsConnected, setVisionState, setGestureState, setTranscript, setIsSpeaking } =
-    useAriaStore();
+  const currentDelayRef = useRef(INITIAL_DELAY_MS);
+  const mountedRef = useRef(true);
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      attemptRef.current = 0;
-      setWsConnected(true);
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data as string);
-        if (data.vision) setVisionState(data.vision);
-        if (data.gesture) setGestureState(data.gesture);
-        if (data.audio) {
-          setTranscript(data.audio.transcript ?? "");
-          setIsSpeaking(data.audio.is_speaking ?? false);
-        }
-      } catch {
-        // malformed message — ignore
-      }
-    };
-
-    ws.onclose = () => {
-      setWsConnected(false);
-      scheduleReconnect();
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  }, [setWsConnected, setVisionState, setGestureState, setTranscript, setIsSpeaking]);
-
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimerRef.current) return;
-    const backoff = Math.min(1_000 * 2 ** attemptRef.current, MAX_BACKOFF_MS);
-    attemptRef.current += 1;
-    reconnectTimerRef.current = setTimeout(() => {
-      reconnectTimerRef.current = null;
-      connect();
-    }, backoff);
-  }, [connect]);
+  const connected = useAriaStore((s) => s.wsConnected);
+  const error = useAriaStore((s) => s.wsError);
 
   useEffect(() => {
+    mountedRef.current = true;
+
+    function scheduleReconnect() {
+      if (!mountedRef.current) return;
+      if (reconnectTimerRef.current) return;
+      const jitter = 1 + Math.random() * JITTER_FACTOR;
+      const delay = Math.min(currentDelayRef.current * jitter, MAX_DELAY_MS);
+      currentDelayRef.current = Math.min(
+        currentDelayRef.current * BACKOFF_MULTIPLIER,
+        MAX_DELAY_MS
+      );
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connect();
+      }, delay);
+    }
+
+    function connect() {
+      if (!mountedRef.current) return;
+      if (
+        wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING
+      )
+        return;
+
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        currentDelayRef.current = INITIAL_DELAY_MS;
+        useAriaStore.getState().setWsConnected(true);
+        useAriaStore.getState().setWsError(null);
+      };
+
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data as string);
+          useAriaStore.getState().setVisionFrame(data);
+        } catch {
+          // malformed message -- ignore
+        }
+      };
+
+      ws.onclose = () => {
+        useAriaStore.getState().setWsConnected(false);
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        console.error("[useWebSocket] connection failed");
+        useAriaStore.getState().setWsError("connection failed");
+      };
+    }
+
     connect();
+
     return () => {
+      mountedRef.current = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, []);
 
-  const send = useCallback((message: object) => {
+  const send = useCallback((data: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+      wsRef.current.send(JSON.stringify(data));
     }
   }, []);
 
-  return { send };
+  return { connected, error, send };
 }

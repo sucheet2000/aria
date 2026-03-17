@@ -10,10 +10,12 @@ const config: Config = {
     extend: {
       colors: {
         aria: {
-          dark: "#0a0a0f",
-          surface: "#111118",
-          accent: "#6366f1",
-          glow: "#818cf8",
+          dark: "var(--aria-dark)",
+          surface: "var(--aria-surface)",
+          border: "var(--aria-border)",
+          accent: "var(--aria-accent)",
+          text: "var(--aria-text)",
+          muted: "var(--aria-muted)",
         },
       },
     },

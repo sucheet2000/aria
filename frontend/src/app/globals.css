@@ -3,12 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --background: #0a0a0f;
-  --foreground: #e2e8f0;
+  --aria-dark: #0a0a0f;
+  --aria-surface: #12121a;
+  --aria-border: #1e1e2e;
+  --aria-accent: #6366f1;
+  --aria-text: #e2e8f0;
+  --aria-muted: #64748b;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--aria-dark);
+  color: var(--aria-text);
   font-family: system-ui, -apple-system, sans-serif;
 }
