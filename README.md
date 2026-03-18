@@ -1,4 +1,4 @@
-# ARIA — Adaptive Realtime Intelligence Avatar
+# ARIA – Adaptive Realtime Intelligence Avatar
 
 ARIA is a multimodal AI companion that perceives you through your camera and microphone, understands your emotional state from facial geometry and voice, and responds through a conversational interface powered by Claude. It runs locally on your machine with no cloud vision or audio processing.
 
