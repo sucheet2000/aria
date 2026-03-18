@@ -7,36 +7,51 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// httpRequest mirrors the JSON body the frontend sends.
-type httpRequest struct {
-	Message             string               `json:"message"`
-	VisionState         visionStateJSON      `json:"vision_state"`
-	ConversationHistory []conversationTurnJSON `json:"conversation_history"`
+// VisionStateInput holds perception data from the vision worker.
+type VisionStateInput struct {
+	Emotion       string  `json:"emotion"`
+	Confidence    float64 `json:"confidence"`
+	Pitch         float64 `json:"pitch"`
+	Yaw           float64 `json:"yaw"`
+	Roll          float64 `json:"roll"`
+	FaceDetected  bool    `json:"face_detected"`
+	HandsDetected bool    `json:"hands_detected"`
 }
 
-type visionStateJSON struct {
-	Emotion       string       `json:"emotion"`
-	HeadPose      headPoseJSON `json:"head_pose"`
-	FaceDetected  bool         `json:"face_detected"`
-	HandsDetected bool         `json:"hands_detected"`
-}
-
-type headPoseJSON struct {
-	Pitch float64 `json:"pitch"`
-	Yaw   float64 `json:"yaw"`
-	Roll  float64 `json:"roll"`
-}
-
-type conversationTurnJSON struct {
+// ConversationTurn represents a single role/content pair in conversation history.
+type ConversationTurn struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// httpResponse mirrors the JSON body sent back to the frontend.
-type httpResponse struct {
-	Response          string `json:"response"`
-	EmotionSuggestion string `json:"emotion_suggestion"`
-	ProcessingMs      int64  `json:"processing_ms"`
+// CognitionRequest is the body the browser (or Go→Python proxy) sends.
+type CognitionRequest struct {
+	Message             string             `json:"message"`
+	VisionState         VisionStateInput   `json:"vision_state"`
+	ConversationHistory []ConversationTurn `json:"conversation_history"`
+}
+
+// WorldModelTriple is a subject/predicate/object fact triple.
+type WorldModelTriple struct {
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+}
+
+// WorldModelUpdate wraps a fact triple with provenance metadata.
+type WorldModelUpdate struct {
+	Triple     WorldModelTriple `json:"triple"`
+	Confidence float64          `json:"confidence"`
+	Source     string           `json:"source"`
+}
+
+// CognitionResponse is the structured neurosymbolic response sent to the browser.
+type CognitionResponse struct {
+	SymbolicInference       string            `json:"symbolic_inference"`
+	WorldModelUpdate        *WorldModelUpdate `json:"world_model_update"`
+	NaturalLanguageResponse string            `json:"natural_language_response"`
+	AvatarEmotion           string            `json:"avatar_emotion"`
+	ProcessingMs            int64             `json:"processing_ms"`
 }
 
 type errorResponse struct {
@@ -66,7 +81,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req httpRequest
+	var req CognitionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
@@ -77,28 +92,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history := make([]ConversationMessage, 0, len(req.ConversationHistory))
-	for _, turn := range req.ConversationHistory {
-		history = append(history, ConversationMessage{
-			Role:    turn.Role,
-			Content: turn.Content,
-		})
-	}
-
-	cogReq := CognitionRequest{
-		Message: req.Message,
-		VisionState: VisionStateContext{
-			Emotion:       req.VisionState.Emotion,
-			Pitch:         req.VisionState.HeadPose.Pitch,
-			Yaw:           req.VisionState.HeadPose.Yaw,
-			Roll:          req.VisionState.HeadPose.Roll,
-			FaceDetected:  req.VisionState.FaceDetected,
-			HandsDetected: req.VisionState.HandsDetected,
-		},
-		ConversationHistory: history,
-	}
-
-	result, err := h.client.Complete(r.Context(), cogReq)
+	result, err := h.client.Complete(r.Context(), req)
 	if err != nil {
 		h.log.Error().Err(err).Msg("cognition complete failed")
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
@@ -110,14 +104,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Str("path", r.URL.Path).
 		Int("status", http.StatusOK).
 		Int64("processing_ms", result.ProcessingMs).
-		Str("emotion_suggestion", result.EmotionSuggestion).
+		Str("avatar_emotion", result.AvatarEmotion).
 		Msg("cognition request handled")
 
-	writeJSON(w, http.StatusOK, httpResponse{
-		Response:          result.Response,
-		EmotionSuggestion: result.EmotionSuggestion,
-		ProcessingMs:      result.ProcessingMs,
-	})
+	writeJSON(w, http.StatusOK, result)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
