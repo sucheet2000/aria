@@ -48,6 +48,12 @@ next-env.d.ts
 *.pt
 *.pth
 *.onnx
+*.task
 models/
+backend/models/
 !backend/app/models/
 backend/server
+
+# Installers
+Miniconda*.sh
+backend/Miniconda*.sh
