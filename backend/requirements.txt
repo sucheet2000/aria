@@ -20,4 +20,4 @@ pytest-asyncio
 httpx
 faster-whisper
 silero-vad
-pyaudio
+sounddevice

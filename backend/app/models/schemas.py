@@ -11,6 +11,12 @@ class VisionState(BaseModel):
     timestamp: float = 0.0
 
 
+class GestureState(BaseModel):
+    gesture_name: str = "none"
+    confidence: float = 0.0
+    hand_landmarks: list[list[float]] = Field(default_factory=list)
+
+
 class AudioTranscript(BaseModel):
     transcript: str = ""
     is_final: bool = False

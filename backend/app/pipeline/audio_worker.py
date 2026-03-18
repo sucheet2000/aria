@@ -55,7 +55,8 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
 
 def run_microphone(args: argparse.Namespace) -> None:
-    import pyaudio
+    import queue
+    import sounddevice as sd
 
     vad = VADProcessor()
     transcriber = Transcriber(model_size=args.model)
@@ -72,26 +73,34 @@ def run_microphone(args: argparse.Namespace) -> None:
         print(f"Transcriber load error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    pa = pyaudio.PyAudio()
-    stream = pa.open(
-        format=pyaudio.paInt16,
-        channels=1,
-        rate=SAMPLE_RATE,
-        input=True,
-        input_device_index=args.device if args.device != 0 else None,
-        frames_per_buffer=CHUNK_SAMPLES,
-    )
+    audio_queue: queue.Queue[np.ndarray] = queue.Queue()
 
-    try:
+    def audio_callback(
+        indata: np.ndarray,
+        frames: int,
+        time_info: object,
+        status: sd.CallbackFlags,
+    ) -> None:
+        if status:
+            print(f"audio status: {status}", file=sys.stderr)
+        audio_queue.put(indata[:, 0].copy())
+
+    with sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="int16",
+        blocksize=CHUNK_SAMPLES,
+        device=args.device if args.device != 0 else None,
+        callback=audio_callback,
+    ):
         while not _stop:
             try:
-                raw = stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
-            except Exception as exc:
-                print(f"stream read error: {exc}", file=sys.stderr)
-                break
+                chunk = audio_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
 
-            chunk = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-            is_speech, completed = vad.process_chunk(chunk)
+            chunk_f32 = chunk.astype("float32") / 32768.0
+            is_speech, completed = vad.process_chunk(chunk_f32)
 
             if completed is not None:
                 t0 = time.time()
@@ -111,10 +120,6 @@ def run_microphone(args: argparse.Namespace) -> None:
                         "timestamp": round(time.time(), 3),
                     }
                     print(json.dumps(state), flush=True)
-    finally:
-        stream.stop_stream()
-        stream.close()
-        pa.terminate()
 
 
 def main() -> None:
