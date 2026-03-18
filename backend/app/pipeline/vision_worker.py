@@ -7,14 +7,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
+import os
 import signal
 import sys
 import time
+import urllib.request
 
 import cv2
 import mediapipe as mp
 import numpy as np
+from mediapipe.tasks import python as mp_tasks
+from mediapipe.tasks.python import vision as mp_vision
 
 from app.pipeline.emotion import EmotionClassifier
 
@@ -34,6 +37,15 @@ FACE_3D_MODEL = np.array(
 # MediaPipe landmark indices for the 6 model points above
 FACE_LANDMARK_INDICES = [4, 152, 263, 33, 287, 57]
 
+_FACE_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+    "face_landmarker/float16/1/face_landmarker.task"
+)
+_HAND_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+
 _stop = False
 
 
@@ -42,8 +54,16 @@ def _handle_sigterm(signum: int, frame: object) -> None:
     _stop = True
 
 
+def _ensure_model(url: str, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not os.path.exists(path):
+        print(f"Downloading model to {path} ...", file=sys.stderr)
+        urllib.request.urlretrieve(url, path)
+        print(f"Downloaded {path}", file=sys.stderr)
+
+
 def solve_head_pose(
-    landmarks: object,
+    landmarks: list,
     frame_w: int,
     frame_h: int,
 ) -> dict[str, float]:
@@ -116,25 +136,30 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
 
 def run_camera(args: argparse.Namespace) -> None:
+    face_model_path = "models/face_landmarker.task"
+    hand_model_path = "models/hand_landmarker.task"
+    _ensure_model(_FACE_MODEL_URL, face_model_path)
+    _ensure_model(_HAND_MODEL_URL, hand_model_path)
+
     classifier = EmotionClassifier()
-    mp_face_mesh = mp.solutions.face_mesh
-    mp_hands = mp.solutions.hands
 
-    face_mesh = mp_face_mesh.FaceMesh(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
+    face_options = mp_vision.FaceLandmarkerOptions(
+        base_options=mp_tasks.BaseOptions(model_asset_path=face_model_path),
+        num_faces=1,
+        min_face_detection_confidence=0.5,
+        min_face_presence_confidence=0.5,
         min_tracking_confidence=0.5,
     )
-    hands = mp_hands.Hands(
-        max_num_hands=2,
-        min_detection_confidence=0.5,
+    face_landmarker = mp_vision.FaceLandmarker.create_from_options(face_options)
+
+    hand_options = mp_vision.HandLandmarkerOptions(
+        base_options=mp_tasks.BaseOptions(model_asset_path=hand_model_path),
+        num_hands=2,
+        min_hand_detection_confidence=0.5,
+        min_hand_presence_confidence=0.5,
         min_tracking_confidence=0.5,
     )
-
-    if args.preview:
-        mp_drawing = mp.solutions.drawing_utils
-        mp_drawing_styles = mp.solutions.drawing_styles
+    hand_landmarker = mp_vision.HandLandmarker.create_from_options(hand_options)
 
     cap = cv2.VideoCapture(args.camera)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
@@ -157,30 +182,29 @@ def run_camera(args: argparse.Namespace) -> None:
             last_frame_time = now
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            rgb.flags.writeable = False
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-            face_results = face_mesh.process(rgb)
-            hand_results = hands.process(rgb)
-
-            rgb.flags.writeable = True
+            face_result = face_landmarker.detect(mp_image)
+            hand_result = hand_landmarker.detect(mp_image)
 
             face_landmarks_list: list[list[float]] = []
             head_pose: dict[str, float] = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
             emotion = "neutral"
             emotion_confidence = 0.0
-            if face_results.multi_face_landmarks:
-                lm = face_results.multi_face_landmarks[0]
+
+            if face_result.face_landmarks:
+                lm = face_result.face_landmarks[0]
                 face_landmarks_list = [
                     [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
-                    for p in lm.landmark
+                    for p in lm
                 ]
-                head_pose = solve_head_pose(lm.landmark, args.width, args.height)
-                emotion, emotion_confidence = classifier.classify(lm.landmark)
+                head_pose = solve_head_pose(lm, args.width, args.height)
+                emotion, emotion_confidence = classifier.classify(lm)
 
             hand_landmarks_list: list[list[float]] = []
-            if hand_results.multi_hand_landmarks:
-                for hand_lm in hand_results.multi_hand_landmarks:
-                    for p in hand_lm.landmark:
+            if hand_result.hand_landmarks:
+                for hand_lm in hand_result.hand_landmarks:
+                    for p in hand_lm:
                         hand_landmarks_list.append(
                             [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
                         )
@@ -196,29 +220,13 @@ def run_camera(args: argparse.Namespace) -> None:
             print(json.dumps(state), flush=True)
 
             if args.preview:
-                if face_results.multi_face_landmarks:
-                    for face_lm in face_results.multi_face_landmarks:
-                        mp_drawing.draw_landmarks(
-                            image=frame,
-                            landmark_list=face_lm,
-                            connections=mp_face_mesh.FACEMESH_TESSELATION,
-                            landmark_drawing_spec=None,
-                            connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style(),
-                        )
-                if hand_results.multi_hand_landmarks:
-                    for hand_lm in hand_results.multi_hand_landmarks:
-                        mp_drawing.draw_landmarks(
-                            frame,
-                            hand_lm,
-                            mp_hands.HAND_CONNECTIONS,
-                        )
                 cv2.imshow("ARIA Vision Preview", frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
     finally:
         cap.release()
-        face_mesh.close()
-        hands.close()
+        face_landmarker.close()
+        hand_landmarker.close()
         if args.preview:
             cv2.destroyAllWindows()
 
