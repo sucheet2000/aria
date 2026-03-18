@@ -10,13 +10,18 @@ import (
 
 // Config holds all runtime configuration for the server.
 type Config struct {
-	Host          string
-	Port          int
-	PythonBin     string
-	VisionScript  string
-	AnthropicKey  string
-	ElevenLabsKey string
-	Debug         bool
+	Host               string
+	Port               int
+	PythonBin          string
+	VisionScript       string
+	AnthropicKey       string
+	ElevenLabsKey      string
+	Debug              bool
+	AudioScript        string
+	AudioEnabled       bool
+	TTSProvider        string
+	ElevenLabsVoiceID  string
+	WhisperModel       string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -50,14 +55,44 @@ func Load() *Config {
 		visionScript = "app/pipeline/vision_worker.py"
 	}
 
+	audioScript := os.Getenv("AUDIO_SCRIPT")
+	if audioScript == "" {
+		audioScript = "app/pipeline/audio_worker.py"
+	}
+
+	audioEnabled := true
+	if v := os.Getenv("AUDIO_ENABLED"); v == "false" || v == "0" {
+		audioEnabled = false
+	}
+
+	ttsProvider := os.Getenv("TTS_PROVIDER")
+	if ttsProvider == "" {
+		ttsProvider = "elevenlabs"
+	}
+
+	elevenLabsVoiceID := os.Getenv("ELEVENLABS_VOICE_ID")
+	if elevenLabsVoiceID == "" {
+		elevenLabsVoiceID = "21m00Tcm4TlvDq8ikWAM"
+	}
+
+	whisperModel := os.Getenv("WHISPER_MODEL")
+	if whisperModel == "" {
+		whisperModel = "base"
+	}
+
 	return &Config{
-		Host:          host,
-		Port:          port,
-		PythonBin:     pythonBin,
-		VisionScript:  visionScript,
-		AnthropicKey:  os.Getenv("ANTHROPIC_API_KEY"),
-		ElevenLabsKey: os.Getenv("ELEVENLABS_API_KEY"),
-		Debug:         debug,
+		Host:              host,
+		Port:              port,
+		PythonBin:         pythonBin,
+		VisionScript:      visionScript,
+		AnthropicKey:      os.Getenv("ANTHROPIC_API_KEY"),
+		ElevenLabsKey:     os.Getenv("ELEVENLABS_API_KEY"),
+		Debug:             debug,
+		AudioScript:       audioScript,
+		AudioEnabled:      audioEnabled,
+		TTSProvider:       ttsProvider,
+		ElevenLabsVoiceID: elevenLabsVoiceID,
+		WhisperModel:      whisperModel,
 	}
 }
 
