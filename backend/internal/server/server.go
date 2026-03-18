@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
+	"github.com/sucheet2000/aria/backend/internal/tts"
 )
 
 // Server wraps the HTTP server and its dependencies.
@@ -44,9 +45,13 @@ func (s *Server) Start(ctx context.Context) error {
 	cogClient := cognition.New(s.cfg.AnthropicKey, log.Logger)
 	cogHandler := cognition.NewHandler(cogClient, log.Logger)
 
+	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
+	ttsHandler := tts.NewHandler(ttsClient)
+
 	s.router.Route("/api", func(r chi.Router) {
 		r.Use(corsMiddleware)
 		r.Post("/cognition", cogHandler.ServeHTTP)
+		r.Post("/tts", ttsHandler.ServeHTTP)
 	})
 
 	s.httpServer = &http.Server{
