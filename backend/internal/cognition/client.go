@@ -1,90 +1,120 @@
 package cognition
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/rs/zerolog"
+	"github.com/sucheet2000/aria/backend/internal/memory"
 )
 
-// Client wraps the Anthropic API client.
+// Client forwards cognition requests to the Python FastAPI service and enriches
+// them with working memory.
 type Client struct {
-	anthropic *anthropic.Client
-	log       zerolog.Logger
+	pythonServiceURL string
+	httpClient       *http.Client
+	workingMemory    *memory.WorkingMemory
+	log              zerolog.Logger
 }
 
-// New creates a Client configured with the given API key.
-func New(apiKey string, log zerolog.Logger) *Client {
-	c := anthropic.NewClient(option.WithAPIKey(apiKey))
+// New creates a Client that proxies to the given Python service URL.
+func New(pythonServiceURL string, wm *memory.WorkingMemory) *Client {
 	return &Client{
-		anthropic: &c,
-		log:       log,
+		pythonServiceURL: pythonServiceURL,
+		httpClient:       &http.Client{Timeout: 30 * time.Second},
+		workingMemory:    wm,
+		log:              zerolog.Nop(),
 	}
 }
 
-// ConversationMessage represents a single turn in conversation history.
-type ConversationMessage struct {
-	Role    string
-	Content string
+// NewWithLogger creates a Client with a named logger.
+func NewWithLogger(pythonServiceURL string, wm *memory.WorkingMemory, log zerolog.Logger) *Client {
+	c := New(pythonServiceURL, wm)
+	c.log = log
+	return c
 }
 
-// CognitionRequest holds everything needed to produce a cognition response.
-type CognitionRequest struct {
-	Message             string
-	VisionState         VisionStateContext
-	ConversationHistory []ConversationMessage
+// enrichedRequest extends CognitionRequest with memory fields forwarded to Python.
+type enrichedRequest struct {
+	CognitionRequest
+	WorkingMemory  []string `json:"working_memory"`
+	EpisodicMemory []string `json:"episodic_memory"`
 }
 
-// CognitionResponse is the result returned to the caller.
-type CognitionResponse struct {
-	Response          string
-	EmotionSuggestion string
-	ProcessingMs      int64
-}
-
-// Complete sends the request to the Anthropic API and returns a structured response.
+// Complete enriches the request with working memory, posts it to the Python
+// cognition service, stores the returned symbolic inference, and derives the
+// avatar emotion.
 func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionResponse, error) {
 	start := time.Now()
 
-	systemPrompt := BuildSystemPrompt(req.VisionState)
+	enriched := enrichedRequest{
+		CognitionRequest: req,
+		WorkingMemory:    c.workingMemory.Last(5),
+		EpisodicMemory:   []string{},
+	}
 
-	messages := make([]anthropic.MessageParam, 0, len(req.ConversationHistory)+1)
-	for _, turn := range req.ConversationHistory {
-		block := anthropic.NewTextBlock(turn.Content)
-		switch turn.Role {
-		case "assistant":
-			messages = append(messages, anthropic.NewAssistantMessage(block))
-		default:
-			messages = append(messages, anthropic.NewUserMessage(block))
+	body, err := json.Marshal(enriched)
+	if err != nil {
+		return CognitionResponse{}, fmt.Errorf("marshal cognition request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.pythonServiceURL, bytes.NewReader(body))
+	if err != nil {
+		return CognitionResponse{}, fmt.Errorf("build http request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return CognitionResponse{}, fmt.Errorf("python cognition service: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	var resp CognitionResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		return CognitionResponse{}, fmt.Errorf("decode cognition response: %w", err)
+	}
+
+	if resp.SymbolicInference != "" {
+		c.workingMemory.Push(resp.SymbolicInference)
+	}
+
+	resp.ProcessingMs = time.Since(start).Milliseconds()
+	resp.AvatarEmotion = suggestAvatarEmotion(resp.SymbolicInference)
+	return resp, nil
+}
+
+// suggestAvatarEmotion maps keywords in a symbolic inference string to an
+// avatar emotion label.
+func suggestAvatarEmotion(inference string) string {
+	lower := strings.ToLower(inference)
+
+	switch {
+	case containsAnyKeyword(lower, "blocked", "frustrated", "stuck"):
+		return "frustrated"
+	case containsAnyKeyword(lower, "distressed", "stressed", "worried"):
+		return "fearful"
+	case containsAnyKeyword(lower, "focused", "working", "building"):
+		return "neutral"
+	case containsAnyKeyword(lower, "happy", "excited", "progress"):
+		return "happy"
+	case containsAnyKeyword(lower, "confused", "unclear", "lost"):
+		return "surprised"
+	default:
+		return "neutral"
+	}
+}
+
+func containsAnyKeyword(s string, keywords ...string) bool {
+	for _, kw := range keywords {
+		if strings.Contains(s, kw) {
+			return true
 		}
 	}
-	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(req.Message)))
-
-	resp, err := c.anthropic.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeHaiku4_5,
-		MaxTokens: 150,
-		System: []anthropic.TextBlockParam{
-			{Text: systemPrompt},
-		},
-		Messages: messages,
-	})
-	if err != nil {
-		return CognitionResponse{}, fmt.Errorf("anthropic messages.new: %w", err)
-	}
-
-	if len(resp.Content) == 0 {
-		return CognitionResponse{}, fmt.Errorf("anthropic returned empty content")
-	}
-
-	text := resp.Content[0].AsText().Text
-	suggestion := SuggestEmotion(text)
-
-	return CognitionResponse{
-		Response:          text,
-		EmotionSuggestion: suggestion,
-		ProcessingMs:      time.Since(start).Milliseconds(),
-	}, nil
+	return false
 }
