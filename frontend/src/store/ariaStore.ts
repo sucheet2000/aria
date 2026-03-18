@@ -27,6 +27,14 @@ export interface ARIAStore {
   isSpeaking: boolean;
   isListening: boolean;
 
+  // Voice input state
+  isRecording: boolean;
+  voiceTranscript: string;
+  voiceConfidence: number;
+
+  // Audio output state
+  audioQueue: string[];
+
   // API state
   processingMs: number;
 
@@ -41,13 +49,18 @@ export interface ARIAStore {
   setAvatarEmotion: (v: string) => void;
   setIsSpeaking: (v: boolean) => void;
   setIsListening: (v: boolean) => void;
+  setIsRecording: (v: boolean) => void;
+  setVoiceTranscript: (v: string) => void;
+  setVoiceConfidence: (v: number) => void;
+  enqueueAudio: (text: string) => void;
+  dequeueAudio: () => string | undefined;
   setTranscript: (v: string) => void;
   addMessage: (role: "user" | "assistant", content: string) => void;
   setEmotionConfidence: (v: number) => void;
   setProcessingMs: (v: number) => void;
 }
 
-export const useAriaStore = create<ARIAStore>((set) => ({
+export const useAriaStore = create<ARIAStore>((set, get) => ({
   wsConnected: false,
   wsError: null,
 
@@ -61,6 +74,12 @@ export const useAriaStore = create<ARIAStore>((set) => ({
   avatarEmotion: "neutral",
   isSpeaking: false,
   isListening: false,
+
+  isRecording: false,
+  voiceTranscript: "",
+  voiceConfidence: 0,
+
+  audioQueue: [],
 
   processingMs: 0,
 
@@ -82,6 +101,18 @@ export const useAriaStore = create<ARIAStore>((set) => ({
   setAvatarEmotion: (v) => set({ avatarEmotion: v }),
   setIsSpeaking: (v) => set({ isSpeaking: v }),
   setIsListening: (v) => set({ isListening: v }),
+  setIsRecording: (v) => set({ isRecording: v }),
+  setVoiceTranscript: (v) => set({ voiceTranscript: v }),
+  setVoiceConfidence: (v) => set({ voiceConfidence: v }),
+  enqueueAudio: (text) =>
+    set((state) => ({ audioQueue: [...state.audioQueue, text] })),
+  dequeueAudio: () => {
+    const queue = get().audioQueue;
+    if (queue.length === 0) return undefined;
+    const [first, ...rest] = queue;
+    set({ audioQueue: rest });
+    return first;
+  },
   setTranscript: (v) => set({ transcript: v }),
   addMessage: (role, content) =>
     set((state) => ({
