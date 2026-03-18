@@ -11,23 +11,26 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
+	"github.com/sucheet2000/aria/backend/internal/memory"
 	"github.com/sucheet2000/aria/backend/internal/tts"
 )
 
 // Server wraps the HTTP server and its dependencies.
 type Server struct {
-	router     *chi.Mux
-	hub        *Hub
-	cfg        *config.Config
-	httpServer *http.Server
+	router        *chi.Mux
+	hub           *Hub
+	cfg           *config.Config
+	workingMemory *memory.WorkingMemory
+	httpServer    *http.Server
 }
 
-// New creates a new Server with the given configuration and hub.
-func New(cfg *config.Config, hub *Hub) *Server {
+// New creates a new Server with the given configuration, hub, and working memory.
+func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory) *Server {
 	s := &Server{
-		router: chi.NewRouter(),
-		hub:    hub,
-		cfg:    cfg,
+		router:        chi.NewRouter(),
+		hub:           hub,
+		cfg:           cfg,
+		workingMemory: wm,
 	}
 	return s
 }
@@ -42,7 +45,7 @@ func (s *Server) Start(ctx context.Context) error {
 		ServeWs(s.hub, w, r)
 	})
 
-	cogClient := cognition.New(s.cfg.AnthropicKey, log.Logger)
+	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
 	cogHandler := cognition.NewHandler(cogClient, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
@@ -52,6 +55,7 @@ func (s *Server) Start(ctx context.Context) error {
 		r.Use(corsMiddleware)
 		r.Post("/cognition", cogHandler.ServeHTTP)
 		r.Post("/tts", ttsHandler.ServeHTTP)
+		r.Get("/memory/working", s.handleWorkingMemory)
 	})
 
 	s.httpServer = &http.Server{
@@ -89,6 +93,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"version": "0.1.0",
 	})
+}
+
+func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
+	entries := s.workingMemory.All()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }
 
 // corsMiddleware adds permissive CORS headers for all /api/* routes so the

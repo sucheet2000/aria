@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/sucheet2000/aria/backend/internal/audio"
 	"github.com/sucheet2000/aria/backend/internal/config"
+	"github.com/sucheet2000/aria/backend/internal/memory"
 	"github.com/sucheet2000/aria/backend/internal/server"
 	"github.com/sucheet2000/aria/backend/internal/vision"
 )
@@ -28,6 +29,8 @@ func main() {
 	} else {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
+
+	wm := memory.New(10)
 
 	hub := server.NewHub()
 	go hub.Run()
@@ -55,7 +58,7 @@ func main() {
 		}()
 	}
 
-	srv := server.New(cfg, hub)
+	srv := server.New(cfg, hub, wm)
 
 	go func() {
 		if err := srv.Start(ctx); err != nil {
