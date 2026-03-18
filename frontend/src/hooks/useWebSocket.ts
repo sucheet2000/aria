@@ -53,8 +53,26 @@ export function useWebSocket() {
 
       ws.onmessage = (event: MessageEvent) => {
         try {
-          const data = JSON.parse(event.data as string);
-          useAriaStore.getState().setVisionFrame(data);
+          const msg = JSON.parse(event.data as string);
+
+          if (msg.type === "vision_state" || !msg.type) {
+            useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
+            return;
+          }
+
+          if (msg.type === "transcript") {
+            const t = msg.payload;
+            if (t.is_final && t.transcript) {
+              useAriaStore.getState().setVoiceTranscript(t.transcript);
+              useAriaStore.getState().setVoiceConfidence(t.confidence ?? 0);
+              window.dispatchEvent(
+                new CustomEvent("aria:voice-transcript", {
+                  detail: { transcript: t.transcript },
+                })
+              );
+            }
+            return;
+          }
         } catch {
           // malformed message -- ignore
         }
