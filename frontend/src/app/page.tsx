@@ -8,7 +8,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 
 export default function Home() {
-  useWebSocket();
+  const { connected } = useWebSocket();
 
   const emotion = useAriaStore((s) => s.emotion);
   const emotionConfidence = useAriaStore((s) => s.emotionConfidence);
@@ -20,6 +20,21 @@ export default function Home() {
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold tracking-widest text-aria-accent">ARIA</h1>
           <EmotionIndicator emotion={emotion} confidence={emotionConfidence} size="sm" />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                backgroundColor: connected ? "#22c55e" : "#f97316",
+                flexShrink: 0,
+              }}
+            />
+            <span className="text-xs" style={{ color: connected ? "#22c55e" : "#f97316" }}>
+              {connected ? "live" : "reconnecting"}
+            </span>
+          </div>
         </div>
         <CameraFeed />
         <ChatPanel />
