@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
+import { useTTS } from "@/hooks/useTTS";
+import VoiceIndicator from "@/components/VoiceIndicator";
 
 const EMOTION_COLORS: Record<string, string> = {
   neutral: "#64748b",
@@ -29,6 +31,25 @@ export default function ChatPanel() {
   const faceLandmarks = useAriaStore((s) => s.faceLandmarks);
 
   const { sendMessage, isLoading } = useCognition();
+  const { speak } = useTTS();
+
+  const handleSendWithTTS = useCallback(
+    async (text: string) => {
+      await sendMessage(text, speak);
+    },
+    [sendMessage, speak]
+  );
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent<{ transcript: string }>).detail.transcript;
+      if (text) {
+        handleSendWithTTS(text);
+      }
+    };
+    window.addEventListener("aria:voice-transcript", handler);
+    return () => window.removeEventListener("aria:voice-transcript", handler);
+  }, [handleSendWithTTS]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,7 +59,7 @@ export default function ChatPanel() {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     setInput("");
-    await sendMessage(trimmed);
+    await handleSendWithTTS(trimmed);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -79,6 +100,9 @@ export default function ChatPanel() {
           </p>
         )}
       </div>
+
+      {/* Voice status */}
+      <VoiceIndicator />
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">

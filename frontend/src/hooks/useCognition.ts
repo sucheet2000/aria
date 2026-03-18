@@ -17,7 +17,10 @@ export function useCognition() {
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
   const setProcessingMs = useAriaStore((s) => s.setProcessingMs);
 
-  async function sendMessage(text: string): Promise<void> {
+  async function sendMessage(
+    text: string,
+    onResponse?: (responseText: string) => void
+  ): Promise<void> {
     if (!text.trim() || isLoading) return;
 
     const state = useAriaStore.getState();
@@ -61,6 +64,9 @@ export function useCognition() {
       addMessage("assistant", data.response);
       setAvatarEmotion(data.emotion_suggestion);
       setProcessingMs(data.processing_ms);
+      if (onResponse) {
+        onResponse(data.response);
+      }
     } catch (err) {
       const msg =
         err instanceof Error && err.name === "AbortError"

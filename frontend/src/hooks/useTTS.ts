@@ -1,0 +1,59 @@
+"use client";
+
+import { useState } from "react";
+import { useAriaStore } from "@/store/ariaStore";
+
+export function useTTS() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setIsSpeaking = useAriaStore((s) => s.setIsSpeaking);
+
+  async function speak(text: string): Promise<void> {
+    if (!text || isPlaying) return;
+
+    setIsSpeaking(true);
+    setIsPlaying(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://localhost:8080/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed: HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setIsPlaying(false);
+        setIsSpeaking(false);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setIsPlaying(false);
+        setIsSpeaking(false);
+      };
+
+      await audio.play();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "TTS playback failed.";
+      setError(msg);
+      console.error("[useTTS]", err);
+      setIsPlaying(false);
+      setIsSpeaking(false);
+    }
+  }
+
+  return { speak, isPlaying, error };
+}
