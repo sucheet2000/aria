@@ -42,6 +42,10 @@ export interface ARIAStore {
   transcript: string;
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
 
+  // Memory
+  profileFacts: string[];
+  memoryLastUpdated: number;
+
   // Actions
   setWsConnected: (v: boolean) => void;
   setWsError: (v: string | null) => void;
@@ -58,6 +62,8 @@ export interface ARIAStore {
   addMessage: (role: "user" | "assistant", content: string) => void;
   setEmotionConfidence: (v: number) => void;
   setProcessingMs: (v: number) => void;
+  setProfileFacts: (facts: string[]) => void;
+  setMemoryLastUpdated: (ts: number) => void;
 }
 
 export const useAriaStore = create<ARIAStore>((set, get) => ({
@@ -85,6 +91,9 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
 
   transcript: "",
   conversationHistory: [],
+
+  profileFacts: [],
+  memoryLastUpdated: 0,
 
   setWsConnected: (v) => set({ wsConnected: v }),
   setWsError: (v) => set({ wsError: v }),
@@ -120,4 +129,6 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
     })),
   setEmotionConfidence: (v) => set({ emotionConfidence: v }),
   setProcessingMs: (v) => set({ processingMs: v }),
+  setProfileFacts: (facts) => set({ profileFacts: facts }),
+  setMemoryLastUpdated: (ts) => set({ memoryLastUpdated: ts }),
 }));
