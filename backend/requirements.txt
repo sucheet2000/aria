@@ -21,3 +21,4 @@ httpx
 faster-whisper
 silero-vad
 sounddevice
+deepfilternet  # noise suppression; ONNX path preferred, falls back to native df backend
