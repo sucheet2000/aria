@@ -109,25 +109,42 @@ export default function ChatPanel() {
         {conversationHistory.length === 0 ? (
           <p className="text-center text-sm text-aria-muted">Start a conversation</p>
         ) : (
-          conversationHistory.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                style={{
-                  backgroundColor: msg.role === "user" ? "#3730a3" : "#1e293b",
-                  borderRadius: "0.75rem",
-                  padding: "0.5rem 0.75rem",
-                  maxWidth: "80%",
-                  fontSize: "0.875rem",
-                  color: "#e2e8f0",
-                }}
-              >
-                {msg.content}
+          conversationHistory.map((msg, i) => {
+            const isUser = msg.role === "user";
+            const prevRole = i > 0 ? conversationHistory[i - 1].role : null;
+            const showLabel = prevRole !== msg.role;
+
+            return (
+              <div key={i} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                {showLabel && (
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "#64748b",
+                      marginBottom: "2px",
+                      paddingLeft: isUser ? 0 : "4px",
+                      paddingRight: isUser ? "4px" : 0,
+                    }}
+                  >
+                    {isUser ? "You" : "ARIA"}
+                  </span>
+                )}
+                <div
+                  style={{
+                    backgroundColor: isUser ? "#4f46e5" : "#1e293b",
+                    borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                    borderLeft: isUser ? undefined : "3px solid #6366f1",
+                    padding: "0.5rem 0.75rem",
+                    maxWidth: "80%",
+                    fontSize: "0.875rem",
+                    color: isUser ? "#ffffff" : "#e2e8f0",
+                  }}
+                >
+                  {msg.content}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -135,7 +152,30 @@ export default function ChatPanel() {
       {/* Input row */}
       <div className="border-t border-aria-border p-3">
         {isLoading && (
-          <p className="text-xs text-aria-muted mb-2">ARIA is thinking...</p>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#0f172a",
+              borderRadius: "8px",
+              padding: "6px 10px",
+              marginBottom: "8px",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                backgroundColor: "#6366f1",
+                animation: "aria-blink 1s step-start infinite",
+              }}
+            />
+            <span style={{ fontSize: "0.75rem", color: "#6366f1" }}>ARIA is thinking...</span>
+            <style>{`@keyframes aria-blink { 0%,100%{opacity:1} 50%{opacity:0} }`}</style>
+          </div>
         )}
         <div className="flex gap-2">
           <input
