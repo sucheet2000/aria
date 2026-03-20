@@ -64,6 +64,7 @@ export function useCognition() {
       addMessage("assistant", data.response);
       setAvatarEmotion(data.emotion_suggestion);
       setProcessingMs(data.processing_ms);
+      window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
         onResponse(data.response);
       }
