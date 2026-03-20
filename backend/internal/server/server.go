@@ -56,6 +56,7 @@ func (s *Server) Start(ctx context.Context) error {
 		r.Post("/cognition", cogHandler.ServeHTTP)
 		r.Post("/tts", ttsHandler.ServeHTTP)
 		r.Get("/memory/working", s.handleWorkingMemory)
+		r.Get("/memory/profile", s.handleMemoryProfileProxy)
 	})
 
 	s.httpServer = &http.Server{
@@ -99,6 +100,27 @@ func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
 	entries := s.workingMemory.All()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
+	resp, err := http.Get("http://localhost:8000/api/memory/profile")
+	if err != nil {
+		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	var buf [4096]byte
+	for {
+		n, readErr := resp.Body.Read(buf[:])
+		if n > 0 {
+			w.Write(buf[:n])
+		}
+		if readErr != nil {
+			break
+		}
+	}
 }
 
 // corsMiddleware adds permissive CORS headers for all /api/* routes so the
