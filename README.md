@@ -1,116 +1,175 @@
-# ARIA – Adaptive Realtime Intelligence Avatar
+# ARIA — Adaptive Realtime Intelligence Avatar
 
-ARIA is a multimodal AI companion that perceives you through your camera and microphone, understands your emotional state from facial geometry and voice, and responds through a conversational interface powered by Claude. It runs locally on your machine with no cloud vision or audio processing.
+ARIA is a multimodal AI companion that perceives you through your camera and microphone, reasons about your emotional and cognitive state using a neurosymbolic architecture, and maintains a persistent world model of who you are across sessions. It runs locally on Apple Silicon with no cloud vision or audio processing.
 
 ## Architecture
 
-Three-language stack:
+ARIA is built on a three-language stack. A Go server coordinates all subsystems: it manages WebSocket connections to the browser, proxies cognition requests to a Python FastAPI service, and launches vision and audio workers as long-running subprocesses. Python handles all perception — MediaPipe Tasks for face and hand landmark extraction, faster-whisper for speech transcription, and a FastAPI service that builds neurosymbolic prompts, queries ChromaDB memory collections, and calls Claude. The Next.js frontend renders the live landmark overlay, conversation history, memory panel, and thinking indicator over WebSocket.
 
-- **Go server (port 8080):** manages WebSocket connections, launches Python workers as subprocesses, serves cognition and TTS API endpoints
-- **Python vision worker:** reads webcam at 15fps via MediaPipe Tasks, extracts 478 face landmarks, head pose, hand landmarks, and expressive state
-- **Python audio worker:** captures microphone via sounddevice, detects speech with webrtcvad, transcribes with faster-whisper
-- **Next.js frontend (port 3000):** renders live landmark overlay, conversation UI, voice indicator, and avatar placeholder
+```
+  Browser (Next.js :3000)
+       |
+       | WebSocket  ws://localhost:8080/ws
+       | HTTP POST  /api/cognition
+       | HTTP POST  /api/tts
+       |
+  Go Server (:8080)
+       |-- subprocess --> Python Vision Worker
+       |                    MediaPipe Tasks FaceLandmarker (478 points)
+       |                    Emotion classifier (7 classes, landmark geometry)
+       |                    Head pose via solvePnP (pitch / yaw / roll)
+       |                    Hand landmarks (21 points per hand)
+       |                    15 fps JSON to stdout
+       |
+       |-- subprocess --> Python Audio Worker
+       |                    sounddevice microphone capture at 16kHz
+       |                    webrtcvad voice activity detection
+       |                    DeepFilterNet noise isolation (--denoise flag)
+       |                    faster-whisper speech-to-text (base, int8)
+       |                    JSON to stdout on utterance end
+       |
+       |-- HTTP proxy --> Python FastAPI (:8000)
+                            Neurosymbolic prompt builder
+                            Conflict detection (speech vs visual sentiment)
+                            Claude claude-haiku-4-5 structured response
+                            ChromaDB layered memory (profile / episodic / working)
+```
 
-Data flow:
+## Neurosymbolic reasoning
 
-    Camera -> Python vision worker -> Go server -> WebSocket -> Browser
-    Microphone -> Python audio worker -> Go server -> WebSocket -> Browser
-    User speech -> Claude API (cognition) -> TTS -> Audio playback
+System 1 is the fast, parallel, pattern-based perception layer: MediaPipe extracts 478 face landmarks, head pose angles, and hand geometry at 15 fps, while faster-whisper transcribes speech in real time. These streams produce continuous signals — emotion class, attention estimate, head orientation, and utterance text — that are forwarded to the cognition layer as structured JSON on every cycle.
+
+System 2 is the symbolic inference layer built around Claude. On each cognition turn, the FastAPI service assembles a structured prompt from the current perceptual state, the last 10 symbolic inferences held in Go working memory, and relevant long-term facts retrieved from ChromaDB. Claude returns a structured response containing a symbolic inference, a world model triple, and a natural language reply. The triple is then written back to the appropriate ChromaDB collection, updating ARIA's persistent model of the user.
+
+Conflict detection: if the absolute difference between speech sentiment and visual sentiment exceeds 0.4, ARIA responds to the visual truth via open invitation rather than validating the speech surface or directly confronting the incongruence. This prevents ARIA from reinforcing a stated emotion that contradicts observable affect.
+
+Structured response schema:
+
+```json
+{
+  "symbolic_inference": "user is in focused debugging state",
+  "world_model_update": {
+    "triple": { "subject": "...", "predicate": "...", "object": "..." },
+    "confidence": 0.85,
+    "source": "explicit_statement"
+  },
+  "natural_language_response": "spoken response here"
+}
+```
+
+## Memory system
+
+ARIA uses three ChromaDB collections with different retention policies:
+
+| Collection    | Retention   | Contents |
+|---------------|-------------|----------|
+| aria_profile  | permanent   | explicit user facts |
+| aria_episodic | 30-day TTL  | behavioral and visual inferences |
+| aria_working  | session     | cleared on shutdown |
+
+Working memory is implemented as a Go circular buffer holding the last 10 symbolic inferences. Its contents are serialized and injected into every Claude prompt as short-term context, giving ARIA continuity within a session without requiring a database lookup on every turn.
 
 ## Versions
 
-| Version | Description |
-|---------|-------------|
-| v0.1.0  | Monorepo scaffold — backend pipeline stubs, Go server structure, Next.js frontend shell |
-| v0.2.0  | Go WebSocket server, Python MediaPipe vision pipeline, Next.js frontend with live landmark overlay |
-| v0.3.0  | Emotion detection via landmark geometry, Claude cognition API, emotion-reactive UI |
-| v0.4.0  | Voice input with faster-whisper, webrtcvad VAD, streaming TTS, full spoken conversation loop |
-| v0.5.0  | Structured Claude responses, prompt caching (planned) |
-| v0.6.0  | Layered memory system with ChromaDB (planned) |
-| v0.7.0  | VRM 3D avatar with lip sync and emotion blendshapes (planned) |
-| v1.0.0  | Gesture recognition, wake word detection, full MVP (planned) |
+| Version | Status   | Description |
+|---------|----------|-------------|
+| v0.1.0  | released | Monorepo scaffold |
+| v0.2.0  | released | Go WebSocket server, MediaPipe vision pipeline, Next.js frontend |
+| v0.3.0  | released | Emotion detection, Claude cognition API |
+| v0.4.1  | released | Voice input, faster-whisper, webrtcvad, streaming TTS |
+| v0.5.0  | released | Neurosymbolic reasoning, world model triples, working memory |
+| v0.6.0  | released | ChromaDB persistent memory, DeepFilterNet noise isolation, message UI |
+| v0.7.0  | planned  | VRM avatar, three-vrm, lip sync, emotion blendshapes |
+| v1.0.0  | planned  | Gesture recognition, wake word detection, full MVP |
 
-## Tech Stack
+## Tech stack
 
-| Layer | Technology |
-|-------|-----------|
-| Server | Go 1.25, chi router, gorilla/websocket, zerolog |
-| Vision | Python 3.13, MediaPipe Tasks 0.10.32, OpenCV |
-| Audio | Python 3.13, faster-whisper, webrtcvad, sounddevice |
-| AI | Anthropic Claude claude-haiku-4-5 |
-| Frontend | Next.js 14, React, TypeScript, Tailwind CSS, Zustand |
-| 3D Avatar | Three.js, React Three Fiber (Sprint 7) |
+| Layer     | Technology |
+|-----------|-----------|
+| Server    | Go 1.25, chi, gorilla/websocket, zerolog |
+| Vision    | Python 3.13, MediaPipe Tasks 0.10.32, OpenCV |
+| Audio     | Python 3.13, faster-whisper, webrtcvad, sounddevice, DeepFilterNet |
+| AI        | Anthropic Claude claude-haiku-4-5 |
+| Memory    | ChromaDB 1.5.5 (profile, episodic, working collections) |
+| Frontend  | Next.js 14, TypeScript, Tailwind CSS, Zustand |
+| TTS       | ElevenLabs (macOS say fallback) |
 
 ## Prerequisites
 
-- macOS (M1/M2/M3 recommended) or Linux
+- macOS Apple Silicon (M1/M2/M3) or Linux
 - Go 1.25+
-- Python 3.11+ (ARM64 native on Apple Silicon — use miniconda-arm64)
+- Python 3.11+ ARM64 native (see setup below)
 - Node.js 20+
-- Anthropic API key (console.anthropic.com)
-- ElevenLabs API key (optional, for voice output)
+- Anthropic API key
 
 ## Setup
 
-### 1. Clone and configure
+### 1. Clone
 
     git clone https://github.com/sucheet2000/aria.git
     cd aria
     cp backend/.env.example backend/.env
-    # Edit backend/.env and add your ANTHROPIC_API_KEY
+    # Add ANTHROPIC_API_KEY to backend/.env
 
-### 2. Install Python dependencies (Apple Silicon)
+### 2. Python environment (Apple Silicon)
 
     curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
     bash Miniconda3-latest-MacOSX-arm64.sh -b -p ~/miniconda-arm64
     source ~/miniconda-arm64/bin/activate
-    pip install mediapipe opencv-python torch faster-whisper webrtcvad sounddevice structlog pydantic pydantic-settings anthropic
+    pip install mediapipe opencv-python torch faster-whisper webrtcvad \
+                sounddevice structlog pydantic pydantic-settings \
+                anthropic fastapi uvicorn chromadb deepfilternet
 
-    # Update backend/.env
+    # Set in backend/.env:
     # PYTHON_BIN=/Users/YOUR_USERNAME/miniconda-arm64/bin/python3
 
-### 3. Install Go dependencies
+### 3. Go dependencies
 
+    cd backend && go mod download
+
+### 4. Frontend
+
+    cd frontend && npm install
+
+### 5. Run (three terminals required)
+
+    # Terminal 1 — FastAPI cognition and memory service
+    source ~/miniconda-arm64/bin/activate
     cd backend
-    go mod download
+    PYTHONPATH=$(pwd) python3 -m uvicorn app.main:app --port 8000
 
-### 4. Install frontend dependencies
-
-    cd frontend
-    npm install
-
-### 5. Run
-
-    # Terminal 1 — Go server (auto-starts Python workers)
+    # Terminal 2 — Go server (auto-starts vision and audio workers)
     cd backend
     go run cmd/server/main.go
 
-    # Terminal 2 — Frontend
+    # Terminal 3 — Frontend
     cd frontend
     npm run dev
 
-Open http://localhost:3000. Allow camera and microphone access.
+    Open http://localhost:3000 and allow camera and microphone access.
 
-## Development
+## Development commands
 
 | Command | Description |
 |---------|-------------|
-| go run cmd/server/main.go | Start Go server with both Python workers |
+| go run cmd/server/main.go | Start Go server with Python workers |
+| uvicorn app.main:app --port 8000 | Start FastAPI cognition service |
 | npm run dev | Start Next.js frontend |
-| python -m pytest tests/ -v | Run Python test suite |
+| pytest tests/ -v | Run Python test suite |
 | go test ./... | Run Go test suite |
-| python scripts/vision_preview.py | Preview camera with landmark overlay |
 | python scripts/audio_test.py | Test microphone and transcription |
+| python scripts/audio_test.py --denoise | Test with noise isolation |
+| curl localhost:8000/api/memory/profile | Inspect stored profile facts |
 
-## Environment Variables
-
-See backend/.env.example for all variables. Key ones:
+## Environment variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | ANTHROPIC_API_KEY | Anthropic API key | required |
-| PYTHON_BIN | Path to Python binary | python3 |
-| AUDIO_ENABLED | Enable audio worker | true |
+| PYTHON_BIN | Path to ARM64 Python | python3 |
 | WHISPER_MODEL | Whisper model size | base |
-| ELEVENLABS_API_KEY | ElevenLabs API key | optional |
+| AUDIO_ENABLED | Enable audio worker | true |
+| ELEVENLABS_API_KEY | ElevenLabs TTS key | optional |
 | USE_OLLAMA | Use Ollama instead of Claude | false |
+
+See backend/.env.example for the complete list.
