@@ -4,6 +4,7 @@ import Avatar3D from "@/components/Avatar3D";
 import CameraFeed from "@/components/CameraFeed";
 import ChatPanel from "@/components/ChatPanel";
 import EmotionIndicator from "@/components/EmotionIndicator";
+import MemoryPanel from "@/components/MemoryPanel";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 
@@ -13,6 +14,11 @@ export default function Home() {
   const emotion = useAriaStore((s) => s.emotion);
   const emotionConfidence = useAriaStore((s) => s.emotionConfidence);
   const processingMs = useAriaStore((s) => s.processingMs);
+  const conversationHistory = useAriaStore((s) => s.conversationHistory);
+
+  const assistantMessageCount = conversationHistory.filter(
+    (m) => m.role === "assistant"
+  ).length;
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-aria-dark">
@@ -43,6 +49,9 @@ export default function Home() {
             last response: {processingMs}ms
           </p>
         )}
+        <div style={{ position: "relative" }}>
+          <MemoryPanel assistantMessageCount={assistantMessageCount} />
+        </div>
       </div>
       <div className="flex-1 p-4">
         <Avatar3D />

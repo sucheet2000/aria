@@ -115,12 +115,20 @@ export default function ChatPanel() {
             const showLabel = prevRole !== msg.role;
 
             return (
-              <div key={i} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: isUser ? "flex-end" : "flex-start",
+                  marginBottom: "8px",
+                }}
+              >
                 {showLabel && (
                   <span
                     style={{
-                      fontSize: "0.7rem",
-                      color: "#64748b",
+                      fontSize: "11px",
+                      color: isUser ? "#6366f1" : "#94a3b8",
                       marginBottom: "2px",
                       paddingLeft: isUser ? 0 : "4px",
                       paddingRight: isUser ? "4px" : 0,
@@ -134,7 +142,7 @@ export default function ChatPanel() {
                     backgroundColor: isUser ? "#4f46e5" : "#1e293b",
                     borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                     borderLeft: isUser ? undefined : "3px solid #6366f1",
-                    padding: "0.5rem 0.75rem",
+                    padding: "10px 14px",
                     maxWidth: "80%",
                     fontSize: "0.875rem",
                     color: isUser ? "#ffffff" : "#e2e8f0",
@@ -157,24 +165,31 @@ export default function ChatPanel() {
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              backgroundColor: "#0f172a",
-              borderRadius: "8px",
-              padding: "6px 10px",
               marginBottom: "8px",
             }}
           >
-            <span
-              style={{
-                display: "inline-block",
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                backgroundColor: "#6366f1",
-                animation: "aria-blink 1s step-start infinite",
-              }}
-            />
-            <span style={{ fontSize: "0.75rem", color: "#6366f1" }}>ARIA is thinking...</span>
-            <style>{`@keyframes aria-blink { 0%,100%{opacity:1} 50%{opacity:0} }`}</style>
+            <style>{`
+              @keyframes aria-dot-pulse {
+                0%, 100% { opacity: 0; }
+                50% { opacity: 1; }
+              }
+            `}</style>
+            {[0, 0.2, 0.4].map((delay, idx) => (
+              <span
+                key={idx}
+                style={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  backgroundColor: "#6366f1",
+                  animation: `aria-dot-pulse 1.2s ease-in-out ${delay}s infinite`,
+                }}
+              />
+            ))}
+            <span style={{ fontSize: "13px", color: "#6366f1", fontStyle: "italic" }}>
+              ARIA is thinking
+            </span>
           </div>
         )}
         <div className="flex gap-2">
