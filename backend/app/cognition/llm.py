@@ -60,8 +60,8 @@ class LLMClient:
         messages = []
         for turn in conversation_history[-6:]:
             messages.append({
-                "role": turn["role"],
-                "content": turn["content"],
+                "role": turn.role,
+                "content": turn.content,
             })
         messages.append({"role": "user", "content": message})
 
