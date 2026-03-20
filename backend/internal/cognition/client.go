@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,6 +21,8 @@ type Client struct {
 	httpClient       *http.Client
 	workingMemory    *memory.WorkingMemory
 	log              zerolog.Logger
+	episodicMemory   []string
+	episodicMu       sync.RWMutex
 }
 
 // New creates a Client that proxies to the given Python service URL.
@@ -55,7 +58,7 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	enriched := enrichedRequest{
 		CognitionRequest: req,
 		WorkingMemory:    c.workingMemory.Last(5),
-		EpisodicMemory:   []string{},
+		EpisodicMemory:   c.getEpisodicMemory(),
 	}
 
 	body, err := json.Marshal(enriched)
@@ -84,9 +87,24 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 		c.workingMemory.Push(resp.SymbolicInference)
 	}
 
+	if len(resp.EpisodicMemory) > 0 {
+		c.episodicMu.Lock()
+		c.episodicMemory = resp.EpisodicMemory
+		c.episodicMu.Unlock()
+	}
+
 	resp.ProcessingMs = time.Since(start).Milliseconds()
 	resp.AvatarEmotion = suggestAvatarEmotion(resp.SymbolicInference)
 	return resp, nil
+}
+
+// getEpisodicMemory returns a copy of the cached episodic memory slice.
+func (c *Client) getEpisodicMemory() []string {
+	c.episodicMu.RLock()
+	defer c.episodicMu.RUnlock()
+	result := make([]string, len(c.episodicMemory))
+	copy(result, c.episodicMemory)
+	return result
 }
 
 // suggestAvatarEmotion maps keywords in a symbolic inference string to an

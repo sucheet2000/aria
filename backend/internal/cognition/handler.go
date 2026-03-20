@@ -52,6 +52,7 @@ type CognitionResponse struct {
 	NaturalLanguageResponse string            `json:"natural_language_response"`
 	AvatarEmotion           string            `json:"avatar_emotion"`
 	ProcessingMs            int64             `json:"processing_ms"`
+	EpisodicMemory          []string          `json:"episodic_memory,omitempty"`
 }
 
 type errorResponse struct {
