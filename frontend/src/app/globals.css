@@ -3,16 +3,50 @@
 @tailwind utilities;
 
 :root {
-  --aria-dark: #0a0a0f;
-  --aria-surface: #12121a;
-  --aria-border: #1e1e2e;
-  --aria-accent: #6366f1;
-  --aria-text: #e2e8f0;
-  --aria-muted: #64748b;
+  --void: #0e0e12;
+  --surface-low: #131317;
+  --surface-mid: #1a1a20;
+  --surface-high: #25252b;
+  --surface-bright: #2e2e36;
+  --primary: #a3a6ff;
+  --primary-dim: #6063ee;
+  --primary-glow: rgba(99, 102, 241, 0.08);
+  --on-surface: #f3eff6;
+  --on-surface-muted: #8b8a9b;
+  --on-surface-faint: #4a4957;
+  --outline-ghost: rgba(255, 255, 255, 0.06);
+  --glass-bg: rgba(19, 19, 23, 0.6);
 }
 
 body {
-  background-color: var(--aria-dark);
-  color: var(--aria-text);
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--void);
+  color: var(--on-surface);
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-high);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-bright);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-high) transparent;
+}
+
+input::placeholder {
+  color: var(--on-surface-faint);
 }
