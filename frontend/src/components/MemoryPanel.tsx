@@ -9,7 +9,6 @@ interface MemoryPanelProps {
 export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps) {
   const [profileFacts, setProfileFacts] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   async function fetchProfileFacts() {
@@ -43,7 +42,8 @@ export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps)
       fetchProfileFacts();
     }
     window.addEventListener("aria:memory-updated", handleMemoryUpdated);
-    return () => window.removeEventListener("aria:memory-updated", handleMemoryUpdated);
+    return () =>
+      window.removeEventListener("aria:memory-updated", handleMemoryUpdated);
   }, []);
 
   function secondsAgo(): string {
@@ -57,98 +57,121 @@ export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps)
   return (
     <div
       style={{
-        borderTop: "1px solid #1e293b",
-        backgroundColor: "#0a0a0f",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "var(--glass-bg)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderRight: "1px solid var(--outline-ghost)",
       }}
     >
-      {/* Header row */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded((v) => !v)}
+      {/* Header */}
+      <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          width: "100%",
-          padding: "8px 12px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#94a3b8",
-          fontSize: "12px",
-          textAlign: "left",
+          padding: "20px 16px 12px",
+          flexShrink: 0,
+          borderBottom: "1px solid var(--outline-ghost)",
         }}
       >
-        <span style={{ fontWeight: 500, color: "#cbd5e1" }}>Memory</span>
         <span
           style={{
-            backgroundColor: "#1e293b",
-            borderRadius: "10px",
-            padding: "1px 7px",
-            fontSize: "11px",
-            color: profileFacts.length > 0 ? "#6366f1" : "#475569",
+            fontFamily: "var(--font-data)",
+            fontWeight: 500,
+            fontSize: 11,
+            color: "var(--on-surface-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.15em",
+          }}
+        >
+          memory
+        </span>
+        <span
+          style={{
+            marginLeft: 8,
+            fontFamily: "var(--font-data)",
+            fontSize: 11,
+            color:
+              profileFacts.length > 0
+                ? "var(--primary)"
+                : "var(--on-surface-faint)",
           }}
         >
           {isLoading ? "..." : profileFacts.length}
         </span>
-        {!isExpanded && profileFacts.length > 0 && (
+      </div>
+
+      {/* Fact list */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {isLoading ? (
           <span
             style={{
-              display: "inline-block",
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: "#22c55e",
-              marginLeft: "2px",
+              fontFamily: "var(--font-data)",
+              fontSize: 11,
+              color: "var(--on-surface-faint)",
             }}
-          />
+          >
+            loading...
+          </span>
+        ) : profileFacts.length === 0 ? (
+          <span
+            style={{
+              fontFamily: "var(--font-data)",
+              fontSize: 11,
+              color: "var(--on-surface-faint)",
+              fontStyle: "italic",
+            }}
+          >
+            no facts stored
+          </span>
+        ) : (
+          profileFacts.map((fact, i) => (
+            <span
+              key={i}
+              style={{
+                fontFamily: "var(--font-data)",
+                fontWeight: 400,
+                fontSize: 11,
+                color: "var(--on-surface-muted)",
+                backgroundColor: "var(--surface-high)",
+                borderRadius: 8,
+                padding: "6px 12px",
+                display: "block",
+              }}
+            >
+              {fact}
+            </span>
+          ))
         )}
-        <span style={{ marginLeft: "auto", fontSize: "10px", color: "#475569" }}>
-          {isExpanded ? "▲" : "▼"}
-        </span>
-      </button>
+      </div>
 
-      {/* Expanded content */}
-      {isExpanded && (
+      {/* Footer */}
+      {lastUpdated !== null && (
         <div
           style={{
-            maxHeight: "180px",
-            overflowY: "auto",
-            padding: "0 12px 10px",
+            padding: "8px 16px",
+            borderTop: "1px solid var(--outline-ghost)",
+            flexShrink: 0,
           }}
         >
-          <p style={{ fontSize: "11px", color: "#475569", marginBottom: "8px", fontWeight: 500 }}>
-            Profile facts
-          </p>
-          {profileFacts.length === 0 ? (
-            <p style={{ fontSize: "12px", color: "#334155", fontStyle: "italic" }}>
-              No facts stored yet
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              {profileFacts.map((fact, i) => (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-block",
-                    backgroundColor: "#0f172a",
-                    border: "0.5px solid #334155",
-                    color: "#94a3b8",
-                    fontSize: "12px",
-                    padding: "4px 10px",
-                    borderRadius: "12px",
-                  }}
-                >
-                  {fact}
-                </span>
-              ))}
-            </div>
-          )}
-          {lastUpdated !== null && (
-            <p style={{ fontSize: "11px", color: "#334155", marginTop: "8px" }}>
-              Last updated: {secondsAgo()}
-            </p>
-          )}
+          <span
+            style={{
+              fontFamily: "var(--font-data)",
+              fontSize: 10,
+              color: "var(--on-surface-faint)",
+            }}
+          >
+            {secondsAgo()}
+          </span>
         </div>
       )}
     </div>
