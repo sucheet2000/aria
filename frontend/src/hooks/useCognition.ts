@@ -16,6 +16,7 @@ export function useCognition() {
   const addMessage = useAriaStore((s) => s.addMessage);
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
   const setProcessingMs = useAriaStore((s) => s.setProcessingMs);
+  const setIsThinking = useAriaStore((s) => s.setIsThinking);
 
   async function sendMessage(
     text: string,
@@ -34,6 +35,7 @@ export function useCognition() {
 
     addMessage("user", text.trim());
     setIsLoading(true);
+    setIsThinking(true);
     setError(null);
 
     const controller = new AbortController();
@@ -61,6 +63,7 @@ export function useCognition() {
       }
 
       const data: CognitionResponse = await res.json();
+      setIsThinking(false);
       addMessage("assistant", data.response);
       setAvatarEmotion(data.emotion_suggestion);
       setProcessingMs(data.processing_ms);
@@ -74,6 +77,7 @@ export function useCognition() {
           ? "Request timed out."
           : "I could not process that request.";
       setError(msg);
+      setIsThinking(false);
       addMessage("assistant", "I could not process that request.");
     } finally {
       clearTimeout(timeoutId);

@@ -26,6 +26,8 @@ export interface ARIAStore {
   avatarEmotion: string;
   isSpeaking: boolean;
   isListening: boolean;
+  isThinking: boolean;
+  symbolicInference: string;
 
   // Voice input state
   isRecording: boolean;
@@ -53,6 +55,8 @@ export interface ARIAStore {
   setAvatarEmotion: (v: string) => void;
   setIsSpeaking: (v: boolean) => void;
   setIsListening: (v: boolean) => void;
+  setIsThinking: (v: boolean) => void;
+  setSymbolicInference: (v: string) => void;
   setIsRecording: (v: boolean) => void;
   setVoiceTranscript: (v: string) => void;
   setVoiceConfidence: (v: number) => void;
@@ -80,6 +84,8 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
   avatarEmotion: "neutral",
   isSpeaking: false,
   isListening: false,
+  isThinking: false,
+  symbolicInference: "",
 
   isRecording: false,
   voiceTranscript: "",
@@ -110,6 +116,8 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
   setAvatarEmotion: (v) => set({ avatarEmotion: v }),
   setIsSpeaking: (v) => set({ isSpeaking: v }),
   setIsListening: (v) => set({ isListening: v }),
+  setIsThinking: (v) => set({ isThinking: v }),
+  setSymbolicInference: (v) => set({ symbolicInference: v }),
   setIsRecording: (v) => set({ isRecording: v }),
   setVoiceTranscript: (v) => set({ voiceTranscript: v }),
   setVoiceConfidence: (v) => set({ voiceConfidence: v }),

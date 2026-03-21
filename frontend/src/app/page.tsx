@@ -8,6 +8,19 @@ import MemoryPanel from "@/components/MemoryPanel";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 
+function deriveStateLabel(
+  wsConnected: boolean,
+  isSpeaking: boolean,
+  isThinking: boolean,
+  isListening: boolean
+): string {
+  if (!wsConnected) return "idle";
+  if (isSpeaking) return "speaking";
+  if (isThinking) return "thinking";
+  if (isListening) return "listening";
+  return "idle";
+}
+
 export default function Home() {
   const { connected } = useWebSocket();
 
@@ -15,10 +28,17 @@ export default function Home() {
   const emotionConfidence = useAriaStore((s) => s.emotionConfidence);
   const processingMs = useAriaStore((s) => s.processingMs);
   const conversationHistory = useAriaStore((s) => s.conversationHistory);
+  const wsConnected = useAriaStore((s) => s.wsConnected);
+  const isSpeaking = useAriaStore((s) => s.isSpeaking);
+  const isThinking = useAriaStore((s) => s.isThinking);
+  const isListening = useAriaStore((s) => s.isListening);
+  const symbolicInference = useAriaStore((s) => s.symbolicInference);
 
   const assistantMessageCount = conversationHistory.filter(
     (m) => m.role === "assistant"
   ).length;
+
+  const stateLabel = deriveStateLabel(wsConnected, isSpeaking, isThinking, isListening);
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-aria-dark">
@@ -53,8 +73,37 @@ export default function Home() {
           <MemoryPanel assistantMessageCount={assistantMessageCount} />
         </div>
       </div>
-      <div className="flex-1 p-4">
+      <div
+        className="flex-1 p-4"
+        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}
+      >
         <Avatar3D />
+        <p
+          style={{
+            marginTop: 12,
+            fontSize: 11,
+            color: "#4338ca",
+            letterSpacing: "0.1em",
+            textAlign: "center",
+            textTransform: "uppercase",
+          }}
+        >
+          {stateLabel}
+        </p>
+        {symbolicInference && (
+          <p
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              fontStyle: "italic",
+              color: "#312e81",
+              maxWidth: 280,
+              textAlign: "center",
+            }}
+          >
+            {symbolicInference}
+          </p>
+        )}
       </div>
     </main>
   );

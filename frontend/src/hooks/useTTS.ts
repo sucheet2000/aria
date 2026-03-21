@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
+export const ttsAudioRef: { current: HTMLAudioElement | null } = {
+  current: null,
+};
+
 export function useTTS() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +16,6 @@ export function useTTS() {
   async function speak(text: string): Promise<void> {
     if (!text || isPlaying) return;
 
-    setIsSpeaking(true);
     setIsPlaying(true);
     setError(null);
 
@@ -31,6 +34,8 @@ export function useTTS() {
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      ttsAudioRef.current = audio;
+      setIsSpeaking(true);
 
       audio.onended = () => {
         URL.revokeObjectURL(url);
