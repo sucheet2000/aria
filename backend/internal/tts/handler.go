@@ -15,6 +15,7 @@ const maxTextLength = 500
 type TTSRequest struct {
 	Text    string `json:"text"`
 	VoiceID string `json:"voice_id,omitempty"`
+	Emotion string `json:"emotion,omitempty"`
 }
 
 // Handler serves HTTP requests for TTS synthesis.
