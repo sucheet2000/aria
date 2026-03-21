@@ -9,14 +9,22 @@ class VADProcessor:
     CHUNK_MS = 30
     CHUNK_SAMPLES = int(16000 * 30 / 1000)  # 480
 
-    def __init__(self, aggressiveness: int = 1) -> None:
+    def __init__(self, aggressiveness: int = 0) -> None:
         self._vad = None
         self._aggressiveness = aggressiveness
         self._speech_chunks: list = []
         self._silence_ms: int = 0
         self._in_speech: bool = False
+        self._muted: bool = False
         self.MIN_SPEECH_MS = 250
         self.MAX_SILENCE_MS = 700
+
+    def mute(self) -> None:
+        """Suppress speech detection while ARIA is speaking TTS."""
+        self._muted = True
+
+    def unmute(self) -> None:
+        self._muted = False
 
     def load(self) -> None:
         import webrtcvad
@@ -24,18 +32,14 @@ class VADProcessor:
         logger.info("webrtcvad loaded", aggressiveness=self._aggressiveness)
 
     def process_chunk(self, chunk: np.ndarray) -> tuple:
+        if self._muted:
+            return False, None
+
         pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()
         try:
             is_speech = self._vad.is_speech(pcm, self.SAMPLE_RATE)
         except Exception:
             is_speech = False
-
-        # Amplitude fallback: if signal is strong enough, treat as speech
-        # even if webrtcvad rejects it (handles compressed mic formats)
-        if not is_speech:
-            amplitude = float(np.abs(chunk).mean())
-            if amplitude > 0.01:
-                is_speech = True
 
         if is_speech:
             self._in_speech = True
