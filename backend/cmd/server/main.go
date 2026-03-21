@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,7 +37,14 @@ func main() {
 	hub := server.NewHub()
 	go hub.Run()
 
-	workDir := "/Users/sucheetboppana/aria/backend"
+	execPath, err := os.Executable()
+	if err != nil {
+		log.Fatal().Err(err).Msg("cannot determine executable path")
+	}
+	workDir := filepath.Dir(execPath)
+	if strings.Contains(workDir, "go-build") || strings.Contains(workDir, "temp") {
+		workDir, _ = os.Getwd()
+	}
 
 	worker := vision.New(cfg.PythonBin, cfg.VisionScript, hub)
 
@@ -75,6 +84,7 @@ func main() {
 	cancel()
 
 	audioWorker.Stop()
+	worker.Stop()
 
 	time.Sleep(10 * time.Second)
 	log.Info().Msg("server stopped")
