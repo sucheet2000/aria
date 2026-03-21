@@ -15,6 +15,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const pythonTTSURL = "http://localhost:8000/api/tts"
+
 // Client handles text-to-speech synthesis.
 type Client struct {
 	apiKey     string
@@ -35,36 +37,26 @@ func New(apiKey, voiceID string) *Client {
 	}
 }
 
-type elevenLabsRequest struct {
-	Text          string        `json:"text"`
-	ModelID       string        `json:"model_id"`
-	VoiceSettings voiceSettings `json:"voice_settings"`
-}
-
-type voiceSettings struct {
-	Stability       float64 `json:"stability"`
-	SimilarityBoost float64 `json:"similarity_boost"`
+type proxyRequest struct {
+	Text    string `json:"text"`
+	Emotion string `json:"emotion,omitempty"`
 }
 
 // Stream synthesizes text and writes the resulting audio to w.
-// When apiKey is empty it falls back to the macOS say command.
-func (c *Client) Stream(ctx context.Context, text string, w io.Writer) error {
-	if c.apiKey == "" {
+// Proxies to the Python voice engine at localhost:8000/api/tts.
+// Falls back to the macOS say command when Python is unavailable.
+func (c *Client) Stream(ctx context.Context, text string, emotion string, w io.Writer) error {
+	if err := c.streamProxy(ctx, text, emotion, w); err != nil {
+		c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
 		return c.streamLocal(ctx, text, w)
 	}
-	return c.streamElevenLabs(ctx, text, w)
+	return nil
 }
 
-func (c *Client) streamElevenLabs(ctx context.Context, text string, w io.Writer) error {
-	url := fmt.Sprintf("https://api.elevenlabs.io/v1/text-to-speech/%s/stream", c.voiceID)
-
-	body := elevenLabsRequest{
+func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w io.Writer) error {
+	body := proxyRequest{
 		Text:    text,
-		ModelID: "eleven_turbo_v2",
-		VoiceSettings: voiceSettings{
-			Stability:       0.5,
-			SimilarityBoost: 0.75,
-		},
+		Emotion: emotion,
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -72,23 +64,21 @@ func (c *Client) streamElevenLabs(ctx context.Context, text string, w io.Writer)
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pythonTTSURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("xi-api-key", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "audio/mpeg")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("elevenlabs request: %w", err)
+		return fmt.Errorf("proxy request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("elevenlabs returned status %d", resp.StatusCode)
+		return fmt.Errorf("python TTS returned status %d", resp.StatusCode)
 	}
 
 	_, err = io.Copy(w, resp.Body)
@@ -96,7 +86,7 @@ func (c *Client) streamElevenLabs(ctx context.Context, text string, w io.Writer)
 }
 
 func (c *Client) streamLocal(ctx context.Context, text string, w io.Writer) error {
-	c.log.Warn().Msg("ELEVENLABS_API_KEY not set, using system TTS fallback")
+	c.log.Warn().Msg("using system TTS fallback")
 
 	tmp, err := os.CreateTemp("", "aria-tts-*.aiff")
 	if err != nil {

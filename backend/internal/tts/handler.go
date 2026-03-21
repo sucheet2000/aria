@@ -62,7 +62,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	if err := h.client.Stream(r.Context(), req.Text, w); err != nil {
+	if err := h.client.Stream(r.Context(), req.Text, req.Emotion, w); err != nil {
 		h.log.Error().Err(err).Msg("tts stream failed")
 	}
 
