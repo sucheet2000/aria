@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import { useAudioAmplitude } from "@/hooks/useAudioAmplitude";
+import { ttsAudioRef } from "@/hooks/useTTS";
 
 // --- Noise ---
 
@@ -126,6 +128,8 @@ export default function Avatar3D() {
   const wsConnected = useAriaStore((s) => s.wsConnected);
   const isListening = useAriaStore((s) => s.isListening);
 
+  const { amplitude, connectAudio } = useAudioAmplitude();
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 
@@ -158,6 +162,15 @@ export default function Avatar3D() {
   useEffect(() => {
     reactiveRef.current.isListening = isListening;
   }, [isListening]);
+  useEffect(() => {
+    reactiveRef.current.amplitude = amplitude;
+  }, [amplitude]);
+
+  useEffect(() => {
+    if (isSpeaking && ttsAudioRef.current) {
+      connectAudio(ttsAudioRef.current);
+    }
+  }, [isSpeaking, connectAudio]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
