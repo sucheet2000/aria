@@ -50,3 +50,56 @@ body {
 input::placeholder {
   color: var(--on-surface-faint);
 }
+
+/* --- Animations --- */
+
+@keyframes aria-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+@keyframes aria-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes aria-dot-stagger {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+@keyframes aria-voice-wave {
+  0%, 100% { height: 4px; }
+  50% { height: 14px; }
+}
+
+@keyframes aria-ambient-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* --- Sidebar icon buttons --- */
+
+.sidebar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-faint);
+  transition: all 0.2s ease;
+}
+
+.sidebar-btn:hover {
+  background: var(--surface-high);
+  transform: translateY(-2px);
+}
+
+.sidebar-btn-active {
+  color: var(--primary);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}

@@ -111,6 +111,23 @@ export default function Home() {
         backgroundColor: "var(--void)",
       }}
     >
+      {/* Ambient glow behind avatar */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 600,
+          height: 600,
+          background:
+            "radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%)",
+          pointerEvents: "none",
+          zIndex: 0,
+          animation: "aria-ambient-pulse 4s ease-in-out infinite",
+        }}
+      />
+
       {/* Full-bleed avatar — centered behind everything */}
       <div
         style={{
@@ -119,9 +136,7 @@ export default function Home() {
           right: 0,
           bottom: 0,
           left: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          zIndex: 1,
         }}
       >
         <Avatar3D />
