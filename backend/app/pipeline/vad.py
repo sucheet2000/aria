@@ -9,7 +9,7 @@ class VADProcessor:
     CHUNK_MS = 30
     CHUNK_SAMPLES = int(16000 * 30 / 1000)  # 480
 
-    def __init__(self, aggressiveness: int = 2) -> None:
+    def __init__(self, aggressiveness: int = 1) -> None:
         self._vad = None
         self._aggressiveness = aggressiveness
         self._speech_chunks: list = []
@@ -24,11 +24,18 @@ class VADProcessor:
         logger.info("webrtcvad loaded", aggressiveness=self._aggressiveness)
 
     def process_chunk(self, chunk: np.ndarray) -> tuple:
-        pcm = (chunk * 32768).astype(np.int16).tobytes()
+        pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()
         try:
             is_speech = self._vad.is_speech(pcm, self.SAMPLE_RATE)
         except Exception:
             is_speech = False
+
+        # Amplitude fallback: if signal is strong enough, treat as speech
+        # even if webrtcvad rejects it (handles compressed mic formats)
+        if not is_speech:
+            amplitude = float(np.abs(chunk).mean())
+            if amplitude > 0.01:
+                is_speech = True
 
         if is_speech:
             self._in_speech = True
