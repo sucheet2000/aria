@@ -61,6 +61,32 @@ def run_synthetic(args: argparse.Namespace) -> None:
         print(json.dumps(state), flush=True)
 
 
+def find_best_input_device() -> int | None:
+    """
+    Find the best available input device.
+    Priority order:
+      1. Any device whose name contains 'MacBook' (built-in mic)
+      2. Any device whose name contains 'Microphone'
+      3. sounddevice default (None)
+    Returns device index or None to use system default.
+    """
+    import sounddevice as sd
+    devices = sd.query_devices()
+
+    # Priority 1: built-in MacBook mic
+    for i, d in enumerate(devices):
+        if d['max_input_channels'] > 0 and 'MacBook' in d['name']:
+            return i
+
+    # Priority 2: any device with Microphone in name
+    for i, d in enumerate(devices):
+        if d['max_input_channels'] > 0 and 'Microphone' in d['name']:
+            return i
+
+    # Fallback: system default
+    return None
+
+
 def run_microphone(args: argparse.Namespace) -> None:
     import queue
     import sounddevice as sd
@@ -108,12 +134,17 @@ def run_microphone(args: argparse.Namespace) -> None:
     silence_ms: int = 0
     in_speech: bool = False
 
+    device = args.device if args.device is not None else find_best_input_device()
+    if device is not None:
+        import structlog
+        structlog.get_logger().info("using input device", device=device)
+
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="int16",
         blocksize=CHUNK_SAMPLES,
-        device=args.device if args.device != 0 else None,
+        device=device,
         callback=audio_callback,
     ):
         while not _stop:
@@ -167,7 +198,12 @@ def run_microphone(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="ARIA audio worker")
     parser.add_argument("--model", type=str, default="base")
-    parser.add_argument("--device", type=int, default=0)
+    parser.add_argument(
+        "--device",
+        type=int,
+        default=None,
+        help="sounddevice input device index (overrides auto-detection)",
+    )
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--synthetic", action="store_true", default=False)
     parser.add_argument("--duration", type=float, default=0.0)
