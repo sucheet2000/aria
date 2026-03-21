@@ -11,6 +11,7 @@ import signal
 import sys
 import time
 
+import structlog
 import numpy as np
 
 from app.pipeline.vad import VADProcessor
@@ -21,6 +22,8 @@ CHUNK_MS = 30
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_MS / 1000)  # 480
 MAX_UTTERANCE_MS = 8000
+
+logger = structlog.get_logger()
 
 _stop = False
 
@@ -63,27 +66,24 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
 def find_best_input_device() -> int | None:
     """
-    Find the best available input device.
-    Priority order:
-      1. Any device whose name contains 'MacBook' (built-in mic)
-      2. Any device whose name contains 'Microphone'
-      3. sounddevice default (None)
-    Returns device index or None to use system default.
+    Return the system default input device.
+    This respects whatever the user has set in System Settings > Sound > Input.
+    AirPods, MacBook mic, or any other device selected by the user will be used.
+    Returns None to let sounddevice use the system default directly.
     """
     import sounddevice as sd
-    devices = sd.query_devices()
-
-    # Priority 1: built-in MacBook mic
-    for i, d in enumerate(devices):
-        if d['max_input_channels'] > 0 and 'MacBook' in d['name']:
-            return i
-
-    # Priority 2: any device with Microphone in name
-    for i, d in enumerate(devices):
-        if d['max_input_channels'] > 0 and 'Microphone' in d['name']:
-            return i
-
-    # Fallback: system default
+    try:
+        default_input = sd.default.device[0]
+        if default_input >= 0:
+            device_info = sd.query_devices(default_input)
+            logger.info(
+                "using system default input device",
+                device=default_input,
+                name=device_info['name'],
+            )
+            return default_input
+    except Exception:
+        pass
     return None
 
 
@@ -135,9 +135,6 @@ def run_microphone(args: argparse.Namespace) -> None:
     in_speech: bool = False
 
     device = args.device if args.device is not None else find_best_input_device()
-    if device is not None:
-        import structlog
-        structlog.get_logger().info("using input device", device=device)
 
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
