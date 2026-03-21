@@ -5,8 +5,6 @@ mediapipe
 opencv-python
 anthropic
 chromadb
-langchain
-openai-whisper
 torch
 torchvision
 pillow
@@ -19,6 +17,5 @@ pytest
 pytest-asyncio
 httpx
 faster-whisper
-silero-vad
 sounddevice
 deepfilternet  # noise suppression; ONNX path preferred, falls back to native df backend

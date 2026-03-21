@@ -21,6 +21,7 @@ env/
 htmlcov/
 .coverage
 chroma_db/
+backend/memory/
 
 # Node / Next.js
 node_modules/
