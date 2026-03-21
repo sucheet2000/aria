@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
 const WS_URL = "ws://localhost:8080/ws";
-const INITIAL_DELAY_MS = 500;
+const INITIAL_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const BACKOFF_MULTIPLIER = 1.5;
 const JITTER_FACTOR = 0.2;
@@ -39,13 +39,17 @@ export function useWebSocket() {
       if (
         wsRef.current?.readyState === WebSocket.OPEN ||
         wsRef.current?.readyState === WebSocket.CONNECTING
-      )
+      ) {
+        console.log(`[useWebSocket] skipping connect, readyState=${wsRef.current.readyState}`);
         return;
+      }
 
+      console.log(`[useWebSocket] connecting to ${WS_URL}`);
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        console.log("[useWebSocket] connected");
         currentDelayRef.current = INITIAL_DELAY_MS;
         useAriaStore.getState().setWsConnected(true);
         useAriaStore.getState().setWsError(null);
@@ -80,18 +84,23 @@ export function useWebSocket() {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        console.log(`[useWebSocket] closed, code=${ev.code} reason=${ev.reason}`);
         useAriaStore.getState().setWsConnected(false);
         scheduleReconnect();
       };
 
-      ws.onerror = () => {
-        console.error("[useWebSocket] connection failed");
+      ws.onerror = (ev) => {
+        console.error("[useWebSocket] error", ev);
         useAriaStore.getState().setWsError("connection failed");
       };
     }
 
-    connect();
+    // Delay initial connection to allow the Go server to be ready
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connect();
+    }, INITIAL_DELAY_MS);
 
     return () => {
       mountedRef.current = false;

@@ -43,13 +43,13 @@ export default function ChatPanel() {
   useEffect(() => {
     const handler = (e: Event) => {
       const text = (e as CustomEvent<{ transcript: string }>).detail.transcript;
-      if (text) {
+      if (text && !isLoading) {
         handleSendWithTTS(text);
       }
     };
     window.addEventListener("aria:voice-transcript", handler);
     return () => window.removeEventListener("aria:voice-transcript", handler);
-  }, [handleSendWithTTS]);
+  }, [handleSendWithTTS, isLoading]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

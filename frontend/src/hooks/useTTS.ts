@@ -31,7 +31,7 @@ export function useTTS() {
         throw new Error(`TTS request failed: HTTP ${response.status}`);
       }
 
-      const blob = await response.blob();
+      const blob = new Blob([await response.arrayBuffer()], { type: "audio/mpeg" });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
@@ -49,7 +49,11 @@ export function useTTS() {
         setIsSpeaking(false);
       };
 
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (err) {
+        console.error("[useTTS] play failed:", err);
+      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "TTS playback failed.";
