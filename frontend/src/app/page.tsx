@@ -5,6 +5,7 @@ import Avatar3D from "@/components/Avatar3D";
 import CameraFeed from "@/components/CameraFeed";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
+import StatusBar from "@/components/StatusBar";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 
@@ -94,9 +95,6 @@ export default function Home() {
 
   useWebSocket();
 
-  const emotion = useAriaStore((s) => s.emotion);
-  const processingMs = useAriaStore((s) => s.processingMs);
-  const wsConnected = useAriaStore((s) => s.wsConnected);
   const conversationHistory = useAriaStore((s) => s.conversationHistory);
 
   const assistantMessageCount = conversationHistory.filter(
@@ -146,74 +144,7 @@ export default function Home() {
             "linear-gradient(to bottom, rgba(14,14,18,0.8), transparent)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 600,
-              fontSize: 18,
-              color: "var(--on-surface)",
-              letterSpacing: "0.15em",
-            }}
-          >
-            ARIA
-          </span>
-          <span
-            style={{
-              display: "inline-block",
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: wsConnected
-                ? "#22c55e"
-                : "var(--on-surface-faint)",
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              fontFamily: "var(--font-data)",
-              fontWeight: 400,
-              fontSize: 10,
-              color: "var(--on-surface-muted)",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-            }}
-          >
-            {wsConnected ? "LIVE" : "OFFLINE"}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span
-            style={{
-              fontFamily: "var(--font-data)",
-              fontWeight: 400,
-              fontSize: 11,
-              color:
-                emotion !== "neutral"
-                  ? "var(--primary)"
-                  : "var(--on-surface-muted)",
-              backgroundColor: "var(--surface-high)",
-              borderRadius: 20,
-              padding: "4px 12px",
-              textTransform: "uppercase",
-            }}
-          >
-            {emotion}
-          </span>
-          {processingMs > 0 && (
-            <span
-              style={{
-                fontFamily: "var(--font-data)",
-                fontWeight: 400,
-                fontSize: 11,
-                color: "var(--on-surface-faint)",
-              }}
-            >
-              {(processingMs / 1000).toFixed(1)}s
-            </span>
-          )}
-        </div>
+        <StatusBar />
       </header>
 
       {/* Left icon sidebar */}
