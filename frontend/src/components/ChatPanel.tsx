@@ -4,31 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
-import VoiceIndicator from "@/components/VoiceIndicator";
-
-const EMOTION_COLORS: Record<string, string> = {
-  neutral: "#64748b",
-  happy: "#22c55e",
-  sad: "#3b82f6",
-  angry: "#ef4444",
-  surprised: "#f59e0b",
-  fearful: "#8b5cf6",
-  disgusted: "#84cc16",
-};
-
-function colorForEmotion(emotion: string): string {
-  return EMOTION_COLORS[emotion] ?? EMOTION_COLORS["neutral"];
-}
 
 export default function ChatPanel() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conversationHistory = useAriaStore((s) => s.conversationHistory);
-  const emotion = useAriaStore((s) => s.emotion);
-  const emotionConfidence = useAriaStore((s) => s.emotionConfidence);
-  const headPose = useAriaStore((s) => s.headPose);
-  const faceLandmarks = useAriaStore((s) => s.faceLandmarks);
+  const isRecording = useAriaStore((s) => s.isRecording);
+  const isSpeaking = useAriaStore((s) => s.isSpeaking);
+  const voiceTranscript = useAriaStore((s) => s.voiceTranscript);
 
   const { sendMessage, isLoading } = useCognition();
   const { speak } = useTTS();
@@ -66,48 +50,38 @@ export default function ChatPanel() {
     if (e.key === "Enter") handleSend();
   }
 
-  const dotColor = colorForEmotion(emotion);
-
   return (
-    <div className="flex flex-col flex-1 min-h-0 rounded-lg border border-aria-border bg-[#0a0a0f] overflow-hidden">
-      {/* Emotion indicator bar */}
-      <div className="border-b border-aria-border px-3 py-2">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              backgroundColor: dotColor,
-              flexShrink: 0,
-            }}
-          />
-          <span className="text-sm text-slate-200">
-            {emotion}
-            {emotionConfidence > 0 && (
-              <span className="text-aria-muted ml-1 text-xs">
-                {Math.round(emotionConfidence * 100)}%
-              </span>
-            )}
-          </span>
-        </div>
-        {faceLandmarks.length === 0 ? (
-          <p className="text-xs text-aria-muted mt-1">no face detected</p>
-        ) : (
-          <p className="text-xs text-aria-muted mt-1">
-            pitch: {headPose.pitch.toFixed(1)} yaw: {headPose.yaw.toFixed(1)} roll: {headPose.roll.toFixed(1)}
-          </p>
-        )}
-      </div>
-
-      {/* Voice status */}
-      <VoiceIndicator />
-
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+      }}
+    >
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "16px 24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
         {conversationHistory.length === 0 ? (
-          <p className="text-center text-sm text-aria-muted">Start a conversation</p>
+          <p
+            style={{
+              textAlign: "center",
+              fontSize: 13,
+              color: "var(--on-surface-faint)",
+              fontFamily: "var(--font-body)",
+            }}
+          >
+            speak or type to begin
+          </p>
         ) : (
           conversationHistory.map((msg, i) => {
             const isUser = msg.role === "user";
@@ -121,31 +95,36 @@ export default function ChatPanel() {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: isUser ? "flex-end" : "flex-start",
-                  marginBottom: "8px",
+                  animation: "aria-fade-up 0.3s ease forwards",
                 }}
               >
                 {showLabel && (
                   <span
                     style={{
-                      fontSize: "11px",
-                      color: isUser ? "#6366f1" : "#94a3b8",
-                      marginBottom: "2px",
-                      paddingLeft: isUser ? 0 : "4px",
-                      paddingRight: isUser ? "4px" : 0,
+                      fontFamily: "var(--font-data)",
+                      fontWeight: 400,
+                      fontSize: 10,
+                      color: isUser ? "var(--on-surface-faint)" : "var(--primary)",
+                      opacity: isUser ? 1 : 0.6,
+                      marginBottom: 4,
                     }}
                   >
-                    {isUser ? "You" : "ARIA"}
+                    {isUser ? "you" : "aria"}
                   </span>
                 )}
                 <div
                   style={{
-                    backgroundColor: isUser ? "#4f46e5" : "#1e293b",
-                    borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                    borderLeft: isUser ? undefined : "3px solid #6366f1",
-                    padding: "10px 14px",
+                    fontFamily: "var(--font-body)",
+                    fontWeight: 400,
+                    fontSize: 14,
+                    color: "var(--on-surface)",
                     maxWidth: "80%",
-                    fontSize: "0.875rem",
-                    color: isUser ? "#ffffff" : "#e2e8f0",
+                    lineHeight: 1.5,
+                    textAlign: isUser ? "right" : "left",
+                    borderRight: isUser
+                      ? "2px solid rgba(163, 166, 255, 0.3)"
+                      : "none",
+                    paddingRight: isUser ? 8 : 0,
                   }}
                 >
                   {msg.content}
@@ -154,63 +133,161 @@ export default function ChatPanel() {
             );
           })
         )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Input row */}
-      <div className="border-t border-aria-border p-3">
+        {/* Thinking indicator */}
         {isLoading && (
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 6,
             }}
           >
-            <style>{`
-              @keyframes aria-dot-pulse {
-                0%, 100% { opacity: 0; }
-                50% { opacity: 1; }
-              }
-            `}</style>
-            {[0, 0.2, 0.4].map((delay, idx) => (
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              {[0, 0.2, 0.4].map((delay, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    display: "inline-block",
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--primary)",
+                    animation: `aria-dot-stagger 1.2s ease-in-out ${delay}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
+            <span
+              style={{
+                fontFamily: "var(--font-data)",
+                fontWeight: 400,
+                fontSize: 10,
+                color: "var(--on-surface-faint)",
+              }}
+            >
+              processing
+            </span>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input area */}
+      <div
+        style={{
+          borderTop: "1px solid var(--outline-ghost)",
+          padding: "12px 24px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexShrink: 0,
+        }}
+      >
+        {/* Mic indicator when recording */}
+        {isRecording && (
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor: "#f97316",
+              flexShrink: 0,
+              animation: "aria-pulse-dot 1.2s ease infinite",
+            }}
+          />
+        )}
+
+        {/* Wave bars when speaking */}
+        {isSpeaking && !isRecording && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "flex-end",
+              gap: 2,
+              height: 14,
+              flexShrink: 0,
+            }}
+          >
+            {[0, 0.15, 0.3].map((delay, idx) => (
               <span
                 key={idx}
                 style={{
                   display: "inline-block",
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  backgroundColor: "#6366f1",
-                  animation: `aria-dot-pulse 1.2s ease-in-out ${delay}s infinite`,
+                  width: 3,
+                  backgroundColor: "var(--primary)",
+                  borderRadius: 2,
+                  height: 8,
+                  animation: `aria-voice-wave 0.8s ease-in-out ${delay}s infinite`,
                 }}
               />
             ))}
-            <span style={{ fontSize: "13px", color: "#6366f1", fontStyle: "italic" }}>
-              ARIA is thinking
-            </span>
-          </div>
+          </span>
         )}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message"
-            className="flex-1 rounded-md bg-aria-surface px-3 py-2 text-sm text-slate-200 placeholder-aria-muted outline-none focus:ring-1"
-            style={{ borderColor: "#6366f1" }}
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-            className="rounded-md bg-aria-accent px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+
+        {/* Live transcript while recording */}
+        {isRecording && voiceTranscript && (
+          <span
+            style={{
+              fontFamily: "var(--font-body)",
+              fontSize: 13,
+              color: "var(--on-surface-muted)",
+              fontStyle: "italic",
+              flex: 1,
+            }}
           >
-            Send
-          </button>
-        </div>
+            {voiceTranscript}
+          </span>
+        )}
+
+        {!isRecording && (
+          <>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="speak or type..."
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                fontFamily: "var(--font-body)",
+                fontWeight: 400,
+                fontSize: 14,
+                color: "var(--on-surface)",
+                padding: "4px 0",
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={isLoading || !input.trim()}
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--primary-dim), var(--primary))",
+                borderRadius: 20,
+                padding: "6px 16px",
+                fontFamily: "var(--font-body)",
+                fontWeight: 500,
+                fontSize: 12,
+                color: "var(--on-surface)",
+                border: "none",
+                cursor:
+                  isLoading || !input.trim() ? "not-allowed" : "pointer",
+                opacity: isLoading || !input.trim() ? 0.4 : 1,
+                transition: "opacity 0.2s ease",
+                flexShrink: 0,
+              }}
+            >
+              Send
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

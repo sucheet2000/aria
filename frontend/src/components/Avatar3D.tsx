@@ -111,12 +111,17 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 const LERP_RATE = 0.025;
-const BASE_R = 110;
-const CX = 160;
-const CY = 160;
 
 interface AnimState extends StateParams {
   t: number;
+}
+
+interface CanvasDimensions {
+  W: number;
+  H: number;
+  CX: number;
+  CY: number;
+  BASE_R: number;
 }
 
 // --- Component ---
@@ -127,6 +132,7 @@ export default function Avatar3D() {
   const isSpeaking = useAriaStore((s) => s.isSpeaking);
   const wsConnected = useAriaStore((s) => s.wsConnected);
   const isListening = useAriaStore((s) => s.isListening);
+  const symbolicInference = useAriaStore((s) => s.symbolicInference);
 
   const { amplitude, connectAudio } = useAudioAmplitude();
 
@@ -136,6 +142,14 @@ export default function Avatar3D() {
   const animRef = useRef<AnimState>({
     t: 0,
     ...STATE_PARAMS.idle,
+  });
+
+  const dimensionsRef = useRef<CanvasDimensions>({
+    W: 600,
+    H: 600,
+    CX: 300,
+    CY: 300,
+    BASE_R: 228,
   });
 
   const reactiveRef = useRef({
@@ -176,15 +190,34 @@ export default function Avatar3D() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = 320 * dpr;
-    canvas.height = 320 * dpr;
-    canvas.style.width = "320px";
-    canvas.style.height = "320px";
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.scale(dpr, dpr);
+
+    const dpr = window.devicePixelRatio || 1;
+
+    function applyResize(): void {
+      if (!canvas || !ctx) return;
+      const W = canvas.offsetWidth || 600;
+      const H = canvas.offsetHeight || 600;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      dimensionsRef.current = {
+        W,
+        H,
+        CX: W / 2,
+        CY: H / 2,
+        BASE_R: Math.min(W, H) * 0.38,
+      };
+    }
+
+    applyResize();
+
+    const resizeObserver = new ResizeObserver(() => {
+      applyResize();
+    });
+    resizeObserver.observe(canvas);
 
     function getTargetParams(): StateParams {
       const r = reactiveRef.current;
@@ -220,6 +253,7 @@ export default function Avatar3D() {
     function drawFrame(): void {
       if (!ctx) return;
 
+      const { W, H, CX, CY, BASE_R } = dimensionsRef.current;
       const target = getTargetParams();
       const s = animRef.current;
       const amp = reactiveRef.current.amplitude;
@@ -237,14 +271,14 @@ export default function Avatar3D() {
       const t = s.t;
       const waveAmp = turbulence;
 
-      ctx.clearRect(0, 0, 320, 320);
+      ctx.clearRect(0, 0, W, H);
 
       // Ambient background bloom
-      const bloom = ctx.createRadialGradient(CX, CY, 0, CX, CY, 160);
+      const bloom = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.min(W, H) / 2);
       bloom.addColorStop(0, `hsla(${hue},70%,30%,0.12)`);
       bloom.addColorStop(1, `hsla(${hue},70%,10%,0)`);
       ctx.fillStyle = bloom;
-      ctx.fillRect(0, 0, 320, 320);
+      ctx.fillRect(0, 0, W, H);
 
       // 4 outer glow layers
       for (let g = 0; g < 4; g++) {
@@ -270,8 +304,12 @@ export default function Avatar3D() {
       }
 
       const blobGrad = ctx.createRadialGradient(
-        CX, CY * 0.85, BASE_R * 0.1,
-        CX, CY, BASE_R * 1.1
+        CX,
+        CY * 0.85,
+        BASE_R * 0.1,
+        CX,
+        CY,
+        BASE_R * 1.1
       );
       blobGrad.addColorStop(0, `hsla(${hue + 30},90%,75%,0.9)`);
       blobGrad.addColorStop(0.4, `hsla(${hue},80%,50%,0.75)`);
@@ -362,14 +400,21 @@ export default function Avatar3D() {
       }
 
       // Core
-      const coreSize = 28 + amp * 20;
+      const coreSize = BASE_R * 0.12 + amp * 20;
       const corePulse = 1 + Math.sin(t * 3.5) * 0.12 * coreAlpha;
 
       const coreGlow = ctx.createRadialGradient(
-        CX, CY, 0,
-        CX, CY, coreSize * 3.5
+        CX,
+        CY,
+        0,
+        CX,
+        CY,
+        coreSize * 3.5
       );
-      coreGlow.addColorStop(0, `hsla(${hue + 20},100%,80%,${coreAlpha * 0.25})`);
+      coreGlow.addColorStop(
+        0,
+        `hsla(${hue + 20},100%,80%,${coreAlpha * 0.25})`
+      );
       coreGlow.addColorStop(1, `hsla(${hue},80%,50%,0)`);
       ctx.fillStyle = coreGlow;
       ctx.beginPath();
@@ -377,11 +422,21 @@ export default function Avatar3D() {
       ctx.fill();
 
       const innerCore = ctx.createRadialGradient(
-        CX, CY, 0,
-        CX, CY, coreSize * corePulse
+        CX,
+        CY,
+        0,
+        CX,
+        CY,
+        coreSize * corePulse
       );
-      innerCore.addColorStop(0, `hsla(${hue + 40},100%,95%,${coreAlpha})`);
-      innerCore.addColorStop(0.5, `hsla(${hue + 20},90%,75%,${coreAlpha * 0.7})`);
+      innerCore.addColorStop(
+        0,
+        `hsla(${hue + 40},100%,95%,${coreAlpha})`
+      );
+      innerCore.addColorStop(
+        0.5,
+        `hsla(${hue + 20},90%,75%,${coreAlpha * 0.7})`
+      );
       innerCore.addColorStop(1, `hsla(${hue},80%,55%,0)`);
       ctx.fillStyle = innerCore;
       ctx.beginPath();
@@ -392,8 +447,12 @@ export default function Avatar3D() {
       const specX = CX - coreSize * 0.3;
       const specY = CY - coreSize * 0.3;
       const spec = ctx.createRadialGradient(
-        specX, specY, 0,
-        specX, specY, coreSize * 0.5
+        specX,
+        specY,
+        0,
+        specX,
+        specY,
+        coreSize * 0.5
       );
       spec.addColorStop(0, `rgba(255,255,255,${coreAlpha * 0.6})`);
       spec.addColorStop(1, `rgba(255,255,255,0)`);
@@ -412,8 +471,45 @@ export default function Avatar3D() {
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      resizeObserver.disconnect();
     };
   }, []);
 
-  return <canvas ref={canvasRef} style={{ display: "block" }} />;
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{ display: "block", width: "100%", height: "100%" }}
+      />
+      {symbolicInference && (
+        <p
+          style={{
+            position: "absolute",
+            bottom: "20%",
+            left: 0,
+            right: 0,
+            fontFamily: "var(--font-display)",
+            fontWeight: 300,
+            fontSize: 13,
+            color: "var(--on-surface-muted)",
+            fontStyle: "italic",
+            maxWidth: 400,
+            textAlign: "center",
+            margin: "0 auto",
+            opacity: 1,
+            transition: "opacity 1s ease",
+            pointerEvents: "none",
+          }}
+        >
+          {symbolicInference}
+        </p>
+      )}
+    </div>
+  );
 }
