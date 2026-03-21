@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -77,6 +78,15 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 		return CognitionResponse{}, fmt.Errorf("python cognition service: %w", err)
 	}
 	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return CognitionResponse{}, fmt.Errorf(
+			"cognition service returned %d: %s",
+			httpResp.StatusCode,
+			string(body),
+		)
+	}
 
 	var resp CognitionResponse
 	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {

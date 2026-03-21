@@ -40,7 +40,7 @@ Keep natural_language_response conversational and concise.
 
 class LLMClient:
     MODEL = "claude-haiku-4-5-20251001"
-    MAX_TOKENS = 300
+    MAX_TOKENS = 512
 
     def __init__(self, api_key: str) -> None:
         self._client = AsyncAnthropic(api_key=api_key)

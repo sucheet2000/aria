@@ -116,9 +116,13 @@ class MemoryStore:
 
         try:
             for collection in [self._profile, self._episodic]:
+                count = collection.count()
+                if count == 0:
+                    continue
+                n_results_capped = min(n_results, count)
                 response = collection.query(
                     query_texts=[context],
-                    n_results=min(n_results, collection.count() or 1),
+                    n_results=n_results_capped,
                 )
                 for doc, meta in zip(
                     response["documents"][0],

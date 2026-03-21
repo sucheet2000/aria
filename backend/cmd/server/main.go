@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -65,6 +66,21 @@ func main() {
 				log.Error().Err(err).Msg("audio worker failed")
 			}
 		}()
+	}
+
+	// Wait for FastAPI to be ready before accepting cognition requests
+	log.Info().Msg("waiting for FastAPI cognition service")
+	for i := 0; i < 30; i++ {
+		resp, err := http.Get("http://localhost:8000/health")
+		if err == nil && resp.StatusCode == 200 {
+			resp.Body.Close()
+			log.Info().Msg("FastAPI cognition service ready")
+			break
+		}
+		if i == 29 {
+			log.Warn().Msg("FastAPI not ready after 30s, continuing anyway")
+		}
+		time.Sleep(time.Second)
 	}
 
 	srv := server.New(cfg, hub, wm)
