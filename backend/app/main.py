@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.cognition_route import router as cognition_router
 from app.api.routes import router
+from app.api.tts_route import router as tts_router
 from app.api.websocket import ws_router
 from app.config import settings
 
@@ -32,4 +33,5 @@ app.add_middleware(
 
 app.include_router(cognition_router)
 app.include_router(router)
+app.include_router(tts_router)
 app.include_router(ws_router)
