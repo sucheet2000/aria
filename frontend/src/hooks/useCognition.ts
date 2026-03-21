@@ -4,9 +4,15 @@ import { useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
 interface CognitionResponse {
-  response: string;
-  emotion_suggestion: string;
+  natural_language_response: string;
+  avatar_emotion: string;
   processing_ms: number;
+  symbolic_inference: string;
+  world_model_update?: {
+    triple: { subject: string; predicate: string; object: string };
+    confidence: number;
+    source: string;
+  } | null;
 }
 
 export function useCognition() {
@@ -17,6 +23,8 @@ export function useCognition() {
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
   const setProcessingMs = useAriaStore((s) => s.setProcessingMs);
   const setIsThinking = useAriaStore((s) => s.setIsThinking);
+  const setSymbolicInference = useAriaStore((s) => s.setSymbolicInference);
+  const addWorldModelUpdate = useAriaStore((s) => s.addWorldModelUpdate);
 
   async function sendMessage(
     text: string,
@@ -64,12 +72,19 @@ export function useCognition() {
 
       const data: CognitionResponse = await res.json();
       setIsThinking(false);
-      addMessage("assistant", data.response);
-      setAvatarEmotion(data.emotion_suggestion);
+      addMessage("assistant", data.natural_language_response);
+      setAvatarEmotion(data.avatar_emotion);
       setProcessingMs(data.processing_ms);
+      setSymbolicInference(data.symbolic_inference ?? "");
+      if (data.world_model_update) {
+        addWorldModelUpdate({
+          ...data.world_model_update,
+          timestamp: Date.now(),
+        });
+      }
       window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
-        onResponse(data.response);
+        onResponse(data.natural_language_response);
       }
     } catch (err) {
       const msg =

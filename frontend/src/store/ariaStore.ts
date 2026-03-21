@@ -1,5 +1,18 @@
 import { create } from "zustand";
 
+export interface WorldModelTriple {
+  subject: string;
+  predicate: string;
+  object: string;
+}
+
+export interface WorldModelUpdate {
+  triple: WorldModelTriple;
+  confidence: number;
+  source: string;
+  timestamp: number;
+}
+
 export interface VisionFrame {
   face_landmarks: number[][];
   emotion: string;
@@ -48,6 +61,9 @@ export interface ARIAStore {
   profileFacts: string[];
   memoryLastUpdated: number;
 
+  // World model
+  worldModelUpdates: WorldModelUpdate[];
+
   // Actions
   setWsConnected: (v: boolean) => void;
   setWsError: (v: string | null) => void;
@@ -68,6 +84,8 @@ export interface ARIAStore {
   setProcessingMs: (v: number) => void;
   setProfileFacts: (facts: string[]) => void;
   setMemoryLastUpdated: (ts: number) => void;
+  addWorldModelUpdate: (update: WorldModelUpdate) => void;
+  clearWorldModel: () => void;
 }
 
 export const useAriaStore = create<ARIAStore>((set, get) => ({
@@ -100,6 +118,8 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
 
   profileFacts: [],
   memoryLastUpdated: 0,
+
+  worldModelUpdates: [],
 
   setWsConnected: (v) => set({ wsConnected: v }),
   setWsError: (v) => set({ wsError: v }),
@@ -139,4 +159,9 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
   setProcessingMs: (v) => set({ processingMs: v }),
   setProfileFacts: (facts) => set({ profileFacts: facts }),
   setMemoryLastUpdated: (ts) => set({ memoryLastUpdated: ts }),
+  addWorldModelUpdate: (update) =>
+    set((state) => ({
+      worldModelUpdates: [...state.worldModelUpdates, update],
+    })),
+  clearWorldModel: () => set({ worldModelUpdates: [] }),
 }));
