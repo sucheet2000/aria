@@ -7,6 +7,21 @@ export const ttsAudioRef: { current: HTMLAudioElement | null } = {
   current: null,
 };
 
+function speakWithBrowser(text: string): void {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.92;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(
+    (v) => v.name.includes("Samantha") || v.name.includes("Karen")
+  );
+  if (preferred) utterance.voice = preferred;
+  window.speechSynthesis.speak(utterance);
+}
+
 export function useTTS() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,12 +66,13 @@ export function useTTS() {
 
       try {
         await audio.play();
-      } catch (err) {
-        console.error("[useTTS] play failed:", err);
+      } catch {
+        speakWithBrowser(text);
       }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "TTS playback failed.";
+      speakWithBrowser(text);
       setError(msg);
       console.error("[useTTS]", err);
       setIsPlaying(false);
