@@ -65,6 +65,8 @@ export function useWebSocket() {
             if (t.is_final && t.transcript) {
               useAriaStore.getState().setVoiceTranscript(t.transcript);
               useAriaStore.getState().setVoiceConfidence(t.confidence ?? 0);
+              useAriaStore.getState().setIsListening(true);
+              setTimeout(() => useAriaStore.getState().setIsListening(false), 2000);
               window.dispatchEvent(
                 new CustomEvent("aria:voice-transcript", {
                   detail: { transcript: t.transcript },
