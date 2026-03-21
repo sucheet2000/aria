@@ -13,7 +13,7 @@ export function useAudioAmplitude(): AudioAmplitudeHook {
   const contextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const dataRef = useRef<Uint8Array>(new Uint8Array(0));
+  const dataRef = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(0) as Uint8Array<ArrayBuffer>);
   const rafRef = useRef<number>(0);
 
   const connectAudio = useCallback((audioElement: HTMLAudioElement): void => {
@@ -22,7 +22,7 @@ export function useAudioAmplitude(): AudioAmplitudeHook {
       const analyser = contextRef.current.createAnalyser();
       analyser.fftSize = 256;
       analyserRef.current = analyser;
-      dataRef.current = new Uint8Array(analyser.frequencyBinCount);
+      dataRef.current = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
       analyser.connect(contextRef.current.destination);
     }
 
