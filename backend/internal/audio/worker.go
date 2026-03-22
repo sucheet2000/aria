@@ -70,7 +70,7 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 func (w *Worker) run(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, w.pythonBin, w.scriptPath, "--model", w.whisperModel)
+	cmd := exec.CommandContext(ctx, w.pythonBin, "-u", w.scriptPath, "--model", w.whisperModel)
 	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+w.workDir)
 	w.cmd = cmd
