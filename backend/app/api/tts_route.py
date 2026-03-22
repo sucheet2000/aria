@@ -50,6 +50,14 @@ async def tts(req: TTSRequest) -> Response:
                     status=resp.status_code,
                     body=resp.text[:200],
                 )
+                if resp.status_code == 402:
+                    logger.warning(
+                        "ElevenLabs 402: voice ID may be a paid library voice. "
+                        "Go to elevenlabs.io -> Voice Lab -> Create Voice, "
+                        "copy the voice ID, and set ELEVENLABS_VOICE_ID env var. "
+                        "Falling back to browser TTS."
+                    )
+                    return Response(status_code=503, content=b"")
                 return Response(status_code=resp.status_code)
             return Response(
                 content=resp.content,

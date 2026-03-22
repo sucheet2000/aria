@@ -9,7 +9,7 @@ class VADProcessor:
     CHUNK_MS = 30
     CHUNK_SAMPLES = int(16000 * 30 / 1000)  # 480
 
-    def __init__(self, aggressiveness: int = 0) -> None:
+    def __init__(self, aggressiveness: int = 1) -> None:
         self._vad = None
         self._aggressiveness = aggressiveness
         self._speech_chunks: list = []
@@ -33,6 +33,11 @@ class VADProcessor:
 
     def process_chunk(self, chunk: np.ndarray) -> tuple:
         if self._muted:
+            return False, None
+
+        # Energy gate: ignore chunks below noise floor
+        rms = float(np.sqrt(np.mean(chunk ** 2)))
+        if rms < 0.008:
             return False, None
 
         pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()

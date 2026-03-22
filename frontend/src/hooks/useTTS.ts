@@ -47,6 +47,11 @@ export function useTTS() {
       }
 
       const blob = new Blob([await response.arrayBuffer()], { type: "audio/mpeg" });
+      if (blob.size < 100) {
+        speakWithBrowser(text);
+        setIsPlaying(false);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
