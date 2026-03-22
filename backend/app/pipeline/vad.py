@@ -35,9 +35,12 @@ class VADProcessor:
         if self._muted:
             return False, None
 
-        # Energy gate: ignore chunks below noise floor
         rms = float(np.sqrt(np.mean(chunk ** 2)))
-        if rms < 0.002:
+
+        # Energy gate only applies when not already tracking speech.
+        # During speech, we let low-energy chunks through so silence
+        # can be measured and the utterance can be finalized.
+        if not self._in_speech and rms < 0.002:
             return False, None
 
         pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()
