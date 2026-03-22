@@ -141,16 +141,7 @@ def run_microphone(args: argparse.Namespace) -> None:
     ) -> None:
         if status:
             print(f"audio status: {status}", file=sys.stderr)
-        chunk = indata[:, 0].copy()
-        sr = capture_sr[0]
-        if sr != SAMPLE_RATE:
-            target_len = int(len(chunk) * SAMPLE_RATE / sr)
-            chunk = np.interp(
-                np.linspace(0, len(chunk) - 1, target_len),
-                np.arange(len(chunk)),
-                chunk,
-            ).astype(np.float32)
-        audio_queue.put(chunk)
+        audio_queue.put(indata[:, 0].copy())
 
     speech_chunks: list[np.ndarray] = []
     silence_ms: int = 0
@@ -170,7 +161,15 @@ def run_microphone(args: argparse.Namespace) -> None:
             except queue.Empty:
                 continue
 
-            chunk_f32 = chunk  # already float32 in [-1.0, 1.0] from InputStream
+            if native_sr != SAMPLE_RATE:
+                target_len = int(len(chunk) * SAMPLE_RATE / native_sr)
+                chunk = np.interp(
+                    np.linspace(0, len(chunk) - 1, target_len),
+                    np.arange(len(chunk)),
+                    chunk,
+                ).astype(np.float32)
+
+            chunk_f32 = chunk  # float32 in [-1.0, 1.0], resampled to 16kHz
             is_speech_frame, completed = vad.process_chunk(chunk_f32)
 
             if is_speech_frame:
