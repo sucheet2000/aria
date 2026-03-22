@@ -182,13 +182,7 @@ export default function Avatar3D() {
   const symbolicInference = useAriaStore(s => s.symbolicInference);
   const wsConnected       = useAriaStore(s => s.wsConnected);
 
-  const { amplitude, connectAudio } = useAudioAmplitude();
-
-  useEffect(() => {
-    if (isSpeaking && ttsAudioRef.current) {
-      connectAudio(ttsAudioRef.current);
-    }
-  }, [isSpeaking, connectAudio]);
+  const { amplitude } = useAudioAmplitude();
 
   useEffect(() => {
     const canvas = canvasRef.current;
