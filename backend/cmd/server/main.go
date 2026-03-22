@@ -35,9 +35,6 @@ func main() {
 
 	wm := memory.New(10)
 
-	hub := server.NewHub()
-	go hub.Run()
-
 	execPath, err := os.Executable()
 	if err != nil {
 		log.Fatal().Err(err).Msg("cannot determine executable path")
@@ -47,18 +44,19 @@ func main() {
 		workDir, _ = os.Getwd()
 	}
 
+	// Create hub first (nil vision) so the vision worker can reference it as a broadcaster.
+	hub := server.NewHub(nil)
+
+	// Create vision worker with hub as broadcaster, then wire it back into hub.
 	worker := vision.New(cfg.PythonBin, cfg.VisionScript, hub)
+	hub.SetVision(worker)
 
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() {
-		if err := worker.Start(ctx); err != nil {
-			log.Error().Err(err).Msg("vision worker exited with error")
-		}
-	}()
+	go hub.Run(ctx)
 
 	if cfg.AudioEnabled {
 		go func() {

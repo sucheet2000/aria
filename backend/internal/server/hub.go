@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -15,6 +16,12 @@ const (
 	maxMessageSize = 65536
 )
 
+// VisionController is implemented by the vision worker.
+type VisionController interface {
+	Start(ctx context.Context) error
+	Stop()
+}
+
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
 	clients    map[*Client]bool
@@ -22,6 +29,8 @@ type Hub struct {
 	register   chan *Client
 	unregister chan *Client
 	mu         sync.RWMutex
+	vision     VisionController
+	ctx        context.Context
 }
 
 // Client represents a single WebSocket connection.
@@ -32,24 +41,40 @@ type Client struct {
 }
 
 // NewHub creates and returns a new Hub.
-func NewHub() *Hub {
+func NewHub(v VisionController) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		vision:     v,
 	}
 }
 
+// SetVision wires a VisionController into a hub that was created with nil.
+// Must be called before Run.
+func (h *Hub) SetVision(v VisionController) {
+	h.vision = v
+}
+
 // Run processes hub events: register, unregister, and broadcast.
-func (h *Hub) Run() {
+func (h *Hub) Run(ctx context.Context) {
+	h.ctx = ctx
 	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
+			wasEmpty := len(h.clients) == 0
 			h.clients[client] = true
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client connected")
+			if wasEmpty && h.vision != nil {
+				go func() {
+					if err := h.vision.Start(h.ctx); err != nil {
+						log.Error().Err(err).Msg("vision worker exited with error")
+					}
+				}()
+			}
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -57,8 +82,12 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.send)
 			}
+			nowEmpty := len(h.clients) == 0
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client disconnected")
+			if nowEmpty && h.vision != nil {
+				h.vision.Stop()
+			}
 
 		case message := <-h.broadcast:
 			h.mu.Lock()
