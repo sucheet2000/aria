@@ -235,8 +235,8 @@ export default function Avatar3D() {
     const EYE_W = 36, EYE_H = 15;
 
     function sc(x: number, y: number): [number, number] {
-      const padX = W * 0.12;
-      const padY = H * 0.04;
+      const padX = W * 0.22;
+      const padY = H * 0.10;
       return [padX + x * (W - padX*2), padY + y * (H - padY*2)];
     }
 
