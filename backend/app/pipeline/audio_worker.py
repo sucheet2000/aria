@@ -162,7 +162,7 @@ def run_microphone(args: argparse.Namespace) -> None:
                 continue
 
             if native_sr != SAMPLE_RATE:
-                target_len = int(len(chunk) * SAMPLE_RATE / native_sr)
+                target_len = CHUNK_SAMPLES
                 chunk = np.interp(
                     np.linspace(0, len(chunk) - 1, target_len),
                     np.arange(len(chunk)),
