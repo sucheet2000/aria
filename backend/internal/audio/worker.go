@@ -93,6 +93,7 @@ func (w *Worker) run(ctx context.Context) error {
 
 	go func() {
 		scanner := bufio.NewScanner(stdout)
+		w.log.Info().Msg("audio stdout scanner started")
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "{") {
@@ -108,8 +109,10 @@ func (w *Worker) run(ctx context.Context) error {
 				w.log.Error().Err(err).Msg("failed to marshal transcript envelope")
 				continue
 			}
+			w.log.Info().Str("transcript", line[:min(len(line), 80)]).Msg("audio transcript received")
 			w.hub.Broadcast(data)
 		}
+		w.log.Warn().Err(scanner.Err()).Msg("audio stdout scanner exited")
 	}()
 
 	go func() {
