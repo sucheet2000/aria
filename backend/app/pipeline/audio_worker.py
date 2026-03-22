@@ -120,6 +120,19 @@ def run_microphone(args: argparse.Namespace) -> None:
 
     audio_queue: queue.Queue[np.ndarray] = queue.Queue()
 
+    device = args.device if args.device is not None else find_best_input_device()
+
+    device_info = sd.query_devices(device)
+    native_sr = int(device_info['default_samplerate'])
+    capture_sr = [native_sr]
+
+    logger.info(
+        "audio capture config",
+        device=device,
+        capture_sr=native_sr,
+        target_sr=SAMPLE_RATE,
+    )
+
     def audio_callback(
         indata: np.ndarray,
         frames: int,
@@ -128,19 +141,26 @@ def run_microphone(args: argparse.Namespace) -> None:
     ) -> None:
         if status:
             print(f"audio status: {status}", file=sys.stderr)
-        audio_queue.put(indata[:, 0].copy())
+        chunk = indata[:, 0].copy()
+        sr = capture_sr[0]
+        if sr != SAMPLE_RATE:
+            target_len = int(len(chunk) * SAMPLE_RATE / sr)
+            chunk = np.interp(
+                np.linspace(0, len(chunk) - 1, target_len),
+                np.arange(len(chunk)),
+                chunk,
+            ).astype(np.float32)
+        audio_queue.put(chunk)
 
     speech_chunks: list[np.ndarray] = []
     silence_ms: int = 0
     in_speech: bool = False
 
-    device = args.device if args.device is not None else find_best_input_device()
-
     with sd.InputStream(
-        samplerate=SAMPLE_RATE,
+        samplerate=native_sr,
         channels=1,
         dtype="int16",
-        blocksize=CHUNK_SAMPLES,
+        blocksize=int(native_sr * CHUNK_MS / 1000),
         device=device,
         callback=audio_callback,
     ):
