@@ -159,7 +159,7 @@ def run_microphone(args: argparse.Namespace) -> None:
     with sd.InputStream(
         samplerate=native_sr,
         channels=1,
-        dtype="int16",
+        dtype="float32",
         blocksize=int(native_sr * CHUNK_MS / 1000),
         device=device,
         callback=audio_callback,
@@ -170,7 +170,7 @@ def run_microphone(args: argparse.Namespace) -> None:
             except queue.Empty:
                 continue
 
-            chunk_f32 = chunk.astype("float32") / 32768.0
+            chunk_f32 = chunk  # already float32 in [-1.0, 1.0] from InputStream
             is_speech_frame, completed = vad.process_chunk(chunk_f32)
 
             if is_speech_frame:
