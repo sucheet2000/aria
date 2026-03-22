@@ -87,7 +87,7 @@ func (h *Hub) Run(ctx context.Context) {
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client disconnected")
 			if nowEmpty && h.vision != nil {
 				go func() {
-					time.Sleep(500 * time.Millisecond)
+					time.Sleep(3000 * time.Millisecond)
 					h.mu.RLock()
 					stillEmpty := len(h.clients) == 0
 					h.mu.RUnlock()
