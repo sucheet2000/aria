@@ -126,24 +126,16 @@ func (w *Worker) run(ctx context.Context) error {
 	return err
 }
 
-// Stop sends SIGTERM to the process, waits up to 5 seconds, then sends SIGKILL.
+// Stop sends SIGTERM to the process, then SIGKILL after 2 seconds.
+// It does not call cmd.Wait() — run() owns the single Wait() call.
 func (w *Worker) Stop() {
 	if w.cmd == nil || w.cmd.Process == nil {
 		return
 	}
-
 	w.cmd.Process.Signal(syscall.SIGTERM)
-
-	done := make(chan error, 1)
-	go func() {
-		done <- w.cmd.Wait()
-	}()
-
-	select {
-	case <-done:
-		w.log.Info().Msg("audio process stopped cleanly")
-	case <-time.After(5 * time.Second):
-		w.log.Warn().Msg("audio process did not stop in time, sending sigkill")
+	time.Sleep(2 * time.Second)
+	if w.cmd.Process != nil {
 		w.cmd.Process.Kill()
 	}
+	w.log.Info().Msg("audio process stopped")
 }
