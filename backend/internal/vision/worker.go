@@ -26,6 +26,7 @@ type Worker struct {
 	hub        Broadcaster
 	cmd        *exec.Cmd
 	log        zerolog.Logger
+	cancel     context.CancelFunc
 }
 
 // New creates a new Worker.
@@ -40,6 +41,14 @@ func New(pythonBin, scriptPath string, hub Broadcaster) *Worker {
 
 // Start launches the Python vision subprocess and restarts it if it exits unexpectedly.
 func (w *Worker) Start(ctx context.Context) error {
+	if w.cancel != nil {
+		return nil
+	}
+	ctx, w.cancel = context.WithCancel(ctx)
+	defer func() {
+		w.cancel = nil
+	}()
+
 	for {
 		if err := w.run(ctx); err != nil {
 			return err
@@ -118,6 +127,10 @@ func (w *Worker) run(ctx context.Context) error {
 
 // Stop sends SIGTERM to the process, waits up to 5 seconds, then sends SIGKILL.
 func (w *Worker) Stop() {
+	if w.cancel != nil {
+		w.cancel()
+	}
+
 	if w.cmd == nil || w.cmd.Process == nil {
 		return
 	}
