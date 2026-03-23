@@ -176,6 +176,7 @@ def run_microphone(args: argparse.Namespace) -> None:
     ACTIVE_TIMEOUT_S = 30.0
     mode = "idle"  # "idle" or "active"
     last_transcript_time = 0.0
+    post_sleep_until = 0.0
 
     def audio_callback(
         indata: np.ndarray,
@@ -261,7 +262,9 @@ def run_microphone(args: argparse.Namespace) -> None:
                     contains_wake = any(w in text_lower for w in WAKE_WORDS)
 
                     if mode == "idle":
-                        if contains_wake:
+                        if now < post_sleep_until:
+                            pass  # discard, stay idle during post-sleep gate
+                        elif contains_wake:
                             mode = "active"
                             last_transcript_time = now
                             wake_event = {"type": "wake_word", "timestamp": round(now, 3)}
@@ -274,6 +277,7 @@ def run_microphone(args: argparse.Namespace) -> None:
                         if any(p in text_lower_check for p in SLEEP_PHRASES):
                             mode = "idle"
                             last_transcript_time = 0.0
+                            post_sleep_until = now + 5.0
                             vad.clear()   # discard buffered audio
                             vad.mute()
                             sleep_event = {"type": "aria_sleep", "timestamp": round(now, 3)}

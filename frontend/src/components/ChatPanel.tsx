@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
-import { useTTS } from "@/hooks/useTTS";
+import { speakRef } from "@/hooks/useTTS";
 
 export default function ChatPanel() {
   const [input, setInput] = useState("");
@@ -11,7 +11,6 @@ export default function ChatPanel() {
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const isLoading = useAriaStore(s => s.isThinking);
   const { sendMessage } = useCognition();
-  const { speak } = useTTS();
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -22,7 +21,7 @@ export default function ChatPanel() {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     setInput("");
-    await sendMessage(trimmed, speak);
+    await sendMessage(trimmed, speakRef.current ?? undefined);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {

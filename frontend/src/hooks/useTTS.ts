@@ -8,6 +8,10 @@ export const ttsAudioRef: { current: HTMLAudioElement | null } = {
   current: null,
 };
 
+export const speakRef: { current: ((text: string) => Promise<void>) | null } = {
+  current: null,
+};
+
 function speakWithBrowser(text: string): void {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -91,5 +95,6 @@ export function useTTS() {
     }
   }
 
+  speakRef.current = speak;
   return { speak, isPlaying, error };
 }
