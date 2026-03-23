@@ -17,7 +17,7 @@ class VADProcessor:
         self._in_speech: bool = False
         self._muted: bool = False
         self.MIN_SPEECH_MS = 250
-        self.MAX_SILENCE_MS = 700
+        self.MAX_SILENCE_MS = 400
 
     def mute(self) -> None:
         """Suppress speech detection while ARIA is speaking TTS."""
