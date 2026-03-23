@@ -133,6 +133,11 @@ def run_microphone(args: argparse.Namespace) -> None:
         target_sr=SAMPLE_RATE,
     )
 
+    WAKE_WORDS = {"aria", "hey aria", "hi aria"}
+    ACTIVE_TIMEOUT_S = 30.0
+    mode = "idle"  # "idle" or "active"
+    last_transcript_time = 0.0
+
     def audio_callback(
         indata: np.ndarray,
         frames: int,
@@ -201,14 +206,32 @@ def run_microphone(args: argparse.Namespace) -> None:
 
                 duration_ms = int((time.time() - t0) * 1000)
                 if text:
+                    now = time.time()
                     state = {
                         "transcript": text,
                         "is_final": True,
                         "confidence": confidence,
                         "duration_ms": duration_ms,
-                        "timestamp": round(time.time(), 3),
+                        "timestamp": round(now, 3),
                     }
-                    print(json.dumps(state), flush=True)
+
+                    if mode == "active" and (now - last_transcript_time) > ACTIVE_TIMEOUT_S:
+                        mode = "idle"
+
+                    text_lower = text.lower().strip()
+                    contains_wake = any(w in text_lower for w in WAKE_WORDS)
+
+                    if mode == "idle":
+                        if contains_wake:
+                            mode = "active"
+                            last_transcript_time = now
+                            wake_event = {"type": "wake_word", "timestamp": round(now, 3)}
+                            print(json.dumps(wake_event), flush=True)
+                            print(json.dumps(state), flush=True)
+                        # else: ignore transcript in idle mode
+                    else:
+                        last_transcript_time = now
+                        print(json.dumps(state), flush=True)
 
 
 def main() -> None:
