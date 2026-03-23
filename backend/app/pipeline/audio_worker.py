@@ -27,6 +27,7 @@ MAX_UTTERANCE_MS = 8000
 logger = structlog.get_logger()
 
 _stop = False
+_sleep_until: float = 0.0
 
 
 def _handle_sigterm(signum: int, frame: object) -> None:
@@ -100,7 +101,8 @@ def _watch_stdin(vad: VADProcessor) -> None:
         if cmd.get("mute") is True:
             vad.mute()
         elif cmd.get("mute") is False:
-            vad.unmute()
+            if time.time() >= _sleep_until:
+                vad.unmute()
 
 
 def run_microphone(args: argparse.Namespace) -> None:
@@ -165,6 +167,7 @@ def run_microphone(args: argparse.Namespace) -> None:
     }
     SLEEP_PHRASES = {
         "that will be all",
+        "that would be all",
         "go to sleep",
         "goodbye aria",
         "bye aria",
@@ -275,8 +278,10 @@ def run_microphone(args: argparse.Namespace) -> None:
                         last_transcript_time = now
                         text_lower_check = text.lower().strip()
                         if any(p in text_lower_check for p in SLEEP_PHRASES):
+                            global _sleep_until
                             mode = "idle"
                             last_transcript_time = 0.0
+                            _sleep_until = now + 5.0
                             post_sleep_until = now + 5.0
                             vad.clear()   # discard buffered audio
                             vad.mute()

@@ -82,6 +82,8 @@ export function useTTS() {
       } catch {
         speakWithBrowser(text);
         wsSendRef.current?.({ type: "tts_unmute" });
+        setIsPlaying(false);
+        setIsSpeaking(false);
       }
     } catch (err) {
       const msg =
