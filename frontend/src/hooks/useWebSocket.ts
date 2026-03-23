@@ -1,74 +1,134 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
-const WS_URL = "ws://localhost:8000/ws";
-const MAX_BACKOFF_MS = 30_000;
+export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
+
+const WS_URL = "ws://localhost:8080/ws";
+const INITIAL_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30_000;
+const BACKOFF_MULTIPLIER = 1.5;
+const JITTER_FACTOR = 0.2;
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attemptRef = useRef(0);
-  const { setWsConnected, setVisionState, setGestureState, setTranscript, setIsSpeaking } =
-    useAriaStore();
+  const currentDelayRef = useRef(INITIAL_DELAY_MS);
+  const mountedRef = useRef(true);
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  const connected = useAriaStore((s) => s.wsConnected);
+  const error = useAriaStore((s) => s.wsError);
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+  useEffect(() => {
+    mountedRef.current = true;
 
-    ws.onopen = () => {
-      attemptRef.current = 0;
-      setWsConnected(true);
-    };
+    function scheduleReconnect() {
+      if (!mountedRef.current) return;
+      if (reconnectTimerRef.current) return;
+      const jitter = 1 + Math.random() * JITTER_FACTOR;
+      const delay = Math.min(currentDelayRef.current * jitter, MAX_DELAY_MS);
+      currentDelayRef.current = Math.min(
+        currentDelayRef.current * BACKOFF_MULTIPLIER,
+        MAX_DELAY_MS
+      );
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connect();
+      }, delay);
+    }
 
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data as string);
-        if (data.vision) setVisionState(data.vision);
-        if (data.gesture) setGestureState(data.gesture);
-        if (data.audio) {
-          setTranscript(data.audio.transcript ?? "");
-          setIsSpeaking(data.audio.is_speaking ?? false);
-        }
-      } catch {
-        // malformed message — ignore
+    function connect() {
+      if (!mountedRef.current) return;
+      if (
+        wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING
+      ) {
+        console.log(`[useWebSocket] skipping connect, readyState=${wsRef.current.readyState}`);
+        return;
       }
-    };
 
-    ws.onclose = () => {
-      setWsConnected(false);
-      scheduleReconnect();
-    };
+      console.log(`[useWebSocket] connecting to ${WS_URL}`);
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
 
-    ws.onerror = () => {
-      ws.close();
-    };
-  }, [setWsConnected, setVisionState, setGestureState, setTranscript, setIsSpeaking]);
+      ws.onopen = () => {
+        console.log("[useWebSocket] connected");
+        currentDelayRef.current = INITIAL_DELAY_MS;
+        useAriaStore.getState().setWsConnected(true);
+        useAriaStore.getState().setWsError(null);
+      };
 
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimerRef.current) return;
-    const backoff = Math.min(1_000 * 2 ** attemptRef.current, MAX_BACKOFF_MS);
-    attemptRef.current += 1;
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(event.data as string);
+
+          if (msg.type === "aria_sleep") {
+            useAriaStore.getState().setIsListening(false);
+            useAriaStore.getState().setIsSpeaking(false);
+            return;
+          }
+
+          if (msg.type === "wake_word") {
+            useAriaStore.getState().setIsListening(true);
+            setTimeout(() => useAriaStore.getState().setIsListening(false), 2000);
+            return;
+          }
+
+          if (msg.type === "vision_state" || !msg.type) {
+            useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
+            return;
+          }
+
+          if (msg.type === "transcript") {
+            const t = msg.payload;
+            if (t.is_final && t.transcript) {
+              useAriaStore.getState().setVoiceTranscript(t.transcript);
+              useAriaStore.getState().setVoiceConfidence(t.confidence ?? 0);
+              useAriaStore.getState().setIsListening(true);
+              setTimeout(() => useAriaStore.getState().setIsListening(false), 2000);
+              window.dispatchEvent(
+                new CustomEvent("aria:voice-transcript", {
+                  detail: { transcript: t.transcript },
+                })
+              );
+            }
+            return;
+          }
+        } catch {
+          // malformed message -- ignore
+        }
+      };
+
+      ws.onclose = (ev) => {
+        console.log(`[useWebSocket] closed, code=${ev.code} reason=${ev.reason}`);
+        useAriaStore.getState().setWsConnected(false);
+        scheduleReconnect();
+      };
+
+      ws.onerror = (ev) => {
+        console.error("[useWebSocket] error", ev);
+        useAriaStore.getState().setWsError("connection failed");
+      };
+    }
+
+    // Delay initial connection to allow the Go server to be ready
     reconnectTimerRef.current = setTimeout(() => {
       reconnectTimerRef.current = null;
       connect();
-    }, backoff);
-  }, [connect]);
+    }, INITIAL_DELAY_MS);
 
-  useEffect(() => {
-    connect();
     return () => {
+      mountedRef.current = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, []);
 
-  const send = useCallback((message: object) => {
+  const send = useCallback((data: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+      wsRef.current.send(JSON.stringify(data));
     }
   }, []);
 
-  return { send };
+  wsSendRef.current = send;
+  return { connected, error, send };
 }
