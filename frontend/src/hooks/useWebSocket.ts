@@ -58,6 +58,7 @@ export function useWebSocket() {
       ws.onmessage = (event: MessageEvent) => {
         try {
           const msg = JSON.parse(event.data as string);
+          console.log('[useWebSocket] message received:', msg.type, JSON.stringify(msg).slice(0, 100));
 
           if (msg.type === "vision_state" || !msg.type) {
             useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
@@ -76,6 +77,7 @@ export function useWebSocket() {
                   detail: { transcript: t.transcript },
                 })
               );
+              console.log('[useWebSocket] dispatched aria:voice-transcript:', t.transcript);
             }
             return;
           }

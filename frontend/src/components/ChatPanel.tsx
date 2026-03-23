@@ -26,6 +26,7 @@ export default function ChatPanel() {
   useEffect(() => {
     const handler = (e: Event) => {
       const text = (e as CustomEvent<{ transcript: string }>).detail.transcript;
+      console.log('[ChatPanel] aria:voice-transcript received:', text, 'isLoading:', isLoading);
       if (text && !isLoading) handleSendWithTTS(text);
     };
     window.addEventListener("aria:voice-transcript", handler);
