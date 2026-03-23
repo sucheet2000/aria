@@ -151,7 +151,18 @@ def run_microphone(args: argparse.Namespace) -> None:
         target_sr=SAMPLE_RATE,
     )
 
-    WAKE_WORDS = {"aria", "hey aria", "hi aria"}
+    WAKE_WORDS = {
+        "aria",
+        "hey aria",
+        "hi aria",
+        "area",
+        "hey area",
+        "hi area",
+        "arya",
+        "hey arya",
+        "harya",
+        "haria",
+    }
     SLEEP_PHRASES = {
         "that will be all",
         "go to sleep",
