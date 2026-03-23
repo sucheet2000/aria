@@ -3,6 +3,7 @@ package vision
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -88,7 +89,8 @@ func (w *Worker) run(ctx context.Context) error {
 				w.log.Warn().Str("line", line).Msg("skipping non-json line from vision process")
 				continue
 			}
-			w.hub.Broadcast([]byte(line))
+			wrapped := fmt.Sprintf(`{"type":"vision_state","payload":%s}`, line)
+		w.hub.Broadcast([]byte(wrapped))
 		}
 	}()
 

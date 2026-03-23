@@ -44,7 +44,7 @@ type Client struct {
 func NewHub(v VisionController) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 256),
+		broadcast:  make(chan []byte, 2048),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		vision:     v,

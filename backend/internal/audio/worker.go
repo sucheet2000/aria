@@ -110,7 +110,7 @@ func (w *Worker) run(ctx context.Context) error {
 				continue
 			}
 			w.log.Info().Str("transcript", line[:min(len(line), 80)]).Msg("audio transcript received")
-			w.hub.Broadcast(data)
+			go w.hub.Broadcast(data)
 		}
 		w.log.Warn().Err(scanner.Err()).Msg("audio stdout scanner exited")
 	}()
