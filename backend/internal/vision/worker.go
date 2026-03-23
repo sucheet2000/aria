@@ -82,6 +82,9 @@ func (w *Worker) run(ctx context.Context) error {
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("vision process started")
 
 	go func() {
+		var lastVisionBroadcast time.Time
+		const visionFrameInterval = 200 * time.Millisecond
+
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -89,8 +92,13 @@ func (w *Worker) run(ctx context.Context) error {
 				w.log.Warn().Str("line", line).Msg("skipping non-json line from vision process")
 				continue
 			}
+			now := time.Now()
+			if now.Sub(lastVisionBroadcast) < visionFrameInterval {
+				continue
+			}
+			lastVisionBroadcast = now
 			wrapped := fmt.Sprintf(`{"type":"vision_state","payload":%s}`, line)
-		w.hub.Broadcast([]byte(wrapped))
+			w.hub.Broadcast([]byte(wrapped))
 		}
 	}()
 
