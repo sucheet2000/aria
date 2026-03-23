@@ -70,6 +70,7 @@ func main() {
 	hub.SetVision(worker)
 
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
+	hub.SetAudio(audioWorker)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

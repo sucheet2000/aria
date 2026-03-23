@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -22,6 +23,11 @@ type VisionController interface {
 	Stop()
 }
 
+// AudioController is implemented by the audio worker.
+type AudioController interface {
+	Mute(muted bool)
+}
+
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
 	clients    map[*Client]bool
@@ -30,6 +36,7 @@ type Hub struct {
 	unregister chan *Client
 	mu         sync.RWMutex
 	vision     VisionController
+	audio      AudioController
 	ctx        context.Context
 }
 
@@ -55,6 +62,12 @@ func NewHub(v VisionController) *Hub {
 // Must be called before Run.
 func (h *Hub) SetVision(v VisionController) {
 	h.vision = v
+}
+
+// SetAudio wires an AudioController into the hub.
+// Must be called before Run.
+func (h *Hub) SetAudio(a AudioController) {
+	h.audio = a
 }
 
 // Run processes hub events: register, unregister, and broadcast.
@@ -163,7 +176,20 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		_, _, err := c.conn.ReadMessage()
+		_, message, err := c.conn.ReadMessage()
+		if c.hub.audio != nil {
+			var msg struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(message, &msg) == nil {
+				switch msg.Type {
+				case "tts_mute":
+					c.hub.audio.Mute(true)
+				case "tts_unmute":
+					c.hub.audio.Mute(false)
+				}
+			}
+		}
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Warn().Err(err).Msg("unexpected websocket close")

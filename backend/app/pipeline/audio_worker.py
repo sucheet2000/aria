@@ -9,6 +9,7 @@ import argparse
 import json
 import signal
 import sys
+import threading
 import time
 
 import structlog
@@ -87,6 +88,21 @@ def find_best_input_device() -> int | None:
     return None
 
 
+def _watch_stdin(vad: VADProcessor) -> None:
+    for raw in sys.stdin:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            cmd = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if cmd.get("mute") is True:
+            vad.mute()
+        elif cmd.get("mute") is False:
+            vad.unmute()
+
+
 def run_microphone(args: argparse.Namespace) -> None:
     import queue
     import sounddevice as sd
@@ -100,6 +116,8 @@ def run_microphone(args: argparse.Namespace) -> None:
     except Exception as exc:
         print(f"VAD load error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    threading.Thread(target=_watch_stdin, args=(vad,), daemon=True).start()
 
     try:
         transcriber.load()

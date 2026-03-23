@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -33,6 +34,7 @@ type Worker struct {
 	whisperModel string
 	hub          Broadcaster
 	cmd          *exec.Cmd
+	stdinPipe    io.WriteCloser
 	log          zerolog.Logger
 }
 
@@ -70,10 +72,17 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 func (w *Worker) run(ctx context.Context) error {
+	w.stdinPipe = nil
+
 	cmd := exec.CommandContext(ctx, w.pythonBin, "-u", w.scriptPath, "--model", w.whisperModel)
 	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+w.workDir)
 	w.cmd = cmd
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -89,6 +98,7 @@ func (w *Worker) run(ctx context.Context) error {
 		return err
 	}
 
+	w.stdinPipe = stdin
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("audio process started")
 
 	go func() {
@@ -120,10 +130,23 @@ func (w *Worker) run(ctx context.Context) error {
 	}()
 
 	err = cmd.Wait()
+	w.stdinPipe = nil
 	if ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+// Mute sends a mute/unmute command to the Python audio process via stdin.
+func (w *Worker) Mute(muted bool) {
+	if w.stdinPipe == nil {
+		return
+	}
+	payload := `{"mute":false}` + "\n"
+	if muted {
+		payload = `{"mute":true}` + "\n"
+	}
+	_, _ = w.stdinPipe.Write([]byte(payload))
 }
 
 // Stop sends SIGTERM to the process, then SIGKILL after 2 seconds.

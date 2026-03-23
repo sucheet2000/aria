@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import { wsSendRef } from "./useWebSocket";
 
 export const ttsAudioRef: { current: HTMLAudioElement | null } = {
   current: null,
@@ -56,23 +57,27 @@ export function useTTS() {
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
       setIsSpeaking(true);
+      wsSendRef.current?.({ type: "tts_mute" });
 
       audio.onended = () => {
         URL.revokeObjectURL(url);
         setIsPlaying(false);
         setIsSpeaking(false);
+        wsSendRef.current?.({ type: "tts_unmute" });
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(url);
         setIsPlaying(false);
         setIsSpeaking(false);
+        wsSendRef.current?.({ type: "tts_unmute" });
       };
 
       try {
         await audio.play();
       } catch {
         speakWithBrowser(text);
+        wsSendRef.current?.({ type: "tts_unmute" });
       }
     } catch (err) {
       const msg =
@@ -82,6 +87,7 @@ export function useTTS() {
       console.error("[useTTS]", err);
       setIsPlaying(false);
       setIsSpeaking(false);
+      wsSendRef.current?.({ type: "tts_unmute" });
     }
   }
 
