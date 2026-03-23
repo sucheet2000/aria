@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Avatar3D from "@/components/Avatar3D";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
@@ -8,6 +8,8 @@ import StatusBar from "@/components/StatusBar";
 import VoiceDot from "@/components/VoiceDot";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
+import { useCognition } from "@/hooks/useCognition";
+import { useTTS } from "@/hooks/useTTS";
 
 type SidebarPanel = "chat" | "memory";
 
@@ -40,8 +42,20 @@ export default function Home() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const assistantMessageCount = conversationHistory.filter(m => m.role === "assistant").length;
+  const isThinking = useAriaStore(s => s.isThinking);
+  const { sendMessage } = useCognition();
+  const { speak } = useTTS();
 
   useWebSocket();
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent<{ transcript: string }>).detail.transcript;
+      if (text && !isThinking) sendMessage(text, speak);
+    };
+    window.addEventListener("aria:voice-transcript", handler);
+    return () => window.removeEventListener("aria:voice-transcript", handler);
+  }, [sendMessage, speak, isThinking]);
 
   function togglePanel(id: SidebarPanel) {
     setActivePanel(prev => prev === id ? null : id);

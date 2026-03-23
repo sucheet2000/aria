@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
@@ -18,25 +18,11 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversationHistory]);
 
-  // Listen for voice transcripts and auto-send
-  const handleSendWithTTS = useCallback(async (text: string) => {
-    await sendMessage(text, speak);
-  }, [sendMessage, speak]);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const text = (e as CustomEvent<{ transcript: string }>).detail.transcript;
-      if (text && !isLoading) handleSendWithTTS(text);
-    };
-    window.addEventListener("aria:voice-transcript", handler);
-    return () => window.removeEventListener("aria:voice-transcript", handler);
-  }, [handleSendWithTTS, isLoading]);
-
   async function handleSend() {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     setInput("");
-    await handleSendWithTTS(trimmed);
+    await sendMessage(trimmed, speak);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
