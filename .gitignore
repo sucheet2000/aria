@@ -58,3 +58,4 @@ backend/server
 # Installers
 Miniconda*.sh
 backend/Miniconda*.sh
+.mcp/
