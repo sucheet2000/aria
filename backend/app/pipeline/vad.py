@@ -68,6 +68,12 @@ class VADProcessor:
 
         return False, None
 
+    def clear(self) -> None:
+        """Discard any accumulated speech chunks."""
+        self._speech_chunks = []
+        self._silence_ms = 0
+        self._in_speech = False
+
     def _reset(self) -> None:
         self._speech_chunks = []
         self._silence_ms = 0
