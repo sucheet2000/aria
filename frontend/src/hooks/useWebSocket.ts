@@ -61,6 +61,12 @@ export function useWebSocket() {
         try {
           const msg = JSON.parse(event.data as string);
 
+          if (msg.type === "aria_sleep") {
+            useAriaStore.getState().setIsListening(false);
+            useAriaStore.getState().setIsSpeaking(false);
+            return;
+          }
+
           if (msg.type === "wake_word") {
             useAriaStore.getState().setIsListening(true);
             setTimeout(() => useAriaStore.getState().setIsListening(false), 2000);

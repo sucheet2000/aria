@@ -152,6 +152,16 @@ def run_microphone(args: argparse.Namespace) -> None:
     )
 
     WAKE_WORDS = {"aria", "hey aria", "hi aria"}
+    SLEEP_PHRASES = {
+        "that will be all",
+        "go to sleep",
+        "goodbye aria",
+        "bye aria",
+        "sleep aria",
+        "shut down",
+        "that's all",
+        "thats all",
+    }
     ACTIVE_TIMEOUT_S = 30.0
     mode = "idle"  # "idle" or "active"
     last_transcript_time = 0.0
@@ -249,7 +259,14 @@ def run_microphone(args: argparse.Namespace) -> None:
                         # else: ignore transcript in idle mode
                     else:
                         last_transcript_time = now
-                        print(json.dumps(state), flush=True)
+                        text_lower_check = text.lower().strip()
+                        if any(p in text_lower_check for p in SLEEP_PHRASES):
+                            mode = "idle"
+                            sleep_event = {"type": "aria_sleep", "timestamp": round(now, 3)}
+                            print(json.dumps(sleep_event), flush=True)
+                            # Do not send the transcript — just the sleep event
+                        else:
+                            print(json.dumps(state), flush=True)
 
 
 def main() -> None:
