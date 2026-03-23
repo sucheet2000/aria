@@ -98,17 +98,17 @@ func (h *Hub) Run(ctx context.Context) {
 			}
 
 		case message := <-h.broadcast:
-			h.mu.Lock()
+			h.mu.RLock()
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					// slow client: drop and remove
-					close(client.send)
-					delete(h.clients, client)
+					// Buffer full: skip this message for this client instead
+					// of dropping them. Prevents the 1s reconnect gap that
+					// causes missed transcripts.
 				}
 			}
-			h.mu.Unlock()
+			h.mu.RUnlock()
 		}
 	}
 }
