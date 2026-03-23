@@ -279,7 +279,7 @@ def run_microphone(args: argparse.Namespace) -> None:
                             sleep_event = {"type": "aria_sleep", "timestamp": round(now, 3)}
                             print(json.dumps(sleep_event), flush=True)
                             # Unmute after 3 seconds to allow queued audio to drain
-                            threading.Timer(3.0, vad.unmute).start()
+                            threading.Timer(5.0, vad.unmute).start()
                             # Do not send the transcript — just the sleep event
                         else:
                             print(json.dumps(state), flush=True)
