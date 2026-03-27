@@ -4,7 +4,7 @@ package aria.perception.v1;
 
 // go_package: import path for generated Go code.
 // The alias suffix (;perceptionv1) sets the Go package name cleanly.
-option go_package = "github.com/sucheet2000/aria/proto/perception/v1;perceptionv1";
+option go_package = "github.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1";
 
 // ─── Core Data Types ──────────────────────────────────────────────────────────
 
@@ -174,4 +174,42 @@ service CognitionService {
   // RegisterAnchor: persists a physical object as a 3D spatial anchor.
   // Used by Week 9 pointing-vector logic to "register" real-world objects.
   rpc RegisterAnchor(SpatialAnchor) returns (SpatialAnchor);
+}
+
+// ─── PerceptionService (Week 1 gRPC Transport) ───────────────────────────────
+
+// HandData carries the 21 MediaPipe landmarks for a single detected hand.
+// Separated from HandGestureEvent so the raw transport layer (PerceptionService)
+// can stream all landmark data without requiring a gesture classification.
+message HandData {
+  Handedness hand            = 1;
+  repeated Point3D landmarks = 2; // exactly 21 per MediaPipe standard
+}
+
+// PerceptionFrame is the per-frame payload streamed from the Python vision worker
+// to the Go backend over PerceptionService.StreamFrames.
+// It replaces the stdout JSON pipe introduced in Week 0.
+//
+// Tag budget (mirrors HandGestureEvent discipline):
+//   1 : hands         — repeated HandData; primary payload, lowest tag = 1-byte header
+//   2 : timestamp_us  — int64 µs; consistent with HandGestureEvent.timestamp_us
+//   3 : session_id    — string; session re-hydration key (Week 2)
+message PerceptionFrame {
+  repeated HandData hands = 1;
+  int64 timestamp_us      = 2;
+  string session_id       = 3;
+}
+
+// StreamRequest is sent by the Go client when opening a StreamFrames call.
+message StreamRequest {
+  string session_id = 1;
+}
+
+// PerceptionService is the simple one-directional transport between the Python
+// vision layer and the Go backend. Frames flow Python → Go.
+// Week 3 will extend this to bidirectional via CognitionService.
+service PerceptionService {
+  // StreamFrames opens a server-streaming RPC. The Python server yields one
+  // PerceptionFrame per processed camera frame; Go reads and broadcasts them.
+  rpc StreamFrames(StreamRequest) returns (stream PerceptionFrame);
 }
