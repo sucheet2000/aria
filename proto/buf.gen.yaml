@@ -1,0 +1,10 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: ../backend
+    opt:
+      - module=github.com/sucheet2000/aria/backend
+  - remote: buf.build/grpc/go
+    out: ../backend
+    opt:
+      - module=github.com/sucheet2000/aria/backend

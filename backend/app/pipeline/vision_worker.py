@@ -113,6 +113,15 @@ def run_synthetic(args: argparse.Namespace) -> None:
     start = time.time()
     last = 0.0
 
+    _grpc_servicer = None
+    if args.grpc:
+        import threading
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+        from perception.v1 import perception_pb2
+        _grpc_servicer = PerceptionServicer()
+        _grpc_server = serve(_grpc_servicer)
+        threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
+
     while True:
         if _stop:
             break
@@ -134,12 +143,28 @@ def run_synthetic(args: argparse.Namespace) -> None:
         }
         print(json.dumps(state), flush=True)
 
+        if _grpc_servicer is not None:
+            frame = perception_pb2.PerceptionFrame(
+                timestamp_us=int(now * 1_000_000),
+                session_id="local",
+            )
+            _grpc_servicer.push_frame(frame)
+
 
 def run_camera(args: argparse.Namespace) -> None:
     face_model_path = "models/face_landmarker.task"
     hand_model_path = "models/hand_landmarker.task"
     _ensure_model(_FACE_MODEL_URL, face_model_path)
     _ensure_model(_HAND_MODEL_URL, hand_model_path)
+
+    _grpc_servicer = None
+    if args.grpc:
+        import threading
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+        from perception.v1 import perception_pb2
+        _grpc_servicer = PerceptionServicer()
+        _grpc_server = serve(_grpc_servicer)
+        threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
 
     classifier = EmotionClassifier()
 
@@ -219,6 +244,23 @@ def run_camera(args: argparse.Namespace) -> None:
             }
             print(json.dumps(state), flush=True)
 
+            if _grpc_servicer is not None:
+                hands = []
+                if hand_result.hand_landmarks:
+                    for hand_lm in hand_result.hand_landmarks:
+                        hands.append(perception_pb2.HandData(
+                            landmarks=[
+                                perception_pb2.Point3D(x=p.x, y=p.y, z=p.z)
+                                for p in hand_lm
+                            ]
+                        ))
+                frame = perception_pb2.PerceptionFrame(
+                    hands=hands,
+                    timestamp_us=int(now * 1_000_000),
+                    session_id="local",
+                )
+                _grpc_servicer.push_frame(frame)
+
             if args.preview:
                 cv2.imshow("ARIA Vision Preview", frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -240,6 +282,8 @@ def main() -> None:
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--synthetic", action="store_true", default=False)
     parser.add_argument("--duration", type=float, default=0.0)
+    parser.add_argument("--grpc", action="store_true", default=False,
+        help="Serve frames via gRPC instead of stdout JSON")
     args = parser.parse_args()
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
