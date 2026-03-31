@@ -59,3 +59,4 @@ backend/server
 Miniconda*.sh
 backend/Miniconda*.sh
 .mcp/
+.codex/

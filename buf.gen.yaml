@@ -1,0 +1,15 @@
+version: v1
+plugins:
+  # Go code generation
+  - name: go
+    out: gen/go
+    opt: paths=source_relative
+  - name: go-grpc
+    out: gen/go
+    opt: paths=source_relative
+
+  # Python code generation
+  - name: python
+    out: gen/python
+  - name: py-grpc
+    out: gen/python
