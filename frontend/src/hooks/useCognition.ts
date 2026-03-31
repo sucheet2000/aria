@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
@@ -22,6 +22,8 @@ interface CognitionResponse {
 export function useCognition() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sessionIdRef = useRef(crypto.randomUUID());
+  const interruptedRef = useRef(false);
 
   const addMessage = useAriaStore((s) => s.addMessage);
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
@@ -61,6 +63,7 @@ export function useCognition() {
         signal: controller.signal,
         body: JSON.stringify({
           message: text.trim(),
+          session_id: sessionIdRef.current,
           vision_state: {
             emotion,
             head_pose: headPose,
@@ -92,6 +95,11 @@ export function useCognition() {
         onResponse(data.natural_language_response);
       }
     } catch (err) {
+      if (interruptedRef.current) {
+        interruptedRef.current = false;
+        setIsThinking(false);
+        return;
+      }
       const msg =
         err instanceof Error && err.name === "AbortError"
           ? "Request timed out."
@@ -108,6 +116,7 @@ export function useCognition() {
 
   useEffect(() => {
     function handleInterrupt() {
+      interruptedRef.current = true;
       abortCognitionRef.current?.();
       setIsLoading(false);
       setIsThinking(false);

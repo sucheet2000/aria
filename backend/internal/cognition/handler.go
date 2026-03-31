@@ -98,7 +98,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := req.SessionID
 	if sessionID == "" {
-		sessionID = "default"
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "session_id is required"})
+		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()

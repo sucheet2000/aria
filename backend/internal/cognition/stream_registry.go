@@ -3,7 +3,14 @@ package cognition
 import (
 	"context"
 	"sync"
+	"time"
 )
+
+const pendingTTL = 10 * time.Second
+
+type pendingEntry struct {
+	setAt time.Time
+}
 
 // StreamRegistry is a thread-safe map from session_id to context.CancelFunc.
 // It bridges the gRPC interrupt path (CognitionGRPCServer) and the HTTP handler
@@ -11,17 +18,18 @@ import (
 //
 // Race: an interrupt can arrive before the HTTP handler calls Register.
 // pending tracks this case — Register immediately cancels if a pending entry exists.
+// Pending entries expire after pendingTTL to avoid poisoning future requests.
 type StreamRegistry struct {
 	mu      sync.Mutex
 	active  map[string]context.CancelFunc
-	pending map[string]struct{}
+	pending map[string]pendingEntry
 }
 
 // NewStreamRegistry creates an empty registry.
 func NewStreamRegistry() *StreamRegistry {
 	return &StreamRegistry{
 		active:  make(map[string]context.CancelFunc),
-		pending: make(map[string]struct{}),
+		pending: make(map[string]pendingEntry),
 	}
 }
 
@@ -30,10 +38,14 @@ func NewStreamRegistry() *StreamRegistry {
 func (r *StreamRegistry) Register(id string, cancel context.CancelFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.pending[id]; ok {
-		cancel()
+	if p, ok := r.pending[id]; ok {
+		if time.Since(p.setAt) < pendingTTL {
+			cancel()
+			delete(r.pending, id)
+			return
+		}
+		// Stale pending marker — discard and register normally.
 		delete(r.pending, id)
-		return
 	}
 	r.active[id] = cancel
 }
@@ -47,7 +59,7 @@ func (r *StreamRegistry) Cancel(id string) {
 		cancel()
 		delete(r.active, id)
 	} else {
-		r.pending[id] = struct{}{}
+		r.pending[id] = pendingEntry{setAt: time.Now()}
 	}
 }
 

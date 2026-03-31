@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const visionGRPCAddr = "localhost:50051"
+const visionGRPCAddr = "127.0.0.1:50051"
 
 // GRPCClient connects to the Python vision gRPC server and streams
 // PerceptionFrame messages, broadcasting them to the hub.

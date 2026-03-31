@@ -156,7 +156,7 @@ def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None"
     from perception.v1 import perception_pb2 as _pb2
     from perception.v1 import perception_pb2_grpc as _pb2_grpc
 
-    interrupt_queue: _queue.Queue = _queue.Queue()
+    interrupt_queue: _queue.Queue = _queue.Queue(maxsize=32)
 
     def _request_gen(q: "_queue.Queue"):
         while True:
@@ -166,12 +166,22 @@ def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None"
             yield req
 
     def _run() -> None:
-        channel = _grpc.insecure_channel("localhost:50052")
-        stub = _pb2_grpc.CognitionServiceStub(channel)
-        try:
-            list(stub.StreamCognition(_request_gen(interrupt_queue)))
-        except Exception:
-            pass
+        backoff = 1.0
+        while True:
+            try:
+                channel = _grpc.insecure_channel("127.0.0.1:50052")
+                stub = _pb2_grpc.CognitionServiceStub(channel)
+                print("cognition interrupt client connected", file=sys.stderr, flush=True)
+                backoff = 1.0
+                list(stub.StreamCognition(_request_gen(interrupt_queue)))
+            except Exception as exc:
+                print(
+                    f"cognition interrupt stream disconnected, retrying in {backoff}s: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
 
     threading.Thread(target=_run, daemon=True).start()
     return interrupt_queue
@@ -318,13 +328,17 @@ def run_camera(args: argparse.Namespace) -> None:
             if _interrupt_queue is not None:
                 face_detected = bool(face_result.face_landmarks)
                 if face_exit_detector.update(face_detected, now):
+                    import queue as _queue
                     from perception.v1 import perception_pb2 as _pb2
-                    _interrupt_queue.put(
-                        _pb2.CognitionRequest(
-                            session_id="default",
-                            interrupt_signal=True,
+                    try:
+                        _interrupt_queue.put_nowait(
+                            _pb2.CognitionRequest(
+                                session_id="default",
+                                interrupt_signal=True,
+                            )
                         )
-                    )
+                    except _queue.Full:
+                        print("interrupt queue full, dropping signal", file=sys.stderr, flush=True)
 
             state = {
                 "face_landmarks": face_landmarks_list,

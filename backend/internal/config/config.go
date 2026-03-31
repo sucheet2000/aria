@@ -83,7 +83,7 @@ func Load() *Config {
 
 	cognitionGRPCAddr := os.Getenv("COGNITION_GRPC_ADDR")
 	if cognitionGRPCAddr == "" {
-		cognitionGRPCAddr = ":50052"
+		cognitionGRPCAddr = "127.0.0.1:50052"
 	}
 
 	return &Config{
