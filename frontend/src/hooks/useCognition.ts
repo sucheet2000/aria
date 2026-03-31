@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+
+// Module-level ref so useWebSocket can abort the in-flight fetch without
+// importing useCognition (which would create a circular dependency).
+export const abortCognitionRef: { current: (() => void) | null } = { current: null };
 
 interface CognitionResponse {
   natural_language_response: string;
@@ -47,6 +51,7 @@ export function useCognition() {
     setError(null);
 
     const controller = new AbortController();
+    abortCognitionRef.current = () => controller.abort();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
@@ -96,9 +101,21 @@ export function useCognition() {
       addMessage("assistant", "I could not process that request.");
     } finally {
       clearTimeout(timeoutId);
+      abortCognitionRef.current = null;
       setIsLoading(false);
     }
   }
+
+  useEffect(() => {
+    function handleInterrupt() {
+      abortCognitionRef.current?.();
+      setIsLoading(false);
+      setIsThinking(false);
+      useAriaStore.getState().setIsSpeaking(false);
+    }
+    window.addEventListener("aria:interrupt", handleInterrupt);
+    return () => window.removeEventListener("aria:interrupt", handleInterrupt);
+  }, [setIsThinking]);
 
   return { sendMessage, isLoading, error };
 }

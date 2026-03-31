@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import { abortCognitionRef } from "@/hooks/useCognition";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
 
@@ -75,6 +76,14 @@ export function useWebSocket() {
 
           if (msg.type === "vision_state" || !msg.type) {
             useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
+            return;
+          }
+
+          if (msg.type === "aria_interrupt") {
+            abortCognitionRef.current?.();
+            window.dispatchEvent(new CustomEvent("aria:interrupt"));
+            useAriaStore.getState().setIsSpeaking(false);
+            useAriaStore.getState().setIsThinking(false);
             return;
           }
 

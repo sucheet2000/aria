@@ -49,6 +49,41 @@ _HAND_MODEL_URL = (
 _stop = False
 
 
+class FaceExitDetector:
+    """Pure state machine for detecting when a user exits the camera frame.
+
+    Extracted from the frame loop so it can be unit-tested without real gRPC.
+    Rules:
+    - After first face detection, a 0.5s absence triggers interrupt_needed=True.
+    - Once triggered, no further trigger until face reappears and disappears again.
+    """
+
+    def __init__(self, absence_threshold: float = 0.5) -> None:
+        self._threshold = absence_threshold
+        self._last_face_time: float = time.time()
+        self._face_was_detected: bool = False
+        self._interrupt_sent: bool = False
+
+    def update(self, face_detected: bool, now: float) -> bool:
+        """Update state with the current frame's face detection result.
+
+        Returns True exactly once per exit event (when the absence threshold
+        is crossed). Returns False in all other cases.
+        """
+        if face_detected:
+            self._last_face_time = now
+            self._face_was_detected = True
+            self._interrupt_sent = False
+            return False
+
+        if self._face_was_detected and not self._interrupt_sent:
+            if now - self._last_face_time >= self._threshold:
+                self._interrupt_sent = True
+                return True
+
+        return False
+
+
 def _handle_sigterm(signum: int, frame: object) -> None:
     global _stop
     _stop = True
@@ -106,6 +141,42 @@ def solve_head_pose(
     }
 
 
+def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None":
+    """Start a background CognitionService gRPC client on port 50052.
+
+    Returns the interrupt queue so the caller can enqueue CognitionRequests,
+    or None if grpcio is unavailable (shouldn't happen — already installed).
+    The background thread is daemonized and dies with the process.
+    """
+    import queue as _queue
+    import threading
+
+    import grpc as _grpc
+
+    from perception.v1 import perception_pb2 as _pb2
+    from perception.v1 import perception_pb2_grpc as _pb2_grpc
+
+    interrupt_queue: _queue.Queue = _queue.Queue()
+
+    def _request_gen(q: "_queue.Queue"):
+        while True:
+            req = q.get()
+            if req is None:
+                return
+            yield req
+
+    def _run() -> None:
+        channel = _grpc.insecure_channel("localhost:50052")
+        stub = _pb2_grpc.CognitionServiceStub(channel)
+        try:
+            list(stub.StreamCognition(_request_gen(interrupt_queue)))
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return interrupt_queue
+
+
 def run_synthetic(args: argparse.Namespace) -> None:
     fake_face = [[0.5, 0.5, 0.0]] * 478
     fake_pose = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
@@ -114,6 +185,7 @@ def run_synthetic(args: argparse.Namespace) -> None:
     last = 0.0
 
     _grpc_servicer = None
+    _interrupt_queue = None
     if args.grpc:
         import threading
         from app.pipeline.vision_grpc_server import PerceptionServicer, serve
@@ -121,6 +193,7 @@ def run_synthetic(args: argparse.Namespace) -> None:
         _grpc_servicer = PerceptionServicer()
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
+        _interrupt_queue = _start_cognition_client()
 
     while True:
         if _stop:
@@ -158,6 +231,7 @@ def run_camera(args: argparse.Namespace) -> None:
     _ensure_model(_HAND_MODEL_URL, hand_model_path)
 
     _grpc_servicer = None
+    _interrupt_queue = None
     if args.grpc:
         import threading
         from app.pipeline.vision_grpc_server import PerceptionServicer, serve
@@ -165,7 +239,9 @@ def run_camera(args: argparse.Namespace) -> None:
         _grpc_servicer = PerceptionServicer()
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
+        _interrupt_queue = _start_cognition_client()
 
+    face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
 
     face_options = mp_vision.FaceLandmarkerOptions(
@@ -233,6 +309,17 @@ def run_camera(args: argparse.Namespace) -> None:
                         hand_landmarks_list.append(
                             [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
                         )
+
+            if _interrupt_queue is not None:
+                face_detected = bool(face_result.face_landmarks)
+                if face_exit_detector.update(face_detected, now):
+                    from perception.v1 import perception_pb2 as _pb2
+                    _interrupt_queue.put(
+                        _pb2.CognitionRequest(
+                            session_id="default",
+                            interrupt_signal=True,
+                        )
+                    )
 
             state = {
                 "face_landmarks": face_landmarks_list,

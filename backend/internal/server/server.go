@@ -21,16 +21,18 @@ type Server struct {
 	hub           *Hub
 	cfg           *config.Config
 	workingMemory *memory.WorkingMemory
+	registry      *cognition.StreamRegistry
 	httpServer    *http.Server
 }
 
-// New creates a new Server with the given configuration, hub, and working memory.
-func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory) *Server {
+// New creates a new Server with the given configuration, hub, working memory, and stream registry.
+func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cognition.StreamRegistry) *Server {
 	s := &Server{
 		router:        chi.NewRouter(),
 		hub:           hub,
 		cfg:           cfg,
 		workingMemory: wm,
+		registry:      registry,
 	}
 	return s
 }
@@ -46,7 +48,7 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
-	cogHandler := cognition.NewHandler(cogClient, log.Logger)
+	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
 	ttsHandler := tts.NewHandler(ttsClient)

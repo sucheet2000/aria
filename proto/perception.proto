@@ -86,10 +86,13 @@ enum GestureType {
 // │    │                  │ gesture == GESTURE_TYPE_POINT. Feeds Week 9     │
 // │    │                  │ Spatial Anchoring registration logic.           │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
-// │ 9–10│ RESERVED        │ Week 3 gRPC stream metadata.                   │
-// │    │                  │ Future: interrupt_priority (uint32), stream_id  │
-// │    │                  │ (string). Needed for the Priority Interrupt     │
-// │    │                  │ Pattern (<100ms kill signal on visual change).  │
+// │  9 │ interrupt_priority│ Stream routing priority for multi-session kill  │
+// │    │                  │ signals. Routes Cancel() to highest-priority    │
+// │    │                  │ active stream when concurrent sessions exist.   │
+// ├────┼──────────────────┼────────────────────────────────────────────────┤
+// │ 10 │ stream_id        │ Exact gRPC stream identifier carried by the     │
+// │    │                  │ interrupt payload so StreamRegistry.Cancel()    │
+// │    │                  │ can be surgically precise.                      │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
 // │11–12│ RESERVED        │ Week 5 NATS async transport headers.           │
 // │    │                  │ Future: nats_subject (string),                  │
@@ -114,9 +117,8 @@ message HandGestureEvent {
   float confidence       = 7;     // classifier confidence [0.0–1.0]
   Point3D pointing_vector = 8;    // populated only when gesture == POINT (Week 9)
 
-  // Reserved for Week 3: gRPC Priority Interrupt stream metadata.
-  reserved 9, 10;
-  reserved "interrupt_priority", "stream_id";
+  uint32 interrupt_priority = 9; // stream routing priority for multi-session kill signals
+  string stream_id = 10;         // exact gRPC stream identifier for precise cancel
 
   // Reserved for Week 5: NATS async transport headers.
   reserved 11, 12;

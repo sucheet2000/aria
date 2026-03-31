@@ -1,6 +1,7 @@
 package cognition
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -29,6 +30,7 @@ type CognitionRequest struct {
 	Message             string             `json:"message"`
 	VisionState         VisionStateInput   `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
+	SessionID           string             `json:"session_id,omitempty"`
 }
 
 // WorldModelTriple is a subject/predicate/object fact triple.
@@ -61,13 +63,14 @@ type errorResponse struct {
 
 // Handler handles POST /api/cognition.
 type Handler struct {
-	client *Client
-	log    zerolog.Logger
+	client   *Client
+	registry *StreamRegistry
+	log      zerolog.Logger
 }
 
-// NewHandler creates a Handler with the given cognition client.
-func NewHandler(client *Client, log zerolog.Logger) *Handler {
-	return &Handler{client: client, log: log}
+// NewHandler creates a Handler with the given cognition client and stream registry.
+func NewHandler(client *Client, registry *StreamRegistry, log zerolog.Logger) *Handler {
+	return &Handler{client: client, registry: registry, log: log}
 }
 
 // ServeHTTP implements http.Handler.
@@ -93,7 +96,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.client.Complete(r.Context(), req)
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = "default"
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	h.registry.Register(sessionID, cancel)
+	defer h.registry.Unregister(sessionID)
+
+	result, err := h.client.Complete(ctx, req)
 	if err != nil {
 		h.log.Error().Err(err).Msg("cognition complete failed")
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
