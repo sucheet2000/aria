@@ -60,18 +60,14 @@ def test_fallback_when_no_mlpackage(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_fallback_model_always_loaded(tmp_path) -> None:
-    """_fallback_model is populated even when CoreML succeeds, so runtime demotion
-    never raises RuntimeError on the first transcribe call after demotion."""
-    mock_segment = mock.MagicMock()
-    mock_segment.text = "after demotion"
-    mock_segment.avg_logprob = -0.2
-
+    """_fallback_model is populated and _use_coreml stays True after successful CoreML load."""
     mock_fw_model = mock.MagicMock()
-    mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+    mock_fw_model.transcribe.return_value = (iter([]), mock.MagicMock())
 
     mock_encoder = mock.MagicMock()
-    expected_out = {"encoder_output": __import__("numpy").zeros((1, 1500, 384), dtype="float32")}
-    mock_encoder.predict.return_value = expected_out
+    mock_encoder.predict.return_value = {
+        "encoder_output": np.zeros((1, 1500, 384), dtype=np.float32)
+    }
 
     with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model), \
          mock.patch("coremltools.models.MLModel", return_value=mock_encoder), \
@@ -83,6 +79,35 @@ def test_fallback_model_always_loaded(tmp_path) -> None:
     assert w._fallback_model is not None, (
         "_fallback_model must be set even when CoreML loads successfully"
     )
+    assert w._use_coreml is True, (
+        "_use_coreml must remain True — _load_fallback_locked() must not reset it"
+    )
+    assert w._state == "ready"
+
+
+# ---------------------------------------------------------------------------
+# test_coreml_stays_ready_when_fallback_preload_fails
+# ---------------------------------------------------------------------------
+
+def test_coreml_stays_ready_when_fallback_preload_fails(tmp_path) -> None:
+    """When CoreML loads successfully but faster-whisper preload fails,
+    state stays 'ready' with _use_coreml=True. Runtime demotion is unavailable
+    but the primary CoreML path is unaffected."""
+    mock_encoder = mock.MagicMock()
+    mock_encoder.predict.return_value = {
+        "encoder_output": np.zeros((1, 1500, 384), dtype=np.float32)
+    }
+
+    with mock.patch("faster_whisper.WhisperModel", side_effect=ImportError("no faster-whisper")), \
+         mock.patch("coremltools.models.MLModel", return_value=mock_encoder), \
+         mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
+         mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
+        w = WhisperCoreML(model_size="tiny")
+        w.load()  # must not raise
+
+    assert w._use_coreml is True, "CoreML should remain active"
+    assert w._state == "ready", f"expected ready, got {w._state}"
+    assert w._fallback_model is None, "fallback unavailable when preload failed"
 
 
 # ---------------------------------------------------------------------------

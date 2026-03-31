@@ -151,22 +151,35 @@ class WhisperCoreML:
                 expected_path=str(self._encoder_path),
             )
 
-        # Always load faster-whisper — it is the guaranteed fallback even when
-        # CoreML succeeds.  Without this, runtime demotion (_use_coreml → False)
-        # would call _transcribe_fallback() with _fallback_model=None and raise.
-        self._load_fallback_locked()
+        # Always pre-load faster-whisper so runtime demotion (_use_coreml → False)
+        # can immediately call _transcribe_fallback() without raising.
+        # When CoreML already succeeded, guard this separately — a missing
+        # faster-whisper install must not kill a healthy CoreML backend.
+        if self._use_coreml:
+            try:
+                self._load_fallback_locked()
+            except Exception as exc:
+                logger.warning(
+                    "faster-whisper preload failed; runtime demotion unavailable",
+                    model=self._model_size,
+                    error=str(exc),
+                )
+                # CoreML is ready; keep _use_coreml=True and stay ready.
+                self._state = "ready"
+        else:
+            # CoreML not active — faster-whisper is the only backend; hard fail on error.
+            self._load_fallback_locked()
 
     def _load_fallback_locked(self) -> None:
-        """Called inside self._lock. Loads faster-whisper."""
+        """Called inside self._lock. Loads faster-whisper. Does not mutate _use_coreml."""
         from faster_whisper import WhisperModel
         self._fallback_model = WhisperModel(
             self._model_size,
             device="cpu",
             compute_type="int8",
         )
-        self._use_coreml = False
         self._state = "ready"
-        logger.info("whisper backend active", backend="faster-whisper",
+        logger.info("whisper fallback preloaded", backend="faster-whisper",
                     model=self._model_size)
 
     def transcribe(self, audio_chunks: list[np.ndarray]) -> tuple[str, float]:
