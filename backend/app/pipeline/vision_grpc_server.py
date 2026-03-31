@@ -59,7 +59,7 @@ def serve(servicer: PerceptionServicer) -> grpc.Server:
         ],
     )
     perception_pb2_grpc.add_PerceptionServiceServicer_to_server(servicer, server)
-    server.add_insecure_port(f"[::]:{GRPC_PORT}")
+    server.add_insecure_port(f"127.0.0.1:{GRPC_PORT}")
     server.start()
     logger.info("vision gRPC server started", port=GRPC_PORT)
     return server

@@ -137,6 +137,57 @@ func TestInterruptSignalCancelsStreamAndBroadcasts(t *testing.T) {
 	}
 }
 
+func TestRegistryCancelActive(t *testing.T) {
+	reg := NewStreamRegistry()
+
+	cancelled := false
+	reg.Register("sess-a", func() { cancelled = true })
+
+	reg.CancelActive()
+	if !cancelled {
+		t.Fatal("CancelActive should cancel the most recently registered session")
+	}
+}
+
+func TestRegistryCancelActiveNoOp(t *testing.T) {
+	reg := NewStreamRegistry()
+	// No active session — must not panic.
+	reg.CancelActive()
+}
+
+func TestInterruptSignalDefaultCancelsActive(t *testing.T) {
+	reg := NewStreamRegistry()
+	hub := &mockBroadcaster{}
+	srv := NewCognitionGRPCServer(reg, hub, zerolog.Nop())
+
+	cancelled := false
+	reg.Register("active-session", func() { cancelled = true })
+
+	stream := &fakeStreamCognitionServer{
+		recv: []*perceptionv1.CognitionRequest{
+			{
+				SessionId: "default",
+				Payload:   &perceptionv1.CognitionRequest_InterruptSignal{InterruptSignal: true},
+			},
+		},
+	}
+	srv.StreamCognition(stream) //nolint:errcheck
+
+	if !cancelled {
+		t.Fatal("session_id=default should cancel the active session via CancelActive")
+	}
+	if len(hub.messages) == 0 {
+		t.Fatal("expected broadcast after interrupt")
+	}
+	var msg map[string]string
+	if err := json.Unmarshal(hub.messages[0], &msg); err != nil {
+		t.Fatalf("broadcast message is not valid JSON: %v", err)
+	}
+	if msg["session_id"] != "default" {
+		t.Fatalf("expected session_id=default in broadcast, got %q", msg["session_id"])
+	}
+}
+
 func TestInterruptSignalFalseIsNoOp(t *testing.T) {
 	reg := NewStreamRegistry()
 	hub := &mockBroadcaster{}

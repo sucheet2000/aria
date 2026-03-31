@@ -25,6 +25,10 @@ export function useCognition() {
   const sessionIdRef = useRef(crypto.randomUUID());
   const interruptedRef = useRef(false);
 
+  useEffect(() => {
+    useAriaStore.getState().setSessionId(sessionIdRef.current);
+  }, []);
+
   const addMessage = useAriaStore((s) => s.addMessage);
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
   const setProcessingMs = useAriaStore((s) => s.setProcessingMs);

@@ -80,10 +80,13 @@ export function useWebSocket() {
           }
 
           if (msg.type === "aria_interrupt") {
-            abortCognitionRef.current?.();
-            window.dispatchEvent(new CustomEvent("aria:interrupt"));
-            useAriaStore.getState().setIsSpeaking(false);
-            useAriaStore.getState().setIsThinking(false);
+            const currentSessionId = useAriaStore.getState().sessionId;
+            if (msg.session_id === "default" || msg.session_id === currentSessionId) {
+              abortCognitionRef.current?.();
+              window.dispatchEvent(new CustomEvent("aria:interrupt"));
+              useAriaStore.getState().setIsSpeaking(false);
+              useAriaStore.getState().setIsThinking(false);
+            }
             return;
           }
 

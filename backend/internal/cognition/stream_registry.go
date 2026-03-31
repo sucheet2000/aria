@@ -20,9 +20,10 @@ type pendingEntry struct {
 // pending tracks this case — Register immediately cancels if a pending entry exists.
 // Pending entries expire after pendingTTL to avoid poisoning future requests.
 type StreamRegistry struct {
-	mu      sync.Mutex
-	active  map[string]context.CancelFunc
-	pending map[string]pendingEntry
+	mu            sync.Mutex
+	active        map[string]context.CancelFunc
+	pending       map[string]pendingEntry
+	activeSession string
 }
 
 // NewStreamRegistry creates an empty registry.
@@ -48,6 +49,7 @@ func (r *StreamRegistry) Register(id string, cancel context.CancelFunc) {
 		delete(r.pending, id)
 	}
 	r.active[id] = cancel
+	r.activeSession = id
 }
 
 // Cancel calls the cancel func for id and removes it. If no entry exists yet
@@ -60,6 +62,20 @@ func (r *StreamRegistry) Cancel(id string) {
 		delete(r.active, id)
 	} else {
 		r.pending[id] = pendingEntry{setAt: time.Now()}
+	}
+}
+
+// CancelActive cancels whichever session was most recently registered. Used when
+// the interrupt producer (e.g. vision worker) does not know the active session ID
+// and sends session_id="default" instead.
+func (r *StreamRegistry) CancelActive() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.activeSession != "" {
+		if cancel, ok := r.active[r.activeSession]; ok {
+			cancel()
+			delete(r.active, r.activeSession)
+		}
 	}
 }
 
