@@ -17,44 +17,92 @@ def _make_audio(seconds: float = 1.0) -> list[np.ndarray]:
     return [samples]
 
 
+def _build_loaded_fallback(tmp_path, mock_fw_model) -> WhisperCoreML:
+    """Helper: WhisperCoreML with encoder path pointed at a missing file, loaded."""
+    with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model):
+        w = WhisperCoreML(model_size="tiny")
+        w._encoder_path = tmp_path / "no-such-encoder.mlpackage"
+        w.load()
+    return w
+
+
+# ---------------------------------------------------------------------------
+# test_encoder_path_bound_to_model_size
+# ---------------------------------------------------------------------------
+
+def test_encoder_path_bound_to_model_size() -> None:
+    """_encoder_path contains the model size, preventing encoder/decoder pairing mismatch."""
+    for size in ("tiny", "base", "small"):
+        w = WhisperCoreML(model_size=size)
+        assert f"whisper-{size}-encoder.mlpackage" in str(w._encoder_path), (
+            f"encoder path should contain '{size}', got {w._encoder_path}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # test_fallback_when_no_mlpackage
 # ---------------------------------------------------------------------------
 
-def test_fallback_when_no_mlpackage(tmp_path, monkeypatch) -> None:
+def test_fallback_when_no_mlpackage(tmp_path) -> None:
     """WhisperCoreML.load() falls back gracefully when .mlpackage is absent."""
-
-    # Point encoder path at a non-existent location
-    monkeypatch.setattr(
-        "app.pipeline.whisper_coreml._ENCODER_PATH",
-        tmp_path / "no-such-encoder.mlpackage",
-    )
-
-    # Also patch faster-whisper so it doesn't actually load a model
     mock_fw_model = mock.MagicMock()
     mock_fw_model.transcribe.return_value = (iter([]), mock.MagicMock())
 
-    with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model):
-        w = WhisperCoreML(model_size="tiny")
-        w.load()
+    w = _build_loaded_fallback(tmp_path, mock_fw_model)
 
     assert w._use_coreml is False, "should have fallen back to faster-whisper"
     assert w._fallback_model is not None, "fallback model should be set"
+    assert w._state == "ready", f"expected state=ready, got {w._state}"
+
+
+# ---------------------------------------------------------------------------
+# test_fallback_model_always_loaded
+# ---------------------------------------------------------------------------
+
+def test_fallback_model_always_loaded(tmp_path) -> None:
+    """_fallback_model is populated even when CoreML succeeds, so runtime demotion
+    never raises RuntimeError on the first transcribe call after demotion."""
+    mock_segment = mock.MagicMock()
+    mock_segment.text = "after demotion"
+    mock_segment.avg_logprob = -0.2
+
+    mock_fw_model = mock.MagicMock()
+    mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+
+    mock_encoder = mock.MagicMock()
+    expected_out = {"encoder_output": __import__("numpy").zeros((1, 1500, 384), dtype="float32")}
+    mock_encoder.predict.return_value = expected_out
+
+    with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model), \
+         mock.patch("coremltools.models.MLModel", return_value=mock_encoder), \
+         mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
+         mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
+        w = WhisperCoreML(model_size="tiny")
+        w.load()
+
+    assert w._fallback_model is not None, (
+        "_fallback_model must be set even when CoreML loads successfully"
+    )
+
+
+# ---------------------------------------------------------------------------
+# test_state_machine_unloaded
+# ---------------------------------------------------------------------------
+
+def test_state_machine_unloaded() -> None:
+    """transcribe() before load() returns ('', 0.0) instead of raising."""
+    w = WhisperCoreML(model_size="tiny")
+    assert w._state == "unloaded"
+    result = w.transcribe(_make_audio())
+    assert result == ("", 0.0), f"expected empty result before load, got {result}"
 
 
 # ---------------------------------------------------------------------------
 # test_transcribe_returns_string
 # ---------------------------------------------------------------------------
 
-def test_transcribe_returns_string(tmp_path, monkeypatch) -> None:
+def test_transcribe_returns_string(tmp_path) -> None:
     """transcribe() returns (str, float) when using the faster-whisper fallback."""
-
-    monkeypatch.setattr(
-        "app.pipeline.whisper_coreml._ENCODER_PATH",
-        tmp_path / "missing.mlpackage",
-    )
-
-    # Mock a faster-whisper segment
     mock_segment = mock.MagicMock()
     mock_segment.text = "hello world"
     mock_segment.avg_logprob = -0.3
@@ -62,10 +110,8 @@ def test_transcribe_returns_string(tmp_path, monkeypatch) -> None:
     mock_fw_model = mock.MagicMock()
     mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
 
-    with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model):
-        w = WhisperCoreML(model_size="tiny")
-        w.load()
-        text, confidence = w.transcribe(_make_audio())
+    w = _build_loaded_fallback(tmp_path, mock_fw_model)
+    text, confidence = w.transcribe(_make_audio())
 
     assert isinstance(text, str), f"expected str, got {type(text)}"
     assert isinstance(confidence, float), f"expected float, got {type(confidence)}"
@@ -74,23 +120,58 @@ def test_transcribe_returns_string(tmp_path, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# test_runtime_demotion_on_coreml_failure
+# ---------------------------------------------------------------------------
+
+def test_runtime_demotion_on_coreml_failure(tmp_path) -> None:
+    """
+    If _transcribe_coreml() raises at runtime, _use_coreml is set to False exactly
+    once and subsequent calls route to faster-whisper without raising.
+    """
+    mock_segment = mock.MagicMock()
+    mock_segment.text = "fallback text"
+    mock_segment.avg_logprob = -0.2
+
+    mock_fw_model = mock.MagicMock()
+    mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+
+    with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model):
+        w = WhisperCoreML(model_size="tiny")
+        w._encoder_path = tmp_path / "missing.mlpackage"
+        w.load()
+
+    # Force the class to believe CoreML is active, then inject a broken encoder
+    w._use_coreml = True
+    w._coreml_encoder = mock.MagicMock()
+    w._coreml_encoder.predict.side_effect = RuntimeError("CoreML runtime error")
+
+    # First call: CoreML raises → demotes, returns fallback result
+    text1, _ = w.transcribe(_make_audio())
+    assert text1 == "fallback text", f"expected fallback text, got {text1!r}"
+    assert w._use_coreml is False, "_use_coreml should be False after demotion"
+
+    # Reset the mock generator for second call
+    mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+
+    # Second call: should go straight to fallback, CoreML never called again
+    text2, _ = w.transcribe(_make_audio())
+    assert text2 == "fallback text"
+    assert w._coreml_encoder.predict.call_count == 1, (
+        "CoreML encoder should only have been called once (before demotion)"
+    )
+
+
+# ---------------------------------------------------------------------------
 # test_thread_safety
 # ---------------------------------------------------------------------------
 
-def test_thread_safety(tmp_path, monkeypatch) -> None:
+def test_thread_safety(tmp_path) -> None:
     """3 threads call transcribe() concurrently — no exceptions, all return strings."""
-
-    monkeypatch.setattr(
-        "app.pipeline.whisper_coreml._ENCODER_PATH",
-        tmp_path / "missing.mlpackage",
-    )
-
     mock_segment = mock.MagicMock()
     mock_segment.text = "concurrent"
     mock_segment.avg_logprob = -0.1
 
     def make_mock_transcribe(*args, **kwargs):
-        # Simulate a small amount of work
         import time
         time.sleep(0.01)
         return (iter([mock_segment]), mock.MagicMock())
@@ -100,6 +181,7 @@ def test_thread_safety(tmp_path, monkeypatch) -> None:
 
     with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model):
         w = WhisperCoreML(model_size="tiny")
+        w._encoder_path = tmp_path / "missing.mlpackage"
         w.load()
 
     results: list[tuple[str, float] | Exception] = []

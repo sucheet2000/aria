@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import pathlib
+import platform
 import statistics
+import subprocess
 import sys
 import time
 import warnings
@@ -33,6 +35,20 @@ N_RUNS = 20
 BENCHMARKS_DIR = pathlib.Path(__file__).parent.parent / "benchmarks"
 OUTPUT_PATH = BENCHMARKS_DIR / "whisper_latency.json"
 ENCODER_PATH = pathlib.Path(__file__).parent.parent / "models" / "whisper-tiny-encoder.mlpackage"
+
+
+def detect_hardware() -> str:
+    """Query the actual chip name at runtime; never hardcode."""
+    try:
+        chip = subprocess.check_output(
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        if chip:
+            return chip
+    except Exception:
+        pass
+    return platform.processor() or f"{platform.machine()} / {platform.system()}"
 
 
 def make_synthetic_audio(seconds: float = 3.0, sr: int = SAMPLE_RATE) -> np.ndarray:
@@ -160,10 +176,15 @@ def main() -> None:
 
     # --- ground-truth comparison ---
     result: dict = {
-        "hardware": "Apple M1 Pro",
+        "hardware": detect_hardware(),
         "audio_clip_seconds": CLIP_SECONDS,
         "n_runs": N_RUNS,
         "model": "whisper-tiny",
+        "ane_utilization_measured": False,
+        "ane_validation_note": (
+            "Latency alone does not prove ANE execution. "
+            "Run Instruments > Metal System Trace to confirm ANE routing."
+        ),
         "faster_whisper": fw_stats,
         "coreml_hybrid": cml_stats if cml_stats else {"skipped": True, "reason": cml_note},
     }
@@ -171,9 +192,15 @@ def main() -> None:
     if cml_stats:
         coreml_faster = cml_stats["mean_ms"] < fw_stats["mean_ms"]
         result["coreml_faster"] = coreml_faster
+        result["ane_recommendation"] = (
+            "validate ANE routing via Instruments before claiming ANE speedup"
+        )
 
         if coreml_faster:
             speedup = fw_stats["mean_ms"] / cml_stats["mean_ms"]
+            result["latency_recommendation"] = (
+                f"use --coreml for lower latency on this hardware"
+            )
             result["recommendation"] = (
                 f"CoreML hybrid is {speedup:.2f}x faster than faster-whisper "
                 f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms). "
@@ -183,6 +210,10 @@ def main() -> None:
                   f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms mean)")
         else:
             slowdown = cml_stats["mean_ms"] / fw_stats["mean_ms"]
+            result["latency_recommendation"] = (
+                "do not use --coreml — hybrid path is slower than faster-whisper "
+                "on this hardware"
+            )
             result["recommendation"] = (
                 f"CoreML hybrid is {slowdown:.2f}x SLOWER than faster-whisper "
                 f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms). "
