@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import structlog
 
+from app.pipeline.transcriber import BASE_DOMAIN_PROMPT
+
 if TYPE_CHECKING:
     import coremltools as ct
     import whisper as openai_whisper
@@ -219,11 +221,20 @@ class WhisperCoreML:
                     return self._transcribe_coreml(audio)
                 except Exception as exc:
                     if self._use_coreml:   # guard: emit warning exactly once
-                        self._use_coreml = False
-                        logger.warning(
-                            "CoreML transcription failed, demoting to faster-whisper",
-                            error=str(exc),
-                        )
+                        if self._fallback_model is not None:
+                            self._use_coreml = False
+                            logger.warning(
+                                "CoreML transcription failed, demoting to faster-whisper",
+                                error=str(exc),
+                            )
+                        else:
+                            # No fallback available — keep CoreML active so the next
+                            # call retries rather than entering a permanently broken state.
+                            logger.error(
+                                "CoreML transcription failed; no fallback — dropping utterance",
+                                error=str(exc),
+                            )
+                            return ("", 0.0)
             return self._transcribe_fallback(audio)
 
     def _transcribe_coreml(self, audio: np.ndarray) -> tuple[str, float]:
@@ -253,7 +264,7 @@ class WhisperCoreML:
         return text, round(confidence, 3)
 
     def _transcribe_fallback(self, audio: np.ndarray) -> tuple[str, float]:
-        """faster-whisper fallback — same logic as Transcriber."""
+        """faster-whisper fallback — behaviorally equivalent to Transcriber."""
         if self._fallback_model is None:
             raise RuntimeError("WhisperCoreML not loaded — call load() first")
 
@@ -263,6 +274,8 @@ class WhisperCoreML:
             beam_size=5,
             vad_filter=False,
             word_timestamps=False,
+            initial_prompt=BASE_DOMAIN_PROMPT,
+            condition_on_previous_text=True,
         )
 
         text_parts: list[str] = []
