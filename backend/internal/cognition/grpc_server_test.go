@@ -143,16 +143,44 @@ func TestRegistryCancelActive(t *testing.T) {
 	cancelled := false
 	reg.Register("sess-a", func() { cancelled = true })
 
-	reg.CancelActive()
+	id := reg.CancelActive()
 	if !cancelled {
 		t.Fatal("CancelActive should cancel the most recently registered session")
+	}
+	if id != "sess-a" {
+		t.Fatalf("expected CancelActive to return sess-a, got %q", id)
 	}
 }
 
 func TestRegistryCancelActiveNoOp(t *testing.T) {
 	reg := NewStreamRegistry()
-	// No active session — must not panic.
-	reg.CancelActive()
+	// No active session — must return "" and not panic.
+	id := reg.CancelActive()
+	if id != "" {
+		t.Fatalf("expected empty return from CancelActive with no active session, got %q", id)
+	}
+}
+
+func TestCancelActiveAfterUnregister(t *testing.T) {
+	reg := NewStreamRegistry()
+	reg.Register("sess-a", func() {})
+	reg.Unregister("sess-a")
+
+	id := reg.CancelActive()
+	if id != "" {
+		t.Fatalf("CancelActive should return \"\" after session is unregistered, got %q", id)
+	}
+}
+
+func TestCancelClearsActiveSession(t *testing.T) {
+	reg := NewStreamRegistry()
+	reg.Register("sess-a", func() {})
+	reg.Cancel("sess-a")
+
+	id := reg.CancelActive()
+	if id != "" {
+		t.Fatalf("CancelActive should return \"\" after session is cancelled, got %q", id)
+	}
 }
 
 func TestInterruptSignalDefaultCancelsActive(t *testing.T) {
@@ -183,8 +211,8 @@ func TestInterruptSignalDefaultCancelsActive(t *testing.T) {
 	if err := json.Unmarshal(hub.messages[0], &msg); err != nil {
 		t.Fatalf("broadcast message is not valid JSON: %v", err)
 	}
-	if msg["session_id"] != "default" {
-		t.Fatalf("expected session_id=default in broadcast, got %q", msg["session_id"])
+	if msg["session_id"] != "active-session" {
+		t.Fatalf("expected session_id=active-session in broadcast, got %q", msg["session_id"])
 	}
 }
 

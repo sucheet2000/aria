@@ -45,17 +45,22 @@ func (s *CognitionGRPCServer) StreamCognition(
 		case *perceptionv1.CognitionRequest_InterruptSignal:
 			if p.InterruptSignal {
 				sessionID := req.SessionId
+				var broadcastID string
 				if sessionID == "default" {
-					s.registry.CancelActive()
+					broadcastID = s.registry.CancelActive()
 				} else {
 					s.registry.Cancel(sessionID)
+					broadcastID = sessionID
+				}
+				if broadcastID == "" {
+					continue
 				}
 				payload, _ := json.Marshal(map[string]string{
 					"type":       "aria_interrupt",
-					"session_id": sessionID,
+					"session_id": broadcastID,
 				})
 				s.hub.Broadcast(payload)
-				s.log.Info().Str("session_id", sessionID).Msg("interrupt signal received — stream cancelled")
+				s.log.Info().Str("session_id", broadcastID).Msg("interrupt signal received — stream cancelled")
 			}
 
 		case *perceptionv1.CognitionRequest_GestureEvent:

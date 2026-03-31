@@ -63,20 +63,31 @@ func (r *StreamRegistry) Cancel(id string) {
 	} else {
 		r.pending[id] = pendingEntry{setAt: time.Now()}
 	}
+	if r.activeSession == id {
+		r.activeSession = ""
+	}
 }
 
-// CancelActive cancels whichever session was most recently registered. Used when
-// the interrupt producer (e.g. vision worker) does not know the active session ID
-// and sends session_id="default" instead.
-func (r *StreamRegistry) CancelActive() {
+// CancelActive cancels whichever session was most recently registered and returns
+// its ID. Returns "" if there is no active session. Used when the interrupt
+// producer (e.g. vision worker) does not know the active session ID and sends
+// session_id="default" instead.
+func (r *StreamRegistry) CancelActive() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.activeSession != "" {
-		if cancel, ok := r.active[r.activeSession]; ok {
-			cancel()
-			delete(r.active, r.activeSession)
-		}
+	if r.activeSession == "" {
+		return ""
 	}
+	if cancel, ok := r.active[r.activeSession]; ok {
+		cancel()
+		delete(r.active, r.activeSession)
+		id := r.activeSession
+		r.activeSession = ""
+		return id
+	}
+	// activeSession points to an already-removed entry — clear stale ref.
+	r.activeSession = ""
+	return ""
 }
 
 // Unregister removes the entry for id without calling cancel. Called on normal
@@ -86,4 +97,7 @@ func (r *StreamRegistry) Unregister(id string) {
 	defer r.mu.Unlock()
 	delete(r.active, id)
 	delete(r.pending, id)
+	if r.activeSession == id {
+		r.activeSession = ""
+	}
 }
