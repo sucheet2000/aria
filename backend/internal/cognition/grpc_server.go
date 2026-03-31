@@ -7,6 +7,8 @@ import (
 	"github.com/rs/zerolog"
 	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Broadcaster is satisfied by server.Hub — defined here to avoid an import cycle.
@@ -45,22 +47,17 @@ func (s *CognitionGRPCServer) StreamCognition(
 		case *perceptionv1.CognitionRequest_InterruptSignal:
 			if p.InterruptSignal {
 				sessionID := req.SessionId
-				var broadcastID string
-				if sessionID == "default" {
-					broadcastID = s.registry.CancelActive()
-				} else {
-					s.registry.Cancel(sessionID)
-					broadcastID = sessionID
+				if sessionID == "default" || sessionID == "" {
+					return status.Error(codes.InvalidArgument,
+						"interrupt_signal requires a concrete session_id, not default or empty")
 				}
-				if broadcastID == "" {
-					continue
-				}
+				s.registry.Cancel(sessionID)
 				payload, _ := json.Marshal(map[string]string{
 					"type":       "aria_interrupt",
-					"session_id": broadcastID,
+					"session_id": sessionID,
 				})
 				s.hub.Broadcast(payload)
-				s.log.Info().Str("session_id", broadcastID).Msg("interrupt signal received — stream cancelled")
+				s.log.Info().Str("session_id", sessionID).Msg("interrupt signal received — stream cancelled")
 			}
 
 		case *perceptionv1.CognitionRequest_GestureEvent:

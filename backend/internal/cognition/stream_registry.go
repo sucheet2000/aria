@@ -7,6 +7,7 @@ import (
 )
 
 const pendingTTL = 10 * time.Second
+const maxPendingSize = 32
 
 type pendingEntry struct {
 	setAt time.Time
@@ -34,11 +35,31 @@ func NewStreamRegistry() *StreamRegistry {
 	}
 }
 
+// ActiveSessionID returns the ID of the most recently registered session, or ""
+// if no session is currently active.
+func (r *StreamRegistry) ActiveSessionID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.activeSession
+}
+
+// evictStalePending removes pending entries older than pendingTTL. Caller must
+// hold r.mu.
+func (r *StreamRegistry) evictStalePending() {
+	now := time.Now()
+	for id, p := range r.pending {
+		if now.Sub(p.setAt) >= pendingTTL {
+			delete(r.pending, id)
+		}
+	}
+}
+
 // Register stores cancel for the given session. If an interrupt arrived before
 // this call (pending entry), cancel is called immediately.
 func (r *StreamRegistry) Register(id string, cancel context.CancelFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.evictStalePending()
 	if p, ok := r.pending[id]; ok {
 		if time.Since(p.setAt) < pendingTTL {
 			cancel()
@@ -57,10 +78,22 @@ func (r *StreamRegistry) Register(id string, cancel context.CancelFunc) {
 func (r *StreamRegistry) Cancel(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.evictStalePending()
 	if cancel, ok := r.active[id]; ok {
 		cancel()
 		delete(r.active, id)
 	} else {
+		if len(r.pending) >= maxPendingSize {
+			var oldestID string
+			var oldestTime time.Time
+			for pid, p := range r.pending {
+				if oldestID == "" || p.setAt.Before(oldestTime) {
+					oldestID = pid
+					oldestTime = p.setAt
+				}
+			}
+			delete(r.pending, oldestID)
+		}
 		r.pending[id] = pendingEntry{setAt: time.Now()}
 	}
 	if r.activeSession == id {
@@ -95,6 +128,7 @@ func (r *StreamRegistry) CancelActive() string {
 func (r *StreamRegistry) Unregister(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.evictStalePending()
 	delete(r.active, id)
 	delete(r.pending, id)
 	if r.activeSession == id {

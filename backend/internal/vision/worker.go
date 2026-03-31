@@ -3,10 +3,13 @@ package vision
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,8 +28,25 @@ type Worker struct {
 	scriptPath string
 	hub        Broadcaster
 	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdinMu    sync.Mutex
 	log        zerolog.Logger
 	cancel     context.CancelFunc
+}
+
+// SetActiveSession writes the active frontend session ID to the vision worker's
+// stdin so it can embed the concrete session ID in interrupt signals.
+func (w *Worker) SetActiveSession(id string) {
+	w.stdinMu.Lock()
+	defer w.stdinMu.Unlock()
+	if w.stdin == nil {
+		return
+	}
+	msg, _ := json.Marshal(map[string]string{
+		"type":       "active_session",
+		"session_id": id,
+	})
+	_, _ = w.stdin.Write(append(msg, '\n'))
 }
 
 // New creates a new Worker.
@@ -82,11 +102,19 @@ func (w *Worker) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		w.log.Error().Err(err).Str("bin", w.pythonBin).Str("script", w.scriptPath).Msg("failed to start vision process")
 		return err
 	}
+
+	w.stdinMu.Lock()
+	w.stdin = stdinPipe
+	w.stdinMu.Unlock()
 
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("vision process started")
 
@@ -119,6 +147,9 @@ func (w *Worker) run(ctx context.Context) error {
 	}()
 
 	err = cmd.Wait()
+	w.stdinMu.Lock()
+	w.stdin = nil
+	w.stdinMu.Unlock()
 	if ctx.Err() != nil {
 		return nil
 	}

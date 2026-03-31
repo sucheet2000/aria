@@ -21,6 +21,7 @@ const (
 type VisionController interface {
 	Start(ctx context.Context) error
 	Stop()
+	SetActiveSession(id string)
 }
 
 // AudioController is implemented by the audio worker.
@@ -177,16 +178,23 @@ func (c *Client) readPump() {
 
 	for {
 		_, message, err := c.conn.ReadMessage()
-		if c.hub.audio != nil {
-			var msg struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(message, &msg) == nil {
-				switch msg.Type {
-				case "tts_mute":
+		var msg struct {
+			Type      string `json:"type"`
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal(message, &msg) == nil {
+			switch msg.Type {
+			case "tts_mute":
+				if c.hub.audio != nil {
 					c.hub.audio.Mute(true)
-				case "tts_unmute":
+				}
+			case "tts_unmute":
+				if c.hub.audio != nil {
 					c.hub.audio.Mute(false)
+				}
+			case "session_init":
+				if c.hub.vision != nil && msg.SessionID != "" {
+					c.hub.vision.SetActiveSession(msg.SessionID)
 				}
 			}
 		}

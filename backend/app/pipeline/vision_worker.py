@@ -47,6 +47,25 @@ _HAND_MODEL_URL = (
 )
 
 _stop = False
+_active_session_id: str = ""
+
+
+def _watch_stdin() -> None:
+    """Background thread: read JSON commands from stdin and update module state."""
+    global _active_session_id
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                cmd = json.loads(line)
+                if cmd.get("type") == "active_session":
+                    _active_session_id = cmd.get("session_id", "")
+            except json.JSONDecodeError:
+                pass
+    except Exception:
+        pass
 
 
 class FaceExitDetector:
@@ -188,6 +207,9 @@ def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None"
 
 
 def run_synthetic(args: argparse.Namespace) -> None:
+    import threading
+    threading.Thread(target=_watch_stdin, daemon=True).start()
+
     fake_face = [[0.5, 0.5, 0.0]] * 478
     fake_pose = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
     frame_interval = 1.0 / args.fps
@@ -235,6 +257,9 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
 
 def run_camera(args: argparse.Namespace) -> None:
+    import threading
+    threading.Thread(target=_watch_stdin, daemon=True).start()
+
     face_model_path = "models/face_landmarker.task"
     hand_model_path = "models/hand_landmarker.task"
     _ensure_model(_FACE_MODEL_URL, face_model_path)
@@ -325,7 +350,7 @@ def run_camera(args: argparse.Namespace) -> None:
                             [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
                         )
 
-            if _interrupt_queue is not None:
+            if _interrupt_queue is not None and _active_session_id:
                 face_detected = bool(face_result.face_landmarks)
                 if face_exit_detector.update(face_detected, now):
                     import queue as _queue
@@ -333,7 +358,7 @@ def run_camera(args: argparse.Namespace) -> None:
                     try:
                         _interrupt_queue.put_nowait(
                             _pb2.CognitionRequest(
-                                session_id="default",
+                                session_id=_active_session_id,
                                 interrupt_signal=True,
                             )
                         )

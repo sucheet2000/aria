@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"github.com/rs/zerolog"
@@ -183,7 +185,7 @@ func TestCancelClearsActiveSession(t *testing.T) {
 	}
 }
 
-func TestInterruptSignalDefaultCancelsActive(t *testing.T) {
+func TestInterruptWithDefaultSessionRejected(t *testing.T) {
 	reg := NewStreamRegistry()
 	hub := &mockBroadcaster{}
 	srv := NewCognitionGRPCServer(reg, hub, zerolog.Nop())
@@ -199,20 +201,83 @@ func TestInterruptSignalDefaultCancelsActive(t *testing.T) {
 			},
 		},
 	}
-	srv.StreamCognition(stream) //nolint:errcheck
+	err := srv.StreamCognition(stream)
 
-	if !cancelled {
-		t.Fatal("session_id=default should cancel the active session via CancelActive")
+	if err == nil {
+		t.Fatal("expected InvalidArgument error for interrupt with session_id=default")
 	}
-	if len(hub.messages) == 0 {
-		t.Fatal("expected broadcast after interrupt")
+	if cancelled {
+		t.Fatal("active session must not be cancelled when interrupt is rejected")
 	}
-	var msg map[string]string
-	if err := json.Unmarshal(hub.messages[0], &msg); err != nil {
-		t.Fatalf("broadcast message is not valid JSON: %v", err)
+	if len(hub.messages) != 0 {
+		t.Fatal("no broadcast expected for rejected interrupt")
 	}
-	if msg["session_id"] != "active-session" {
-		t.Fatalf("expected session_id=active-session in broadcast, got %q", msg["session_id"])
+}
+
+func TestInterruptWithEmptySessionRejected(t *testing.T) {
+	reg := NewStreamRegistry()
+	hub := &mockBroadcaster{}
+	srv := NewCognitionGRPCServer(reg, hub, zerolog.Nop())
+
+	cancelled := false
+	reg.Register("active-session", func() { cancelled = true })
+
+	stream := &fakeStreamCognitionServer{
+		recv: []*perceptionv1.CognitionRequest{
+			{
+				SessionId: "",
+				Payload:   &perceptionv1.CognitionRequest_InterruptSignal{InterruptSignal: true},
+			},
+		},
+	}
+	err := srv.StreamCognition(stream)
+
+	if err == nil {
+		t.Fatal("expected InvalidArgument error for interrupt with empty session_id")
+	}
+	if cancelled {
+		t.Fatal("active session must not be cancelled when interrupt is rejected")
+	}
+	if len(hub.messages) != 0 {
+		t.Fatal("no broadcast expected for rejected interrupt")
+	}
+}
+
+func TestPendingEvictionOnMutation(t *testing.T) {
+	reg := NewStreamRegistry()
+
+	// Fill pending map to capacity.
+	for i := range maxPendingSize {
+		reg.Cancel(fmt.Sprintf("unknown-%d", i))
+	}
+	if len(reg.pending) != maxPendingSize {
+		t.Fatalf("expected %d pending entries, got %d", maxPendingSize, len(reg.pending))
+	}
+
+	// One more Cancel must evict the oldest and keep size at maxPendingSize.
+	reg.Cancel("overflow")
+	if len(reg.pending) != maxPendingSize {
+		t.Fatalf("pending map should stay at %d after overflow, got %d", maxPendingSize, len(reg.pending))
+	}
+}
+
+func TestStalePendingClearedByRegister(t *testing.T) {
+	reg := NewStreamRegistry()
+
+	// Manually insert a stale pending entry.
+	reg.mu.Lock()
+	reg.pending["stale"] = pendingEntry{setAt: time.Now().Add(-(pendingTTL + time.Second))}
+	reg.mu.Unlock()
+
+	// Register a different session — eviction runs on every mutation.
+	reg.Register("other-session", func() {})
+
+	reg.mu.Lock()
+	_, still := reg.pending["stale"]
+	reg.mu.Unlock()
+
+	if still {
+		t.Fatal("stale pending entry should have been evicted on Register")
 	}
 }
 
