@@ -201,6 +201,8 @@ def run_microphone(args: argparse.Namespace) -> None:
     speech_chunks: list[np.ndarray] = []
     silence_ms: int = 0
     in_speech: bool = False
+    _consecutive_transcribe_errors: int = 0
+    _MAX_CONSECUTIVE_ERRORS = 5
 
     with sd.InputStream(
         samplerate=native_sr,
@@ -250,8 +252,17 @@ def run_microphone(args: argparse.Namespace) -> None:
 
                 try:
                     text, confidence = transcriber.transcribe(completed)
+                    _consecutive_transcribe_errors = 0
                 except Exception as exc:
+                    _consecutive_transcribe_errors += 1
                     print(f"transcribe error: {exc}", file=sys.stderr)
+                    if _consecutive_transcribe_errors >= _MAX_CONSECUTIVE_ERRORS:
+                        print(
+                            f"FATAL: {_consecutive_transcribe_errors} consecutive "
+                            "transcription errors — exiting so supervisor can restart",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
                     continue
 
                 duration_ms = int((time.time() - t0) * 1000)

@@ -91,17 +91,25 @@ def benchmark_faster_whisper(audio: np.ndarray) -> tuple[dict, str]:
     print(f"\n[faster-whisper] loading model (tiny, cpu, int8)…")
     model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
+    # Decode settings must match Transcriber and WhisperCoreML production settings
+    _decode_kwargs = dict(
+        language="en",
+        beam_size=5,
+        vad_filter=False,
+        word_timestamps=False,
+        initial_prompt=DOMAIN_PROMPT,
+        condition_on_previous_text=True,
+    )
+
     # Warmup
-    segs, _ = model.transcribe(audio, language="en", beam_size=5,
-                               vad_filter=False, word_timestamps=False)
+    segs, _ = model.transcribe(audio, **_decode_kwargs)
     warmup_text = " ".join(s.text for s in segs).strip()
     print(f"  warmup transcript: {warmup_text!r}")
 
     latencies = []
     for i in range(N_RUNS):
         t0 = time.perf_counter()
-        segs, _ = model.transcribe(audio, language="en", beam_size=5,
-                                   vad_filter=False, word_timestamps=False)
+        segs, _ = model.transcribe(audio, **_decode_kwargs)
         _ = list(segs)  # consume generator to complete inference
         latencies.append((time.perf_counter() - t0) * 1000)
         sys.stdout.write(f"\r  run {i+1}/{N_RUNS}  last={latencies[-1]:.0f}ms")
