@@ -153,24 +153,10 @@ class WhisperCoreML:
                 expected_path=str(self._encoder_path),
             )
 
-        # Always pre-load faster-whisper so runtime demotion (_use_coreml → False)
-        # can immediately call _transcribe_fallback() without raising.
-        # When CoreML already succeeded, guard this separately — a missing
-        # faster-whisper install must not kill a healthy CoreML backend.
-        if self._use_coreml:
-            try:
-                self._load_fallback_locked()
-            except Exception as exc:
-                logger.warning(
-                    "faster-whisper preload failed; runtime demotion unavailable",
-                    model=self._model_size,
-                    error=str(exc),
-                )
-                # CoreML is ready; keep _use_coreml=True and stay ready.
-                self._state = "ready"
-        else:
-            # CoreML not active — faster-whisper is the only backend; hard fail on error.
-            self._load_fallback_locked()
+        # Always load faster-whisper. faster-whisper is a hard dependency:
+        # if it fails, load() raises so the worker exits at startup rather than
+        # entering a state where runtime demotion has no backend to route to.
+        self._load_fallback_locked()
 
     def _load_fallback_locked(self) -> None:
         """Called inside self._lock. Loads faster-whisper. Does not mutate _use_coreml."""
@@ -221,23 +207,11 @@ class WhisperCoreML:
                     return self._transcribe_coreml(audio)
                 except Exception as exc:
                     if self._use_coreml:   # guard: emit warning exactly once
-                        if self._fallback_model is not None:
-                            self._use_coreml = False
-                            logger.warning(
-                                "CoreML transcription failed, demoting to faster-whisper",
-                                error=str(exc),
-                            )
-                        else:
-                            # No fallback available — transition to failed so
-                            # subsequent calls fail deterministically rather than
-                            # silently dropping every utterance indefinitely.
-                            self._state = "failed"
-                            logger.error(
-                                "CoreML transcription failed; no fallback — "
-                                "marking failed, reload required",
-                                error=str(exc),
-                            )
-                            return ("", 0.0)
+                        self._use_coreml = False
+                        logger.warning(
+                            "CoreML transcription failed, demoting to faster-whisper",
+                            error=str(exc),
+                        )
             return self._transcribe_fallback(audio)
 
     def _transcribe_coreml(self, audio: np.ndarray) -> tuple[str, float]:
@@ -254,7 +228,16 @@ class WhisperCoreML:
         enc_out_np = self._coreml_encoder.predict({"mel": mel_np})["encoder_output"]
         encoder_output = torch.from_numpy(enc_out_np)
 
-        options = DecodingOptions(language="en", fp16=False)
+        # Match Transcriber decoding settings: beam_size=5, domain prompt.
+        # (condition_on_previous_text is implicit via prompt — openai-whisper's
+        # DecodingOptions uses `prompt` for the same purpose as faster-whisper's
+        # initial_prompt / condition_on_previous_text.)
+        options = DecodingOptions(
+            language="en",
+            fp16=False,
+            beam_size=5,
+            prompt=BASE_DOMAIN_PROMPT,
+        )
         results = decode(self._whisper_model, encoder_output, options)
 
         if not results:

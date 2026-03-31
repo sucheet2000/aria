@@ -86,13 +86,13 @@ def test_fallback_model_always_loaded(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_coreml_stays_ready_when_fallback_preload_fails
+# test_load_fails_when_fallback_unavailable
 # ---------------------------------------------------------------------------
 
-def test_coreml_stays_ready_when_fallback_preload_fails(tmp_path) -> None:
-    """When CoreML loads successfully but faster-whisper preload fails,
-    state stays 'ready' with _use_coreml=True. Runtime demotion is unavailable
-    but the primary CoreML path is unaffected."""
+def test_load_fails_when_fallback_unavailable(tmp_path) -> None:
+    """load() hard-fails if faster-whisper is unavailable. faster-whisper is a
+    hard dependency: the worker must exit at startup rather than silently
+    dropping every utterance when runtime demotion has no backend to route to."""
     mock_encoder = mock.MagicMock()
     mock_encoder.predict.return_value = {
         "encoder_output": np.zeros((1, 1500, 384), dtype=np.float32)
@@ -103,45 +103,10 @@ def test_coreml_stays_ready_when_fallback_preload_fails(tmp_path) -> None:
          mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
          mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
         w = WhisperCoreML(model_size="tiny")
-        w.load()  # must not raise
+        with pytest.raises(Exception):
+            w.load()
 
-    assert w._use_coreml is True, "CoreML should remain active"
-    assert w._state == "ready", f"expected ready, got {w._state}"
-    assert w._fallback_model is None, "fallback unavailable when preload failed"
-
-
-# ---------------------------------------------------------------------------
-# test_coreml_error_without_fallback_returns_empty_not_raises
-# ---------------------------------------------------------------------------
-
-def test_coreml_error_without_fallback_returns_empty_not_raises(tmp_path) -> None:
-    """When CoreML errors and no fallback is available, transcribe() returns ('', 0.0)
-    and _use_coreml stays True so the next call retries CoreML."""
-    mock_encoder = mock.MagicMock()
-    mock_encoder.predict.return_value = {
-        "encoder_output": np.zeros((1, 1500, 384), dtype=np.float32)
-    }
-
-    with mock.patch("faster_whisper.WhisperModel", side_effect=ImportError("no faster-whisper")), \
-         mock.patch("coremltools.models.MLModel", return_value=mock_encoder), \
-         mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
-         mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
-        w = WhisperCoreML(model_size="tiny")
-        w.load()
-
-    assert w._use_coreml is True
-    assert w._fallback_model is None
-
-    # Force a runtime CoreML failure
-    w._coreml_encoder = mock.MagicMock()
-    w._coreml_encoder.predict.side_effect = RuntimeError("CoreML blew up")
-
-    result = w.transcribe(_make_audio())
-    assert result == ("", 0.0), f"expected empty, got {result}"
-    assert w._state == "failed", (
-        "state must become 'failed' to fail deterministically rather than "
-        "dropping every utterance indefinitely"
-    )
+    assert w._state == "failed", f"expected failed, got {w._state}"
 
 
 # ---------------------------------------------------------------------------
