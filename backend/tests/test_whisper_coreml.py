@@ -89,10 +89,10 @@ def test_fallback_model_always_loaded(tmp_path) -> None:
 # test_load_fails_when_fallback_unavailable
 # ---------------------------------------------------------------------------
 
-def test_load_fails_when_fallback_unavailable(tmp_path) -> None:
-    """load() hard-fails if faster-whisper is unavailable. faster-whisper is a
-    hard dependency: the worker must exit at startup rather than silently
-    dropping every utterance when runtime demotion has no backend to route to."""
+def test_coreml_only_mode_raises_on_runtime_error(tmp_path) -> None:
+    """When faster-whisper preload fails but CoreML succeeds, load() succeeds
+    (CoreML-only mode). A subsequent CoreML runtime error re-raises so the caller
+    handles it explicitly — no silent utterance drops."""
     mock_encoder = mock.MagicMock()
     mock_encoder.predict.return_value = {
         "encoder_output": np.zeros((1, 1500, 384), dtype=np.float32)
@@ -103,10 +103,17 @@ def test_load_fails_when_fallback_unavailable(tmp_path) -> None:
          mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
          mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
         w = WhisperCoreML(model_size="tiny")
-        with pytest.raises(Exception):
-            w.load()
+        w.load()  # must succeed in CoreML-only mode
 
-    assert w._state == "failed", f"expected failed, got {w._state}"
+    assert w._use_coreml is True
+    assert w._fallback_model is None
+    assert w._state == "ready"
+
+    # Inject a CoreML runtime failure — must raise, not silently return empty
+    w._coreml_encoder = mock.MagicMock()
+    w._coreml_encoder.predict.side_effect = RuntimeError("CoreML failed")
+    with pytest.raises(RuntimeError):
+        w.transcribe(_make_audio())
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +121,11 @@ def test_load_fails_when_fallback_unavailable(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_state_machine_unloaded() -> None:
-    """transcribe() before load() returns ('', 0.0) instead of raising."""
+    """transcribe() before load() raises RuntimeError (consistent with Transcriber contract)."""
     w = WhisperCoreML(model_size="tiny")
     assert w._state == "unloaded"
-    result = w.transcribe(_make_audio())
-    assert result == ("", 0.0), f"expected empty result before load, got {result}"
+    with pytest.raises(RuntimeError, match="not ready"):
+        w.transcribe(_make_audio())
 
 
 # ---------------------------------------------------------------------------

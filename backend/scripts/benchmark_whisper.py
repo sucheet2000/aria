@@ -35,6 +35,12 @@ N_RUNS = 20
 BENCHMARKS_DIR = pathlib.Path(__file__).parent.parent / "benchmarks"
 OUTPUT_PATH = BENCHMARKS_DIR / "whisper_latency.json"
 ENCODER_PATH = pathlib.Path(__file__).parent.parent / "models" / "whisper-tiny-encoder.mlpackage"
+# Must match Transcriber.BASE_DOMAIN_PROMPT and WhisperCoreML._transcribe_coreml() prompt
+DOMAIN_PROMPT = (
+    "Software engineering, Go, Python, TypeScript, React, Next.js, "
+    "ARIA, machine learning, neural networks, MediaPipe, WebSocket, "
+    "FastAPI, ChromaDB, memory, vision, gesture, avatar"
+)
 
 
 def detect_hardware() -> str:
@@ -126,7 +132,14 @@ def benchmark_coreml(audio: np.ndarray) -> tuple[dict, str] | tuple[None, str]:
         mel_np = mel.numpy().astype(np.float32)[np.newaxis]
         enc_out = coreml_encoder.predict({"mel": mel_np})["encoder_output"]
         encoder_output = torch.from_numpy(enc_out)
-        options = DecodingOptions(language="en", fp16=False)
+        # Match WhisperCoreML._transcribe_coreml() settings exactly so the
+        # benchmark represents production-equivalent decode workload.
+        options = DecodingOptions(
+            language="en",
+            fp16=False,
+            beam_size=5,
+            prompt=DOMAIN_PROMPT,
+        )
         results = decode(whisper_model, encoder_output, options)
         return results[0].text.strip() if results else ""
 
@@ -180,6 +193,11 @@ def main() -> None:
         "audio_clip_seconds": CLIP_SECONDS,
         "n_runs": N_RUNS,
         "model": "whisper-tiny",
+        "decode_parity": True,
+        "decode_parity_note": (
+            "Both paths use beam_size=5 and the same domain prompt, "
+            "matching production WhisperCoreML._transcribe_coreml() and Transcriber settings."
+        ),
         "ane_utilization_measured": False,
         "ane_validation_note": (
             "Latency alone does not prove ANE execution. "

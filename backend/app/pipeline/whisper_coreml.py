@@ -153,10 +153,24 @@ class WhisperCoreML:
                 expected_path=str(self._encoder_path),
             )
 
-        # Always load faster-whisper. faster-whisper is a hard dependency:
-        # if it fails, load() raises so the worker exits at startup rather than
-        # entering a state where runtime demotion has no backend to route to.
-        self._load_fallback_locked()
+        # Pre-load faster-whisper for demotion. When CoreML is active, allow
+        # CoreML-only mode if faster-whisper is unavailable: runtime demotion
+        # will re-raise the original CoreML exception (explicit error, not a
+        # silent drop). When CoreML is not active, faster-whisper is the only
+        # backend — hard fail so the worker exits at startup.
+        if self._use_coreml:
+            try:
+                self._load_fallback_locked()
+            except Exception as exc:
+                logger.warning(
+                    "faster-whisper preload failed; running CoreML-only "
+                    "(demotion unavailable — CoreML errors will raise)",
+                    model=self._model_size,
+                    error=str(exc),
+                )
+                self._state = "ready"
+        else:
+            self._load_fallback_locked()
 
     def _load_fallback_locked(self) -> None:
         """Called inside self._lock. Loads faster-whisper. Does not mutate _use_coreml."""
@@ -175,11 +189,11 @@ class WhisperCoreML:
         Transcribe audio. Thread-safe — serialised by internal lock.
 
         State guards:
-          - "unloaded" / "loading": returns ("", 0.0) with a warning.
-          - "failed": attempts faster-whisper fallback if model is available,
-            otherwise returns ("", 0.0).
-          - "ready": runs inference, auto-demotes to faster-whisper on CoreML
-            runtime exception (one-time warning).
+          - "unloaded" / "loading": raises RuntimeError (same contract as Transcriber).
+          - "failed": uses faster-whisper fallback if available, else raises.
+          - "ready": runs inference. On CoreML runtime exception, demotes to
+            faster-whisper (one-time warning) when fallback is available; otherwise
+            re-raises so the caller can handle it explicitly.
 
         Args:
             audio_chunks: list of float32 arrays at 16kHz
@@ -193,13 +207,14 @@ class WhisperCoreML:
 
         with self._lock:
             if self._state in ("unloaded", "loading"):
-                logger.warning("WhisperCoreML not ready", state=self._state)
-                return ("", 0.0)
+                raise RuntimeError(
+                    f"WhisperCoreML not ready — call load() first (state={self._state!r})"
+                )
 
             if self._state == "failed":
                 if self._fallback_model is not None:
                     return self._transcribe_fallback(audio)
-                return ("", 0.0)
+                raise RuntimeError("WhisperCoreML in failed state with no fallback available")
 
             # _state == "ready"
             if self._use_coreml:
@@ -207,11 +222,14 @@ class WhisperCoreML:
                     return self._transcribe_coreml(audio)
                 except Exception as exc:
                     if self._use_coreml:   # guard: emit warning exactly once
-                        self._use_coreml = False
-                        logger.warning(
-                            "CoreML transcription failed, demoting to faster-whisper",
-                            error=str(exc),
-                        )
+                        if self._fallback_model is not None:
+                            self._use_coreml = False
+                            logger.warning(
+                                "CoreML transcription failed, demoting to faster-whisper",
+                                error=str(exc),
+                            )
+                        else:
+                            raise  # no fallback — caller handles the exception explicitly
             return self._transcribe_fallback(audio)
 
     def _transcribe_coreml(self, audio: np.ndarray) -> tuple[str, float]:

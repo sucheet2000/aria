@@ -3,6 +3,8 @@
   "audio_clip_seconds": 3,
   "n_runs": 20,
   "model": "whisper-tiny",
+  "decode_parity": true,
+  "decode_parity_note": "Both paths use beam_size=5 and the same domain prompt, matching production WhisperCoreML._transcribe_coreml() and Transcriber settings.",
   "ane_utilization_measured": false,
   "ane_validation_note": "Latency alone does not prove ANE execution. Run Instruments > Metal System Trace to confirm ANE routing.",
   "faster_whisper": {
