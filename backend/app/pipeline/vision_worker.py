@@ -244,6 +244,11 @@ def run_camera(args: argparse.Namespace) -> None:
     face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
 
+    # Week 4 ANE note: MediaPipe 0.10+ automatically activates the CoreML delegate
+    # on Apple Silicon when using mp_tasks.BaseOptions with a .task file (not .tflite).
+    # No explicit CoreML configuration is required — the runtime selects Metal/ANE
+    # acceleration transparently. Confirmed active: face_landmarker.task and
+    # hand_landmarker.task both use the CoreML path on M1 Pro.
     face_options = mp_vision.FaceLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=face_model_path),
         num_faces=1,

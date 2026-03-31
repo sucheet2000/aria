@@ -110,7 +110,11 @@ def run_microphone(args: argparse.Namespace) -> None:
     import sounddevice as sd
 
     vad = VADProcessor()
-    transcriber = Transcriber(model_size=args.model)
+    if args.coreml:
+        from app.pipeline.whisper_coreml import WhisperCoreML
+        transcriber = WhisperCoreML(model_size=args.model)
+    else:
+        transcriber = Transcriber(model_size=args.model)
     denoiser = Denoiser()
 
     try:
@@ -126,6 +130,9 @@ def run_microphone(args: argparse.Namespace) -> None:
     except Exception as exc:
         print(f"Transcriber load error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    backend = "coreml" if (args.coreml and getattr(transcriber, "_use_coreml", False)) else "faster-whisper"
+    logger.info("transcription backend active", backend=backend)
 
     if args.denoise:
         denoiser.load()
@@ -317,6 +324,16 @@ def main() -> None:
         type=int,
         default=MAX_UTTERANCE_MS,
         help="maximum utterance length before forced flush (ms)",
+    )
+    parser.add_argument(
+        "--coreml",
+        action="store_true",
+        default=False,
+        help=(
+            "use CoreML encoder + CPU decoder for STT (ANE-routable on M1). "
+            "Defaults to False. Only use if ANE utilization is confirmed via "
+            "Instruments — benchmark first with backend/scripts/benchmark_whisper.py"
+        ),
     )
     args = parser.parse_args()
 

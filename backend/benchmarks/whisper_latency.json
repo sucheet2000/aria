@@ -1,0 +1,26 @@
+{
+  "hardware": "Apple M1 Pro",
+  "audio_clip_seconds": 3,
+  "n_runs": 20,
+  "model": "whisper-tiny",
+  "faster_whisper": {
+    "mean_ms": 164.5,
+    "p50_ms": 163.5,
+    "p95_ms": 174.2,
+    "p99_ms": 175.7,
+    "min_ms": 157.4,
+    "max_ms": 176.0,
+    "n_runs": 20
+  },
+  "coreml_hybrid": {
+    "mean_ms": 56.8,
+    "p50_ms": 54.6,
+    "p95_ms": 64.1,
+    "p99_ms": 65.4,
+    "min_ms": 52.7,
+    "max_ms": 65.8,
+    "n_runs": 20
+  },
+  "coreml_faster": true,
+  "recommendation": "CoreML hybrid is 2.90x faster than faster-whisper (56.8ms vs 164.5ms). Use --coreml if ANE utilization is confirmed via Instruments."
+}
