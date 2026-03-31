@@ -228,10 +228,13 @@ class WhisperCoreML:
                                 error=str(exc),
                             )
                         else:
-                            # No fallback available — keep CoreML active so the next
-                            # call retries rather than entering a permanently broken state.
+                            # No fallback available — transition to failed so
+                            # subsequent calls fail deterministically rather than
+                            # silently dropping every utterance indefinitely.
+                            self._state = "failed"
                             logger.error(
-                                "CoreML transcription failed; no fallback — dropping utterance",
+                                "CoreML transcription failed; no fallback — "
+                                "marking failed, reload required",
                                 error=str(exc),
                             )
                             return ("", 0.0)

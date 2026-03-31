@@ -138,7 +138,10 @@ def test_coreml_error_without_fallback_returns_empty_not_raises(tmp_path) -> Non
 
     result = w.transcribe(_make_audio())
     assert result == ("", 0.0), f"expected empty, got {result}"
-    assert w._use_coreml is True, "_use_coreml must stay True when no fallback exists"
+    assert w._state == "failed", (
+        "state must become 'failed' to fail deterministically rather than "
+        "dropping every utterance indefinitely"
+    )
 
 
 # ---------------------------------------------------------------------------

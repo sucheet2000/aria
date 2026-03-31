@@ -25,6 +25,6 @@
   },
   "coreml_faster": true,
   "ane_recommendation": "validate ANE routing via Instruments before claiming ANE speedup",
-  "latency_recommendation": "use --coreml for lower latency on this hardware",
-  "recommendation": "CoreML hybrid is 2.90x faster than faster-whisper (56.8ms vs 164.5ms). Use --coreml if ANE utilization is confirmed via Instruments."
+  "latency_recommendation": "CoreML latency is lower on this hardware. Do NOT enable --coreml in production until ANE utilization is confirmed via Instruments > Metal System Trace.",
+  "recommendation": "CoreML hybrid is 2.90x faster than faster-whisper (56.8ms vs 164.5ms) on this hardware — latency only, ANE routing unverified. Confirm ANE utilization via Instruments before enabling --coreml."
 }

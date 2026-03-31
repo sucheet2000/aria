@@ -199,12 +199,15 @@ def main() -> None:
         if coreml_faster:
             speedup = fw_stats["mean_ms"] / cml_stats["mean_ms"]
             result["latency_recommendation"] = (
-                f"use --coreml for lower latency on this hardware"
+                "CoreML latency is lower on this hardware. "
+                "Do NOT enable --coreml in production until ANE utilization "
+                "is confirmed via Instruments > Metal System Trace."
             )
             result["recommendation"] = (
                 f"CoreML hybrid is {speedup:.2f}x faster than faster-whisper "
-                f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms). "
-                f"Use --coreml if ANE utilization is confirmed via Instruments."
+                f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms) "
+                f"on this hardware — latency only, ANE routing unverified. "
+                f"Confirm ANE utilization via Instruments before enabling --coreml."
             )
             print(f"✓ CoreML hybrid is FASTER: {speedup:.2f}x speedup "
                   f"({cml_stats['mean_ms']:.1f}ms vs {fw_stats['mean_ms']:.1f}ms mean)")
