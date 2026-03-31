@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +13,9 @@ from app.models.schemas import VisionState
 from app.pipeline.vision import VisionPipeline
 from app.pipeline.emotion import EmotionClassifier
 
-WORKER = Path(__file__).parent.parent / "app" / "pipeline" / "vision_worker.py"
+BACKEND_DIR = Path(__file__).parent.parent
+WORKER = BACKEND_DIR / "app" / "pipeline" / "vision_worker.py"
+_WORKER_ENV = {**os.environ, "PYTHONPATH": str(BACKEND_DIR)}
 
 VALID_EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "fearful", "disgusted"]
 
@@ -69,6 +72,7 @@ def test_worker_synthetic_output_schema() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
     lines = [l for l in result.stdout.splitlines() if l.strip()]
@@ -98,6 +102,7 @@ def test_worker_synthetic_face_landmarks_count() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
     lines = [l for l in result.stdout.splitlines() if l.strip()]
@@ -135,6 +140,7 @@ def test_worker_synthetic_output_includes_emotion_confidence() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
     lines = [l for l in result.stdout.splitlines() if l.strip()]
