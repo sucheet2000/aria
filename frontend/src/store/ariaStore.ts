@@ -64,9 +64,13 @@ export interface ARIAStore {
   // World model
   worldModelUpdates: WorldModelUpdate[];
 
+  // Session
+  sessionId: string;
+
   // Actions
   setWsConnected: (v: boolean) => void;
   setWsError: (v: string | null) => void;
+  setSessionId: (id: string) => void;
   setVisionFrame: (frame: VisionFrame) => void;
   setAvatarEmotion: (v: string) => void;
   setIsSpeaking: (v: boolean) => void;
@@ -91,6 +95,7 @@ export interface ARIAStore {
 export const useAriaStore = create<ARIAStore>((set, get) => ({
   wsConnected: false,
   wsError: null,
+  sessionId: crypto.randomUUID(),
 
   faceLandmarks: [],
   headPose: { pitch: 0, yaw: 0, roll: 0 },
@@ -123,6 +128,7 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
 
   setWsConnected: (v) => set({ wsConnected: v }),
   setWsError: (v) => set({ wsError: v }),
+  setSessionId: (id) => set({ sessionId: id }),
   setVisionFrame: (frame) =>
     set({
       faceLandmarks: frame.face_landmarks,

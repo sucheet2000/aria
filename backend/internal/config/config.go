@@ -22,6 +22,7 @@ type Config struct {
 	TTSProvider        string
 	ElevenLabsVoiceID  string
 	WhisperModel       string
+	CognitionGRPCAddr  string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -80,6 +81,11 @@ func Load() *Config {
 		whisperModel = "base"
 	}
 
+	cognitionGRPCAddr := os.Getenv("COGNITION_GRPC_ADDR")
+	if cognitionGRPCAddr == "" {
+		cognitionGRPCAddr = "127.0.0.1:50052"
+	}
+
 	return &Config{
 		Host:              host,
 		Port:              port,
@@ -93,6 +99,7 @@ func Load() *Config {
 		TTSProvider:       ttsProvider,
 		ElevenLabsVoiceID: elevenLabsVoiceID,
 		WhisperModel:      whisperModel,
+		CognitionGRPCAddr: cognitionGRPCAddr,
 	}
 }
 

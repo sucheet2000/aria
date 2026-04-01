@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import { abortCognitionRef } from "@/hooks/useCognition";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
 
@@ -55,6 +56,10 @@ export function useWebSocket() {
         currentDelayRef.current = INITIAL_DELAY_MS;
         useAriaStore.getState().setWsConnected(true);
         useAriaStore.getState().setWsError(null);
+        const sessionId = useAriaStore.getState().sessionId;
+        if (sessionId) {
+          ws.send(JSON.stringify({ type: "session_init", session_id: sessionId }));
+        }
       };
 
       ws.onmessage = (event: MessageEvent) => {
@@ -75,6 +80,17 @@ export function useWebSocket() {
 
           if (msg.type === "vision_state" || !msg.type) {
             useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
+            return;
+          }
+
+          if (msg.type === "aria_interrupt") {
+            const currentSessionId = useAriaStore.getState().sessionId;
+            if (msg.session_id === currentSessionId) {
+              abortCognitionRef.current?.();
+              window.dispatchEvent(new CustomEvent("aria:interrupt"));
+              useAriaStore.getState().setIsSpeaking(false);
+              useAriaStore.getState().setIsThinking(false);
+            }
             return;
           }
 

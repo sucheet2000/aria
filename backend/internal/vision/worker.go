@@ -3,10 +3,13 @@ package vision
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,12 +24,38 @@ type Broadcaster interface {
 
 // Worker manages the Python vision subprocess.
 type Worker struct {
-	pythonBin  string
-	scriptPath string
-	hub        Broadcaster
-	cmd        *exec.Cmd
-	log        zerolog.Logger
-	cancel     context.CancelFunc
+	pythonBin     string
+	scriptPath    string
+	hub           Broadcaster
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
+	stdinMu       sync.Mutex
+	lastSessionID string
+	log           zerolog.Logger
+	cancel        context.CancelFunc
+}
+
+// SetActiveSession writes the active frontend session ID to the vision worker's
+// stdin so it can embed the concrete session ID in interrupt signals.
+// The ID is also persisted so it can be replayed after a subprocess restart.
+func (w *Worker) SetActiveSession(id string) {
+	w.stdinMu.Lock()
+	defer w.stdinMu.Unlock()
+	w.lastSessionID = id
+	if w.stdin == nil {
+		return
+	}
+	w.writeSessionLocked(id)
+}
+
+// writeSessionLocked sends an active_session command to the subprocess stdin.
+// Caller must hold stdinMu.
+func (w *Worker) writeSessionLocked(id string) {
+	msg, _ := json.Marshal(map[string]string{
+		"type":       "active_session",
+		"session_id": id,
+	})
+	_, _ = w.stdin.Write(append(msg, '\n'))
 }
 
 // New creates a new Worker.
@@ -69,7 +98,7 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 func (w *Worker) run(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, w.pythonBin, w.scriptPath)
+	cmd := exec.CommandContext(ctx, w.pythonBin, w.scriptPath, "--grpc")
 	cmd.Dir = "/Users/sucheetboppana/aria/backend"
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+cmd.Dir)
 	w.cmd = cmd
@@ -82,10 +111,28 @@ func (w *Worker) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		w.log.Error().Err(err).Str("bin", w.pythonBin).Str("script", w.scriptPath).Msg("failed to start vision process")
 		return err
+	}
+
+	w.stdinMu.Lock()
+	w.stdin = stdinPipe
+	lastSess := w.lastSessionID
+	w.stdinMu.Unlock()
+
+	// Replay the last known session ID after the subprocess has had time to
+	// start reading stdin (covers worker restarts and first-connect races).
+	if lastSess != "" {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			w.SetActiveSession(lastSess)
+		}()
 	}
 
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("vision process started")
@@ -119,6 +166,9 @@ func (w *Worker) run(ctx context.Context) error {
 	}()
 
 	err = cmd.Wait()
+	w.stdinMu.Lock()
+	w.stdin = nil
+	w.stdinMu.Unlock()
 	if ctx.Err() != nil {
 		return nil
 	}

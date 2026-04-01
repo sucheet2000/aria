@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import pathlib
+
 from app.models.schemas import VisionContext
 from app.cognition.conflict import detect_conflict
 
-SYSTEM_PROMPT_TEMPLATE = """You are ARIA's reasoning engine. You observe the user through camera and microphone and maintain a persistent world model of who they are.
-
+_OBSERVATION_TEMPLATE = """\
 Current observation:
   Expressive state: {emotion} ({confidence}% confidence)
   Head pose: pitch {pitch} yaw {yaw} roll {roll}
@@ -17,24 +18,15 @@ Recent symbolic state (last 5 inferences):
 Known facts about this user:
 {episodic_memory}
 
-Reasoning instructions:
-  1. Determine the user's current goal state: blocked, exploring, focused, distressed, or idle.
-  2. {conflict_instruction}
-  3. Extract any fact worth remembering as a subject-predicate-object triple. Only store high-confidence facts from explicit statements or strong behavioral patterns.
-  4. Keep natural_language_response to 2-3 sentences. No markdown. No lists. Spoken register only.
+{conflict_instruction}"""
 
-Respond in this exact JSON with no additional text before or after:
-{{
-  "symbolic_inference": "one sentence describing user goal state and context",
-  "world_model_update": {{
-    "triple": {{"subject": "...", "predicate": "...", "object": "..."}},
-    "confidence": 0.0,
-    "source": "explicit_statement"
-  }},
-  "natural_language_response": "spoken response here"
-}}
 
-If no fact is worth storing, set world_model_update to null."""
+def _load_soul() -> str:
+    """Load ARIA's identity from SOUL.md at repo root."""
+    soul_path = pathlib.Path(__file__).parent.parent.parent.parent / "SOUL.md"
+    if soul_path.exists():
+        return soul_path.read_text()
+    return ""  # fallback if SOUL.md missing
 
 NO_CONFLICT_INSTRUCTION = "Respond naturally to what the user said."
 
@@ -70,7 +62,7 @@ def build_system_prompt(
         else "  None yet."
     )
 
-    return SYSTEM_PROMPT_TEMPLATE.format(
+    observation = _OBSERVATION_TEMPLATE.format(
         emotion=vision.emotion,
         confidence=round(vision.confidence * 100, 1),
         pitch=round(vision.pitch, 1),
@@ -82,3 +74,5 @@ def build_system_prompt(
         episodic_memory=episodic_mem_text,
         conflict_instruction=CONFLICT_INSTRUCTION if conflict else NO_CONFLICT_INSTRUCTION,
     )
+
+    return _load_soul() + "\n\n" + observation

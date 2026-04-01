@@ -47,6 +47,60 @@ _HAND_MODEL_URL = (
 )
 
 _stop = False
+_active_session_id: str = ""
+
+
+def _watch_stdin() -> None:
+    """Background thread: read JSON commands from stdin and update module state."""
+    global _active_session_id
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                cmd = json.loads(line)
+                if cmd.get("type") == "active_session":
+                    _active_session_id = cmd.get("session_id", "")
+            except json.JSONDecodeError:
+                pass
+    except Exception:
+        pass
+
+
+class FaceExitDetector:
+    """Pure state machine for detecting when a user exits the camera frame.
+
+    Extracted from the frame loop so it can be unit-tested without real gRPC.
+    Rules:
+    - After first face detection, a 0.5s absence triggers interrupt_needed=True.
+    - Once triggered, no further trigger until face reappears and disappears again.
+    """
+
+    def __init__(self, absence_threshold: float = 0.5) -> None:
+        self._threshold = absence_threshold
+        self._last_face_time: float = time.time()
+        self._face_was_detected: bool = False
+        self._interrupt_sent: bool = False
+
+    def update(self, face_detected: bool, now: float) -> bool:
+        """Update state with the current frame's face detection result.
+
+        Returns True exactly once per exit event (when the absence threshold
+        is crossed). Returns False in all other cases.
+        """
+        if face_detected:
+            self._last_face_time = now
+            self._face_was_detected = True
+            self._interrupt_sent = False
+            return False
+
+        if self._face_was_detected and not self._interrupt_sent:
+            if now - self._last_face_time >= self._threshold:
+                self._interrupt_sent = True
+                return True
+
+        return False
 
 
 def _handle_sigterm(signum: int, frame: object) -> None:
@@ -106,12 +160,72 @@ def solve_head_pose(
     }
 
 
+def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None":
+    """Start a background CognitionService gRPC client on port 50052.
+
+    Returns the interrupt queue so the caller can enqueue CognitionRequests,
+    or None if grpcio is unavailable (shouldn't happen — already installed).
+    The background thread is daemonized and dies with the process.
+    """
+    import queue as _queue
+    import threading
+
+    import grpc as _grpc
+
+    from perception.v1 import perception_pb2 as _pb2
+    from perception.v1 import perception_pb2_grpc as _pb2_grpc
+
+    interrupt_queue: _queue.Queue = _queue.Queue(maxsize=32)
+
+    def _request_gen(q: "_queue.Queue"):
+        while True:
+            req = q.get()
+            if req is None:
+                return
+            yield req
+
+    def _run() -> None:
+        backoff = 1.0
+        while True:
+            try:
+                channel = _grpc.insecure_channel("127.0.0.1:50052")
+                stub = _pb2_grpc.CognitionServiceStub(channel)
+                print("cognition interrupt client connected", file=sys.stderr, flush=True)
+                backoff = 1.0
+                list(stub.StreamCognition(_request_gen(interrupt_queue)))
+            except Exception as exc:
+                print(
+                    f"cognition interrupt stream disconnected, retrying in {backoff}s: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return interrupt_queue
+
+
 def run_synthetic(args: argparse.Namespace) -> None:
+    import threading
+    threading.Thread(target=_watch_stdin, daemon=True).start()
+
     fake_face = [[0.5, 0.5, 0.0]] * 478
     fake_pose = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
     frame_interval = 1.0 / args.fps
     start = time.time()
     last = 0.0
+
+    _grpc_servicer = None
+    _interrupt_queue = None
+    if args.grpc:
+        import threading
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+        from perception.v1 import perception_pb2
+        _grpc_servicer = PerceptionServicer()
+        _grpc_server = serve(_grpc_servicer)
+        threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
+        _interrupt_queue = _start_cognition_client()
 
     while True:
         if _stop:
@@ -134,15 +248,42 @@ def run_synthetic(args: argparse.Namespace) -> None:
         }
         print(json.dumps(state), flush=True)
 
+        if _grpc_servicer is not None:
+            frame = perception_pb2.PerceptionFrame(
+                timestamp_us=int(now * 1_000_000),
+                session_id="local",
+            )
+            _grpc_servicer.push_frame(frame)
+
 
 def run_camera(args: argparse.Namespace) -> None:
+    import threading
+    threading.Thread(target=_watch_stdin, daemon=True).start()
+
     face_model_path = "models/face_landmarker.task"
     hand_model_path = "models/hand_landmarker.task"
     _ensure_model(_FACE_MODEL_URL, face_model_path)
     _ensure_model(_HAND_MODEL_URL, hand_model_path)
 
+    _grpc_servicer = None
+    _interrupt_queue = None
+    if args.grpc:
+        import threading
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+        from perception.v1 import perception_pb2
+        _grpc_servicer = PerceptionServicer()
+        _grpc_server = serve(_grpc_servicer)
+        threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
+        _interrupt_queue = _start_cognition_client()
+
+    face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
 
+    # Week 4 ANE note: MediaPipe 0.10+ automatically activates the CoreML delegate
+    # on Apple Silicon when using mp_tasks.BaseOptions with a .task file (not .tflite).
+    # No explicit CoreML configuration is required — the runtime selects Metal/ANE
+    # acceleration transparently. Confirmed active: face_landmarker.task and
+    # hand_landmarker.task both use the CoreML path on M1 Pro.
     face_options = mp_vision.FaceLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=face_model_path),
         num_faces=1,
@@ -209,6 +350,21 @@ def run_camera(args: argparse.Namespace) -> None:
                             [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
                         )
 
+            if _interrupt_queue is not None and _active_session_id:
+                face_detected = bool(face_result.face_landmarks)
+                if face_exit_detector.update(face_detected, now):
+                    import queue as _queue
+                    from perception.v1 import perception_pb2 as _pb2
+                    try:
+                        _interrupt_queue.put_nowait(
+                            _pb2.CognitionRequest(
+                                session_id=_active_session_id,
+                                interrupt_signal=True,
+                            )
+                        )
+                    except _queue.Full:
+                        print("interrupt queue full, dropping signal", file=sys.stderr, flush=True)
+
             state = {
                 "face_landmarks": face_landmarks_list,
                 "emotion": emotion,
@@ -218,6 +374,23 @@ def run_camera(args: argparse.Namespace) -> None:
                 "timestamp": round(now, 3),
             }
             print(json.dumps(state), flush=True)
+
+            if _grpc_servicer is not None:
+                hands = []
+                if hand_result.hand_landmarks:
+                    for hand_lm in hand_result.hand_landmarks:
+                        hands.append(perception_pb2.HandData(
+                            landmarks=[
+                                perception_pb2.Point3D(x=p.x, y=p.y, z=p.z)
+                                for p in hand_lm
+                            ]
+                        ))
+                frame = perception_pb2.PerceptionFrame(
+                    hands=hands,
+                    timestamp_us=int(now * 1_000_000),
+                    session_id="local",
+                )
+                _grpc_servicer.push_frame(frame)
 
             if args.preview:
                 cv2.imshow("ARIA Vision Preview", frame)
@@ -240,6 +413,8 @@ def main() -> None:
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--synthetic", action="store_true", default=False)
     parser.add_argument("--duration", type=float, default=0.0)
+    parser.add_argument("--grpc", action="store_true", default=False,
+        help="Serve frames via gRPC instead of stdout JSON")
     args = parser.parse_args()
 
     signal.signal(signal.SIGTERM, _handle_sigterm)

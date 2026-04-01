@@ -1,0 +1,32 @@
+{
+  "hardware": "Apple M1 Pro (10-core)",
+  "audio_clip_seconds": 3,
+  "n_runs": 20,
+  "model": "whisper-tiny",
+  "decode_parity": true,
+  "decode_parity_note": "Both paths use beam_size=5 and the same domain prompt, matching production WhisperCoreML._transcribe_coreml() and Transcriber settings.",
+  "ane_utilization_measured": false,
+  "ane_validation_note": "Latency alone does not prove ANE execution. Run Instruments > Metal System Trace to confirm ANE routing.",
+  "faster_whisper": {
+    "mean_ms": 164.5,
+    "p50_ms": 163.5,
+    "p95_ms": 174.2,
+    "p99_ms": 175.7,
+    "min_ms": 157.4,
+    "max_ms": 176.0,
+    "n_runs": 20
+  },
+  "coreml_hybrid": {
+    "mean_ms": 56.8,
+    "p50_ms": 54.6,
+    "p95_ms": 64.1,
+    "p99_ms": 65.4,
+    "min_ms": 52.7,
+    "max_ms": 65.8,
+    "n_runs": 20
+  },
+  "coreml_faster": true,
+  "ane_recommendation": "validate ANE routing via Instruments before claiming ANE speedup",
+  "latency_recommendation": "CoreML latency is lower on this hardware. Do NOT enable --coreml in production until ANE utilization is confirmed via Instruments > Metal System Trace.",
+  "recommendation": "CoreML hybrid is 2.90x faster than faster-whisper (56.8ms vs 164.5ms) on this hardware — latency only, ANE routing unverified. Confirm ANE utilization via Instruments before enabling --coreml."
+}

@@ -59,3 +59,15 @@ backend/server
 Miniconda*.sh
 backend/Miniconda*.sh
 .mcp/
+.codex/
+
+# Nested repos
+mcp-servers-repo/
+
+# Office documents
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.pptx
+*.ppt

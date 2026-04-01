@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,11 +13,14 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"github.com/sucheet2000/aria/backend/internal/audio"
+	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
 	"github.com/sucheet2000/aria/backend/internal/server"
 	"github.com/sucheet2000/aria/backend/internal/vision"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -69,6 +73,24 @@ func main() {
 	worker := vision.New(cfg.PythonBin, cfg.VisionScript, hub)
 	hub.SetVision(worker)
 
+	// StreamRegistry bridges the CognitionService gRPC interrupt path and the HTTP handler.
+	registry := cognition.NewStreamRegistry()
+
+	// CognitionService gRPC server on :50052 — Python vision worker connects here.
+	grpcSrv := grpc.NewServer()
+	cognitionGRPC := cognition.NewCognitionGRPCServer(registry, hub, log.Logger)
+	perceptionv1.RegisterCognitionServiceServer(grpcSrv, cognitionGRPC)
+	lis, err := net.Listen("tcp", cfg.CognitionGRPCAddr)
+	if err != nil {
+		log.Fatal().Err(err).Str("addr", cfg.CognitionGRPCAddr).Msg("failed to bind CognitionService gRPC port")
+	}
+	go func() {
+		log.Info().Str("addr", cfg.CognitionGRPCAddr).Msg("CognitionService gRPC server started")
+		if err := grpcSrv.Serve(lis); err != nil {
+			log.Error().Err(err).Msg("CognitionService gRPC server error")
+		}
+	}()
+
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
 	hub.SetAudio(audioWorker)
 
@@ -100,7 +122,7 @@ func main() {
 		time.Sleep(time.Second)
 	}
 
-	srv := server.New(cfg, hub, wm)
+	srv := server.New(cfg, hub, wm, registry)
 
 	go func() {
 		if err := srv.Start(ctx); err != nil {
@@ -116,6 +138,7 @@ func main() {
 	log.Info().Msg("shutdown signal received")
 	cancel()
 
+	grpcSrv.GracefulStop()
 	audioWorker.Stop()
 	worker.Stop()
 

@@ -19,50 +19,29 @@
 - buf.gen.yaml generates Go + Python stubs
 - Goal: vision frames arrive via typed proto, not raw JSON
 
-## Week 2 — Session State (Redis Streams)
-- Add Redis Streams for perception event ordering
-- sequence_id enforcement across pod restarts
-- session_id re-hydration for reconnecting clients
-- ChromaDB memory queries keyed by session_id
+## Week 2 — Session State
+*Details coming soon.*
 
 ## Week 3 — Bi-directional gRPC + Priority Interrupt
-- StreamCognition RPC: perception events in, responses out
-- interrupt_signal payload kills active cognitive stream in <100ms
-- interrupt_priority and stream_id fields activated on HandGestureEvent
-- Visual state change (user exits frame) triggers immediate interrupt
+*Details coming soon.*
 
-## Week 4 — ANE Acceleration (Apple Neural Engine)
-- Whisper tiny → ANE-optimized CoreML model
-- MediaPipe face/hand models converted to CoreML
-- Target: STT latency < 300ms (currently 1-2s)
-- Target: vision inference < 5ms per frame (currently ~16ms)
+## Week 4 — ANE Acceleration
+*Details coming soon.*
 
 ## Week 5 — NATS Async Transport
-- High-frequency landmark streams migrated from gRPC to NATS
-- DiscardOld consumer policy for backpressure
-- nats_subject and backpressure_token fields activated
-- gRPC retained for control plane (interrupts, session management)
+*Details coming soon.*
 
 ## Week 6 — LMCache Integration
-- KV cache sharing for Claude API calls
-- Reduces latency when conversation history grows long
-- Useful when scaling to multiple concurrent sessions
+*Details coming soon.*
 
 ## Week 7 — Shannon Memory Graph
-- Replace ChromaDB flat vectors with knowledge graph memory
-- Entity extraction from conversations
-- Relationship traversal for richer context retrieval
+*Details coming soon.*
 
 ## Week 8 — Gesture Classification
-- Train gesture classifier on top of MediaPipe landmarks
-- gesture_class and gesture_confidence fields activated
-- Initial gesture set: STOP, POINT, CONFIRM, CANCEL
+*Details coming soon.*
 
 ## Week 9 — Spatial Anchoring
-- pointing_vector derived from index finger landmarks
-- RegisterAnchor RPC: persist 3D objects in world space
-- spatial_anchor_id, depth_confidence, registration_state activated
-- depth_mm TurboQuant compression on Point3D
+*Details coming soon.*
 
 ## Critical Design Constraints
 - Tags 1-15 in proto messages cost 1 byte on the wire
