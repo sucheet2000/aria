@@ -24,24 +24,33 @@ type Broadcaster interface {
 
 // Worker manages the Python vision subprocess.
 type Worker struct {
-	pythonBin  string
-	scriptPath string
-	hub        Broadcaster
-	cmd        *exec.Cmd
-	stdin      io.WriteCloser
-	stdinMu    sync.Mutex
-	log        zerolog.Logger
-	cancel     context.CancelFunc
+	pythonBin     string
+	scriptPath    string
+	hub           Broadcaster
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
+	stdinMu       sync.Mutex
+	lastSessionID string
+	log           zerolog.Logger
+	cancel        context.CancelFunc
 }
 
 // SetActiveSession writes the active frontend session ID to the vision worker's
 // stdin so it can embed the concrete session ID in interrupt signals.
+// The ID is also persisted so it can be replayed after a subprocess restart.
 func (w *Worker) SetActiveSession(id string) {
 	w.stdinMu.Lock()
 	defer w.stdinMu.Unlock()
+	w.lastSessionID = id
 	if w.stdin == nil {
 		return
 	}
+	w.writeSessionLocked(id)
+}
+
+// writeSessionLocked sends an active_session command to the subprocess stdin.
+// Caller must hold stdinMu.
+func (w *Worker) writeSessionLocked(id string) {
 	msg, _ := json.Marshal(map[string]string{
 		"type":       "active_session",
 		"session_id": id,
@@ -114,7 +123,17 @@ func (w *Worker) run(ctx context.Context) error {
 
 	w.stdinMu.Lock()
 	w.stdin = stdinPipe
+	lastSess := w.lastSessionID
 	w.stdinMu.Unlock()
+
+	// Replay the last known session ID after the subprocess has had time to
+	// start reading stdin (covers worker restarts and first-connect races).
+	if lastSess != "" {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			w.SetActiveSession(lastSess)
+		}()
+	}
 
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("vision process started")
 

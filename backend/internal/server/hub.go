@@ -192,6 +192,8 @@ func (c *Client) readPump() {
 				if c.hub.audio != nil {
 					c.hub.audio.Mute(false)
 				}
+			// Note: single global active session is intentional for ARIA v1 (single-user).
+			// Per-connection session ownership is a v2 concern.
 			case "session_init":
 				if c.hub.vision != nil && msg.SessionID != "" {
 					c.hub.vision.SetActiveSession(msg.SessionID)
