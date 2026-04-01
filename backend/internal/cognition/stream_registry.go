@@ -83,16 +83,18 @@ func (r *StreamRegistry) Cancel(id string) {
 		cancel()
 		delete(r.active, id)
 	} else {
-		if len(r.pending) >= maxPendingSize {
-			var oldestID string
-			var oldestTime time.Time
-			for pid, p := range r.pending {
-				if oldestID == "" || p.setAt.Before(oldestTime) {
-					oldestID = pid
-					oldestTime = p.setAt
+		if _, exists := r.pending[id]; !exists {
+			if len(r.pending) >= maxPendingSize {
+				var oldestID string
+				var oldestTime time.Time
+				for pid, p := range r.pending {
+					if oldestID == "" || p.setAt.Before(oldestTime) {
+						oldestID = pid
+						oldestTime = p.setAt
+					}
 				}
+				delete(r.pending, oldestID)
 			}
-			delete(r.pending, oldestID)
 		}
 		r.pending[id] = pendingEntry{setAt: time.Now()}
 	}

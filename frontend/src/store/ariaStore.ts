@@ -95,7 +95,7 @@ export interface ARIAStore {
 export const useAriaStore = create<ARIAStore>((set, get) => ({
   wsConnected: false,
   wsError: null,
-  sessionId: "",
+  sessionId: crypto.randomUUID(),
 
   faceLandmarks: [],
   headPose: { pitch: 0, yaw: 0, roll: 0 },

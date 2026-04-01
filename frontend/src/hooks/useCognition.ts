@@ -22,12 +22,7 @@ interface CognitionResponse {
 export function useCognition() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sessionIdRef = useRef(crypto.randomUUID());
   const interruptedRef = useRef(false);
-
-  useEffect(() => {
-    useAriaStore.getState().setSessionId(sessionIdRef.current);
-  }, []);
 
   const addMessage = useAriaStore((s) => s.addMessage);
   const setAvatarEmotion = useAriaStore((s) => s.setAvatarEmotion);
@@ -67,7 +62,7 @@ export function useCognition() {
         signal: controller.signal,
         body: JSON.stringify({
           message: text.trim(),
-          session_id: sessionIdRef.current,
+          session_id: useAriaStore.getState().sessionId,
           vision_state: {
             emotion,
             head_pose: headPose,

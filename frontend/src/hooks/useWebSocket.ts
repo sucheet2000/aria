@@ -56,6 +56,10 @@ export function useWebSocket() {
         currentDelayRef.current = INITIAL_DELAY_MS;
         useAriaStore.getState().setWsConnected(true);
         useAriaStore.getState().setWsError(null);
+        const sessionId = useAriaStore.getState().sessionId;
+        if (sessionId) {
+          ws.send(JSON.stringify({ type: "session_init", session_id: sessionId }));
+        }
       };
 
       ws.onmessage = (event: MessageEvent) => {

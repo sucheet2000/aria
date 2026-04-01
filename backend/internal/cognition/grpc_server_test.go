@@ -261,6 +261,33 @@ func TestPendingEvictionOnMutation(t *testing.T) {
 	}
 }
 
+func TestDuplicateCancelDoesNotEvictOtherPending(t *testing.T) {
+	reg := NewStreamRegistry()
+
+	// Fill pending map to capacity with unique IDs.
+	for i := range maxPendingSize {
+		reg.Cancel(fmt.Sprintf("unique-%d", i))
+	}
+	if len(reg.pending) != maxPendingSize {
+		t.Fatalf("expected %d pending entries, got %d", maxPendingSize, len(reg.pending))
+	}
+
+	// Repeatedly cancel the same already-pending ID — must not evict any other entry.
+	for range 5 {
+		reg.Cancel("unique-0")
+	}
+	if len(reg.pending) != maxPendingSize {
+		t.Fatalf("duplicate Cancel must not grow or shrink pending map, got %d", len(reg.pending))
+	}
+	// All original IDs must still be present.
+	for i := range maxPendingSize {
+		id := fmt.Sprintf("unique-%d", i)
+		if _, ok := reg.pending[id]; !ok {
+			t.Fatalf("pending entry %q was evicted by a duplicate Cancel", id)
+		}
+	}
+}
+
 func TestStalePendingClearedByRegister(t *testing.T) {
 	reg := NewStreamRegistry()
 
