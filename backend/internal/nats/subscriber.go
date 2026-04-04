@@ -3,6 +3,7 @@ package nats
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog/log"
@@ -37,6 +38,15 @@ func (s *Subscriber) Connect() error {
 	nc, err := nats.Connect(s.url,
 		nats.Name("aria-subscriber"),
 		nats.MaxReconnects(-1),
+		nats.ReconnectWait(time.Second),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			if err != nil {
+				log.Warn().Err(err).Msg("NATS subscriber disconnected")
+			}
+		}),
+		nats.ReconnectHandler(func(_ *nats.Conn) {
+			log.Info().Msg("NATS subscriber reconnected")
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("nats connect %s: %w", s.url, err)
