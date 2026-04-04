@@ -20,6 +20,11 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 
 from app.pipeline.emotion import EmotionClassifier
+from app.pipeline.gesture_classifier import (
+    GestureClassifier as RuleGestureClassifier,
+    GESTURE_TYPE_UNSPECIFIED,
+    GESTURE_TYPE_POINT,
+)
 
 # 6-point 3D face model in mm (nose tip, chin, eye corners, mouth corners)
 FACE_3D_MODEL = np.array(
@@ -345,6 +350,8 @@ def run_camera(args: argparse.Namespace) -> None:
 
     face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
+    gesture_clf = RuleGestureClassifier()
+    _last_gesture_type: int = GESTURE_TYPE_UNSPECIFIED
 
     # Week 4 ANE note: MediaPipe 0.10+ automatically activates the CoreML delegate
     # on Apple Silicon when using mp_tasks.BaseOptions with a .task file (not .tflite).
@@ -410,12 +417,41 @@ def run_camera(args: argparse.Namespace) -> None:
                 emotion, emotion_confidence = classifier.classify(lm)
 
             hand_landmarks_list: list[list[float]] = []
+            gesture_name: str = "none"
+            gesture_confidence: float = 0.0
+            pointing_vector: list[float] | None = None
+
             if hand_result.hand_landmarks:
                 for hand_lm in hand_result.hand_landmarks:
                     for p in hand_lm:
                         hand_landmarks_list.append(
                             [round(p.x, 4), round(p.y, 4), round(p.z, 4)]
                         )
+
+                # Classify gesture from first detected hand
+                first_hand = [
+                    [p.x, p.y, p.z] for p in hand_result.hand_landmarks[0]
+                ]
+                g_result = gesture_clf.classify(first_hand)
+                gesture_confidence = g_result.confidence
+
+                _GESTURE_NAMES = {
+                    0: "none", 1: "stop", 2: "point", 3: "confirm", 4: "cancel"
+                }
+                gesture_name = _GESTURE_NAMES.get(g_result.gesture_type, "none")
+
+                if g_result.gesture_type != _last_gesture_type:
+                    _last_gesture_type = g_result.gesture_type
+                    if g_result.gesture_type != GESTURE_TYPE_UNSPECIFIED:
+                        print(
+                            f"gesture change: {gesture_name} "
+                            f"(conf={gesture_confidence:.2f})",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+                if g_result.gesture_type == GESTURE_TYPE_POINT and g_result.pointing_vector:
+                    pointing_vector = list(g_result.pointing_vector)
 
             if _interrupt_queue is not None and _active_session_id:
                 face_detected = bool(face_result.face_landmarks)
@@ -432,14 +468,18 @@ def run_camera(args: argparse.Namespace) -> None:
                     except _queue.Full:
                         print("interrupt queue full, dropping signal", file=sys.stderr, flush=True)
 
-            state = {
+            state: dict = {
                 "face_landmarks": face_landmarks_list,
                 "emotion": emotion,
                 "emotion_confidence": round(emotion_confidence, 3),
                 "head_pose": head_pose,
                 "hand_landmarks": hand_landmarks_list,
+                "gesture": gesture_name,
+                "gesture_confidence": round(gesture_confidence, 3),
                 "timestamp": round(now, 3),
             }
+            if pointing_vector is not None:
+                state["pointing_vector"] = pointing_vector
             print(json.dumps(state), flush=True)
 
             _perception_frame = None
