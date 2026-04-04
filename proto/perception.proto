@@ -22,10 +22,13 @@ message Point3D {
   float y = 2;
   float z = 3; // depth axis — primary coordinate for Week 9 Spatial Anchoring
 
-  // Reserved for TurboQuant int32 quantized fields and depth metadata.
-  // DO NOT assign these numbers to new fields — doing so breaks wire compatibility.
-  reserved 4, 5, 6, 7, 8;
-  reserved "x_quantized", "y_quantized", "z_quantized", "confidence", "depth_raw";
+  // TurboQuant compressed depth data (Week 9).
+  uint32 depth_mm    = 4; // z-coordinate quantized to millimeters: int(abs(z) * 1000)
+  float  confidence  = 5; // landmark detection confidence from MediaPipe [0.0–1.0]
+
+  // Reserved for future TurboQuant int32 x/y quantized fields.
+  reserved 6, 7, 8;
+  reserved "x_quantized", "y_quantized", "z_quantized", "depth_raw";
 }
 
 // ─── Enumerations ─────────────────────────────────────────────────────────────
@@ -120,13 +123,14 @@ message HandGestureEvent {
   uint32 interrupt_priority = 9; // stream routing priority for multi-session kill signals
   string stream_id = 10;         // exact gRPC stream identifier for precise cancel
 
-  // Reserved for Week 5: NATS async transport headers.
-  reserved 11, 12;
-  reserved "nats_subject", "backpressure_token";
+  // Week 5: NATS async transport headers.
+  string nats_subject       = 11; // NATS subject this frame was published to
+  string backpressure_token = 12; // opaque token for DiscardOld backpressure tracking
 
-  // Reserved for Week 9: Spatial Anchoring and depth confidence fields.
-  reserved 13, 14, 15;
-  reserved "spatial_anchor_id", "depth_confidence", "registration_state";
+  // Week 9: Spatial Anchoring fields.
+  string spatial_anchor_id  = 13; // ID of the anchor registered during this gesture
+  float  depth_confidence   = 14; // confidence in the depth estimate [0.0–1.0]
+  string registration_state = 15; // "pending" | "registered" | "failed"
 }
 
 // ─── Spatial Anchoring ────────────────────────────────────────────────────────

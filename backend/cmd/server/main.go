@@ -18,6 +18,7 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
+	arianats "github.com/sucheet2000/aria/backend/internal/nats"
 	"github.com/sucheet2000/aria/backend/internal/server"
 	"github.com/sucheet2000/aria/backend/internal/vision"
 	"google.golang.org/grpc"
@@ -90,6 +91,15 @@ func main() {
 			log.Error().Err(err).Msg("CognitionService gRPC server error")
 		}
 	}()
+
+	// NATS subscriber: receives PerceptionFrames from Python vision worker (--nats mode).
+	// Replaces GRPCClient for high-frequency landmark stream; gRPC retained for interrupts.
+	natsSub := arianats.NewSubscriber(cfg.NatsURL, hub)
+	if err := natsSub.Connect(); err != nil {
+		log.Warn().Err(err).Str("url", cfg.NatsURL).Msg("NATS subscriber connect failed — vision frames will fall back to stdout")
+	} else {
+		defer natsSub.Close()
+	}
 
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
 	hub.SetAudio(audioWorker)

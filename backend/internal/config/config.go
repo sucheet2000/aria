@@ -23,6 +23,7 @@ type Config struct {
 	ElevenLabsVoiceID  string
 	WhisperModel       string
 	CognitionGRPCAddr  string
+	NatsURL            string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -86,6 +87,11 @@ func Load() *Config {
 		cognitionGRPCAddr = "127.0.0.1:50052"
 	}
 
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://127.0.0.1:4222"
+	}
+
 	return &Config{
 		Host:              host,
 		Port:              port,
@@ -100,6 +106,7 @@ func Load() *Config {
 		ElevenLabsVoiceID: elevenLabsVoiceID,
 		WhisperModel:      whisperModel,
 		CognitionGRPCAddr: cognitionGRPCAddr,
+		NatsURL:           natsURL,
 	}
 }
 
