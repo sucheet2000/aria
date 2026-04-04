@@ -21,12 +21,16 @@ Known facts about this user:
 {conflict_instruction}"""
 
 
+_soul_cache: str | None = None
+
+
 def _load_soul() -> str:
-    """Load ARIA's identity from SOUL.md at repo root."""
-    soul_path = pathlib.Path(__file__).parent.parent.parent.parent / "SOUL.md"
-    if soul_path.exists():
-        return soul_path.read_text()
-    return ""  # fallback if SOUL.md missing
+    """Load ARIA's identity from SOUL.md. Cached after first read."""
+    global _soul_cache
+    if _soul_cache is None:
+        soul_path = pathlib.Path(__file__).parent.parent.parent.parent / "SOUL.md"
+        _soul_cache = soul_path.read_text() if soul_path.exists() else ""
+    return _soul_cache
 
 NO_CONFLICT_INSTRUCTION = "Respond naturally to what the user said."
 
