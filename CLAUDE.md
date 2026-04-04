@@ -110,3 +110,11 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 - If result is obvious, stop. No explanation needed.
 - Commit messages: one line, no body unless critical.
 - Test output: show only failures and final count. Not every PASS.
+
+## Codex Review Workflow
+- After each sprint: /code-review-graph:review-delta first
+- Then: /codex:adversarial-review --background
+- Check: /codex:status then /codex:result
+- Max 3 Codex rounds per sprint
+- Document architectural findings as v2 scope instead of looping
+- Start a fresh Claude Code session for each sprint to keep Codex skill enabled
