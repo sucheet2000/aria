@@ -141,10 +141,13 @@ func (GestureType) EnumDescriptor() ([]byte, []int) {
 //	       Future int32 x_quantized/y_quantized/z_quantized fields for
 //	       extreme compression will slot here without breaking this contract.
 type Point3D struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	X             float32                `protobuf:"fixed32,1,opt,name=x,proto3" json:"x,omitempty"`
-	Y             float32                `protobuf:"fixed32,2,opt,name=y,proto3" json:"y,omitempty"`
-	Z             float32                `protobuf:"fixed32,3,opt,name=z,proto3" json:"z,omitempty"` // depth axis — primary coordinate for Week 9 Spatial Anchoring
+	state protoimpl.MessageState `protogen:"open.v1"`
+	X     float32                `protobuf:"fixed32,1,opt,name=x,proto3" json:"x,omitempty"`
+	Y     float32                `protobuf:"fixed32,2,opt,name=y,proto3" json:"y,omitempty"`
+	Z     float32                `protobuf:"fixed32,3,opt,name=z,proto3" json:"z,omitempty"` // depth axis — primary coordinate for Week 9 Spatial Anchoring
+	// TurboQuant compressed depth data (Week 9).
+	DepthMm       uint32  `protobuf:"varint,4,opt,name=depth_mm,json=depthMm,proto3" json:"depth_mm,omitempty"` // z-coordinate quantized to millimeters: int(abs(z) * 1000)
+	Confidence    float32 `protobuf:"fixed32,5,opt,name=confidence,proto3" json:"confidence,omitempty"`         // landmark detection confidence from MediaPipe [0.0–1.0]
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,6 +199,20 @@ func (x *Point3D) GetY() float32 {
 func (x *Point3D) GetZ() float32 {
 	if x != nil {
 		return x.Z
+	}
+	return 0
+}
+
+func (x *Point3D) GetDepthMm() uint32 {
+	if x != nil {
+		return x.DepthMm
+	}
+	return 0
+}
+
+func (x *Point3D) GetConfidence() float32 {
+	if x != nil {
+		return x.Confidence
 	}
 	return 0
 }
@@ -271,6 +288,10 @@ type HandGestureEvent struct {
 	// Week 5: NATS async transport headers.
 	NatsSubject       string `protobuf:"bytes,11,opt,name=nats_subject,json=natsSubject,proto3" json:"nats_subject,omitempty"`                   // NATS subject this frame was published to
 	BackpressureToken string `protobuf:"bytes,12,opt,name=backpressure_token,json=backpressureToken,proto3" json:"backpressure_token,omitempty"` // opaque token for DiscardOld backpressure tracking
+	// Week 9: Spatial Anchoring fields.
+	SpatialAnchorId   string  `protobuf:"bytes,13,opt,name=spatial_anchor_id,json=spatialAnchorId,proto3" json:"spatial_anchor_id,omitempty"`     // ID of the anchor registered during this gesture
+	DepthConfidence   float32 `protobuf:"fixed32,14,opt,name=depth_confidence,json=depthConfidence,proto3" json:"depth_confidence,omitempty"`     // confidence in the depth estimate [0.0–1.0]
+	RegistrationState string  `protobuf:"bytes,15,opt,name=registration_state,json=registrationState,proto3" json:"registration_state,omitempty"` // "pending" | "registered" | "failed"
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -385,6 +406,27 @@ func (x *HandGestureEvent) GetNatsSubject() string {
 func (x *HandGestureEvent) GetBackpressureToken() string {
 	if x != nil {
 		return x.BackpressureToken
+	}
+	return ""
+}
+
+func (x *HandGestureEvent) GetSpatialAnchorId() string {
+	if x != nil {
+		return x.SpatialAnchorId
+	}
+	return ""
+}
+
+func (x *HandGestureEvent) GetDepthConfidence() float32 {
+	if x != nil {
+		return x.DepthConfidence
+	}
+	return 0
+}
+
+func (x *HandGestureEvent) GetRegistrationState() string {
+	if x != nil {
+		return x.RegistrationState
 	}
 	return ""
 }
@@ -819,12 +861,15 @@ var File_perception_proto protoreflect.FileDescriptor
 
 const file_perception_proto_rawDesc = "" +
 	"\n" +
-	"\x10perception.proto\x12\x12aria.perception.v1\"\x8f\x01\n" +
+	"\x10perception.proto\x12\x12aria.perception.v1\"\xb2\x01\n" +
 	"\aPoint3D\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x02R\x01y\x12\f\n" +
-	"\x01z\x18\x03 \x01(\x02R\x01zJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vx_quantizedR\vy_quantizedR\vz_quantizedR\n" +
-	"confidenceR\tdepth_raw\"\xee\x04\n" +
+	"\x01z\x18\x03 \x01(\x02R\x01z\x12\x19\n" +
+	"\bdepth_mm\x18\x04 \x01(\rR\adepthMm\x12\x1e\n" +
+	"\n" +
+	"confidence\x18\x05 \x01(\x02R\n" +
+	"confidenceJ\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vx_quantizedR\vy_quantizedR\vz_quantizedR\tdepth_raw\"\xa9\x05\n" +
 	"\x10HandGestureEvent\x122\n" +
 	"\x04hand\x18\x01 \x01(\x0e2\x1e.aria.perception.v1.HandednessR\x04hand\x129\n" +
 	"\tlandmarks\x18\x02 \x03(\v2\x1b.aria.perception.v1.Point3DR\tlandmarks\x12\x1f\n" +
@@ -842,7 +887,10 @@ const file_perception_proto_rawDesc = "" +
 	"\tstream_id\x18\n" +
 	" \x01(\tR\bstreamId\x12!\n" +
 	"\fnats_subject\x18\v \x01(\tR\vnatsSubject\x12-\n" +
-	"\x12backpressure_token\x18\f \x01(\tR\x11backpressureTokenJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10R\x11spatial_anchor_idR\x10depth_confidenceR\x12registration_state\"\xb7\x01\n" +
+	"\x12backpressure_token\x18\f \x01(\tR\x11backpressureToken\x12*\n" +
+	"\x11spatial_anchor_id\x18\r \x01(\tR\x0fspatialAnchorId\x12)\n" +
+	"\x10depth_confidence\x18\x0e \x01(\x02R\x0fdepthConfidence\x12-\n" +
+	"\x12registration_state\x18\x0f \x01(\tR\x11registrationState\"\xb7\x01\n" +
 	"\rSpatialAnchor\x12\x1b\n" +
 	"\tanchor_id\x18\x01 \x01(\tR\banchorId\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x127\n" +

@@ -489,7 +489,12 @@ def run_camera(args: argparse.Namespace) -> None:
                     for hand_lm in hand_result.hand_landmarks:
                         hands.append(perception_pb2.HandData(
                             landmarks=[
-                                perception_pb2.Point3D(x=p.x, y=p.y, z=p.z)
+                                perception_pb2.Point3D(
+                                    x=p.x,
+                                    y=p.y,
+                                    z=p.z,
+                                    depth_mm=int(abs(p.z) * 1000),  # TurboQuant (Week 9)
+                                )
                                 for p in hand_lm
                             ]
                         ))

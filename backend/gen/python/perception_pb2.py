@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10perception.proto\x12\x12\x61ria.perception.v1\"\x86\x01\n\x07Point3D\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02J\x04\x08\x04\x10\x05J\x04\x08\x05\x10\x06J\x04\x08\x06\x10\x07J\x04\x08\x07\x10\x08J\x04\x08\x08\x10\tR\x0bx_quantizedR\x0by_quantizedR\x0bz_quantizedR\nconfidenceR\tdepth_raw\"\xd7\x03\n\x10HandGestureEvent\x12,\n\x04hand\x18\x01 \x01(\x0e\x32\x1e.aria.perception.v1.Handedness\x12.\n\tlandmarks\x18\x02 \x03(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x13\n\x0bsequence_id\x18\x03 \x01(\x03\x12\x14\n\x0ctimestamp_us\x18\x04 \x01(\x03\x12\x12\n\nsession_id\x18\x05 \x01(\t\x12\x30\n\x07gesture\x18\x06 \x01(\x0e\x32\x1f.aria.perception.v1.GestureType\x12\x12\n\nconfidence\x18\x07 \x01(\x02\x12\x34\n\x0fpointing_vector\x18\x08 \x01(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x1a\n\x12interrupt_priority\x18\t \x01(\r\x12\x11\n\tstream_id\x18\n \x01(\t\x12\x14\n\x0cnats_subject\x18\x0b \x01(\t\x12\x1a\n\x12\x62\x61\x63kpressure_token\x18\x0c \x01(\tJ\x04\x08\r\x10\x0eJ\x04\x08\x0e\x10\x0fJ\x04\x08\x0f\x10\x10R\x11spatial_anchor_idR\x10\x64\x65pth_confidenceR\x12registration_state\"\x87\x01\n\rSpatialAnchor\x12\x11\n\tanchor_id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t\x12-\n\x08position\x18\x03 \x01(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x0e\n\x06radius\x18\x04 \x01(\x02\x12\x15\n\rcreated_at_us\x18\x05 \x01(\x03\"\xa2\x01\n\x10\x43ognitionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12=\n\rgesture_event\x18\x02 \x01(\x0b\x32$.aria.perception.v1.HandGestureEventH\x00\x12\x14\n\ntext_input\x18\x03 \x01(\tH\x00\x12\x1a\n\x10interrupt_signal\x18\x04 \x01(\x08H\x00\x42\t\n\x07payload\"}\n\x11\x43ognitionResponse\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x1f\n\x17natural_language_output\x18\x02 \x01(\t\x12\x1a\n\x12symbolic_inference\x18\x03 \x01(\t\x12\x17\n\x0fstream_complete\x18\x04 \x01(\x08\"h\n\x08HandData\x12,\n\x04hand\x18\x01 \x01(\x0e\x32\x1e.aria.perception.v1.Handedness\x12.\n\tlandmarks\x18\x02 \x03(\x0b\x32\x1b.aria.perception.v1.Point3D\"h\n\x0fPerceptionFrame\x12+\n\x05hands\x18\x01 \x03(\x0b\x32\x1c.aria.perception.v1.HandData\x12\x14\n\x0ctimestamp_us\x18\x02 \x01(\x03\x12\x12\n\nsession_id\x18\x03 \x01(\t\"#\n\rStreamRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t*S\n\nHandedness\x12\x1a\n\x16HANDEDNESS_UNSPECIFIED\x10\x00\x12\x13\n\x0fHANDEDNESS_LEFT\x10\x01\x12\x14\n\x10HANDEDNESS_RIGHT\x10\x02*\x8d\x01\n\x0bGestureType\x12\x1c\n\x18GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11GESTURE_TYPE_STOP\x10\x01\x12\x16\n\x12GESTURE_TYPE_POINT\x10\x02\x12\x18\n\x14GESTURE_TYPE_CONFIRM\x10\x03\x12\x17\n\x13GESTURE_TYPE_CANCEL\x10\x04\x32\xce\x01\n\x10\x43ognitionService\x12\x62\n\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x01\x30\x01\x12V\n\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchor2m\n\x11PerceptionService\x12X\n\x0cStreamFrames\x12!.aria.perception.v1.StreamRequest\x1a#.aria.perception.v1.PerceptionFrame0\x01\x42GZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10perception.proto\x12\x12\x61ria.perception.v1\"\x94\x01\n\x07Point3D\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02\x12\x10\n\x08\x64\x65pth_mm\x18\x04 \x01(\r\x12\x12\n\nconfidence\x18\x05 \x01(\x02J\x04\x08\x06\x10\x07J\x04\x08\x07\x10\x08J\x04\x08\x08\x10\tR\x0bx_quantizedR\x0by_quantizedR\x0bz_quantizedR\tdepth_raw\"\xdd\x03\n\x10HandGestureEvent\x12,\n\x04hand\x18\x01 \x01(\x0e\x32\x1e.aria.perception.v1.Handedness\x12.\n\tlandmarks\x18\x02 \x03(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x13\n\x0bsequence_id\x18\x03 \x01(\x03\x12\x14\n\x0ctimestamp_us\x18\x04 \x01(\x03\x12\x12\n\nsession_id\x18\x05 \x01(\t\x12\x30\n\x07gesture\x18\x06 \x01(\x0e\x32\x1f.aria.perception.v1.GestureType\x12\x12\n\nconfidence\x18\x07 \x01(\x02\x12\x34\n\x0fpointing_vector\x18\x08 \x01(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x1a\n\x12interrupt_priority\x18\t \x01(\r\x12\x11\n\tstream_id\x18\n \x01(\t\x12\x14\n\x0cnats_subject\x18\x0b \x01(\t\x12\x1a\n\x12\x62\x61\x63kpressure_token\x18\x0c \x01(\t\x12\x19\n\x11spatial_anchor_id\x18\r \x01(\t\x12\x18\n\x10\x64\x65pth_confidence\x18\x0e \x01(\x02\x12\x1a\n\x12registration_state\x18\x0f \x01(\t\"\x87\x01\n\rSpatialAnchor\x12\x11\n\tanchor_id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t\x12-\n\x08position\x18\x03 \x01(\x0b\x32\x1b.aria.perception.v1.Point3D\x12\x0e\n\x06radius\x18\x04 \x01(\x02\x12\x15\n\rcreated_at_us\x18\x05 \x01(\x03\"\xa2\x01\n\x10\x43ognitionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12=\n\rgesture_event\x18\x02 \x01(\x0b\x32$.aria.perception.v1.HandGestureEventH\x00\x12\x14\n\ntext_input\x18\x03 \x01(\tH\x00\x12\x1a\n\x10interrupt_signal\x18\x04 \x01(\x08H\x00\x42\t\n\x07payload\"}\n\x11\x43ognitionResponse\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x1f\n\x17natural_language_output\x18\x02 \x01(\t\x12\x1a\n\x12symbolic_inference\x18\x03 \x01(\t\x12\x17\n\x0fstream_complete\x18\x04 \x01(\x08\"h\n\x08HandData\x12,\n\x04hand\x18\x01 \x01(\x0e\x32\x1e.aria.perception.v1.Handedness\x12.\n\tlandmarks\x18\x02 \x03(\x0b\x32\x1b.aria.perception.v1.Point3D\"h\n\x0fPerceptionFrame\x12+\n\x05hands\x18\x01 \x03(\x0b\x32\x1c.aria.perception.v1.HandData\x12\x14\n\x0ctimestamp_us\x18\x02 \x01(\x03\x12\x12\n\nsession_id\x18\x03 \x01(\t\"#\n\rStreamRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t*S\n\nHandedness\x12\x1a\n\x16HANDEDNESS_UNSPECIFIED\x10\x00\x12\x13\n\x0fHANDEDNESS_LEFT\x10\x01\x12\x14\n\x10HANDEDNESS_RIGHT\x10\x02*\x8d\x01\n\x0bGestureType\x12\x1c\n\x18GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11GESTURE_TYPE_STOP\x10\x01\x12\x16\n\x12GESTURE_TYPE_POINT\x10\x02\x12\x18\n\x14GESTURE_TYPE_CONFIRM\x10\x03\x12\x17\n\x13GESTURE_TYPE_CANCEL\x10\x04\x32\xce\x01\n\x10\x43ognitionService\x12\x62\n\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x01\x30\x01\x12V\n\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchor2m\n\x11PerceptionService\x12X\n\x0cStreamFrames\x12!.aria.perception.v1.StreamRequest\x1a#.aria.perception.v1.PerceptionFrame0\x01\x42GZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,28 +32,28 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'perception_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'ZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1'
-  _globals['_HANDEDNESS']._serialized_start=1330
-  _globals['_HANDEDNESS']._serialized_end=1413
-  _globals['_GESTURETYPE']._serialized_start=1416
-  _globals['_GESTURETYPE']._serialized_end=1557
+  _globals['_HANDEDNESS']._serialized_start=1350
+  _globals['_HANDEDNESS']._serialized_end=1433
+  _globals['_GESTURETYPE']._serialized_start=1436
+  _globals['_GESTURETYPE']._serialized_end=1577
   _globals['_POINT3D']._serialized_start=41
-  _globals['_POINT3D']._serialized_end=175
-  _globals['_HANDGESTUREEVENT']._serialized_start=178
-  _globals['_HANDGESTUREEVENT']._serialized_end=649
-  _globals['_SPATIALANCHOR']._serialized_start=652
-  _globals['_SPATIALANCHOR']._serialized_end=787
-  _globals['_COGNITIONREQUEST']._serialized_start=790
-  _globals['_COGNITIONREQUEST']._serialized_end=952
-  _globals['_COGNITIONRESPONSE']._serialized_start=954
-  _globals['_COGNITIONRESPONSE']._serialized_end=1079
-  _globals['_HANDDATA']._serialized_start=1081
-  _globals['_HANDDATA']._serialized_end=1185
-  _globals['_PERCEPTIONFRAME']._serialized_start=1187
-  _globals['_PERCEPTIONFRAME']._serialized_end=1291
-  _globals['_STREAMREQUEST']._serialized_start=1293
-  _globals['_STREAMREQUEST']._serialized_end=1328
-  _globals['_COGNITIONSERVICE']._serialized_start=1560
-  _globals['_COGNITIONSERVICE']._serialized_end=1766
-  _globals['_PERCEPTIONSERVICE']._serialized_start=1768
-  _globals['_PERCEPTIONSERVICE']._serialized_end=1877
+  _globals['_POINT3D']._serialized_end=189
+  _globals['_HANDGESTUREEVENT']._serialized_start=192
+  _globals['_HANDGESTUREEVENT']._serialized_end=669
+  _globals['_SPATIALANCHOR']._serialized_start=672
+  _globals['_SPATIALANCHOR']._serialized_end=807
+  _globals['_COGNITIONREQUEST']._serialized_start=810
+  _globals['_COGNITIONREQUEST']._serialized_end=972
+  _globals['_COGNITIONRESPONSE']._serialized_start=974
+  _globals['_COGNITIONRESPONSE']._serialized_end=1099
+  _globals['_HANDDATA']._serialized_start=1101
+  _globals['_HANDDATA']._serialized_end=1205
+  _globals['_PERCEPTIONFRAME']._serialized_start=1207
+  _globals['_PERCEPTIONFRAME']._serialized_end=1311
+  _globals['_STREAMREQUEST']._serialized_start=1313
+  _globals['_STREAMREQUEST']._serialized_end=1348
+  _globals['_COGNITIONSERVICE']._serialized_start=1580
+  _globals['_COGNITIONSERVICE']._serialized_end=1786
+  _globals['_PERCEPTIONSERVICE']._serialized_start=1788
+  _globals['_PERCEPTIONSERVICE']._serialized_end=1897
 # @@protoc_insertion_point(module_scope)
