@@ -48,6 +48,7 @@ _HAND_MODEL_URL = (
 
 _stop = False
 _active_session_id: str = ""
+_nats_client = None  # set in run_camera/run_synthetic when --nats flag is active
 
 
 def _watch_stdin() -> None:
@@ -160,6 +161,53 @@ def solve_head_pose(
     }
 
 
+def _start_nats_publisher(nats_url: str) -> "NatsPublisher | None":
+    """Return an async NATS publisher wrapper, or None on import error."""
+    try:
+        import asyncio
+        import threading
+        import nats as nats_lib
+
+        class NatsPublisher:
+            def __init__(self) -> None:
+                self._loop = asyncio.new_event_loop()
+                self._nc = None
+                self._ready = threading.Event()
+                t = threading.Thread(target=self._run_loop, daemon=True)
+                t.start()
+                self._ready.wait(timeout=5.0)
+
+            def _run_loop(self) -> None:
+                asyncio.set_event_loop(self._loop)
+                self._loop.run_until_complete(self._connect())
+                self._loop.run_forever()
+
+            async def _connect(self) -> None:
+                backoff = 1.0
+                while True:
+                    try:
+                        self._nc = await nats_lib.connect(nats_url)
+                        print(f"NATS publisher connected to {nats_url}", file=sys.stderr, flush=True)
+                        self._ready.set()
+                        return
+                    except Exception as exc:
+                        print(f"NATS connect failed, retrying in {backoff}s: {exc}", file=sys.stderr, flush=True)
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, 30.0)
+
+            def publish(self, subject: str, data: bytes) -> None:
+                if self._nc is None:
+                    return
+                asyncio.run_coroutine_threadsafe(
+                    self._nc.publish(subject, data), self._loop
+                )
+
+        return NatsPublisher()
+    except ImportError as exc:
+        print(f"nats-py not available, NATS publish disabled: {exc}", file=sys.stderr, flush=True)
+        return None
+
+
 def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None":
     """Start a background CognitionService gRPC client on port 50052.
 
@@ -218,6 +266,8 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
     _grpc_servicer = None
     _interrupt_queue = None
+    _nats_pub = None
+
     if args.grpc:
         import threading
         from app.pipeline.vision_grpc_server import PerceptionServicer, serve
@@ -226,6 +276,10 @@ def run_synthetic(args: argparse.Namespace) -> None:
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
         _interrupt_queue = _start_cognition_client()
+
+    if args.nats:
+        from perception.v1 import perception_pb2
+        _nats_pub = _start_nats_publisher(args.nats_url)
 
     while True:
         if _stop:
@@ -255,6 +309,13 @@ def run_synthetic(args: argparse.Namespace) -> None:
             )
             _grpc_servicer.push_frame(frame)
 
+        if _nats_pub is not None:
+            frame = perception_pb2.PerceptionFrame(
+                timestamp_us=int(now * 1_000_000),
+                session_id=_active_session_id or "local",
+            )
+            _nats_pub.publish("aria.perception.frames", frame.SerializeToString())
+
 
 def run_camera(args: argparse.Namespace) -> None:
     import threading
@@ -267,6 +328,8 @@ def run_camera(args: argparse.Namespace) -> None:
 
     _grpc_servicer = None
     _interrupt_queue = None
+    _nats_pub = None
+
     if args.grpc:
         import threading
         from app.pipeline.vision_grpc_server import PerceptionServicer, serve
@@ -275,6 +338,10 @@ def run_camera(args: argparse.Namespace) -> None:
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
         _interrupt_queue = _start_cognition_client()
+
+    if args.nats:
+        from perception.v1 import perception_pb2
+        _nats_pub = _start_nats_publisher(args.nats_url)
 
     face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
@@ -375,7 +442,8 @@ def run_camera(args: argparse.Namespace) -> None:
             }
             print(json.dumps(state), flush=True)
 
-            if _grpc_servicer is not None:
+            _perception_frame = None
+            if _grpc_servicer is not None or _nats_pub is not None:
                 hands = []
                 if hand_result.hand_landmarks:
                     for hand_lm in hand_result.hand_landmarks:
@@ -385,12 +453,17 @@ def run_camera(args: argparse.Namespace) -> None:
                                 for p in hand_lm
                             ]
                         ))
-                frame = perception_pb2.PerceptionFrame(
+                _perception_frame = perception_pb2.PerceptionFrame(
                     hands=hands,
                     timestamp_us=int(now * 1_000_000),
-                    session_id="local",
+                    session_id=_active_session_id or "local",
                 )
-                _grpc_servicer.push_frame(frame)
+
+            if _grpc_servicer is not None and _perception_frame is not None:
+                _grpc_servicer.push_frame(_perception_frame)
+
+            if _nats_pub is not None and _perception_frame is not None:
+                _nats_pub.publish("aria.perception.frames", _perception_frame.SerializeToString())
 
             if args.preview:
                 cv2.imshow("ARIA Vision Preview", frame)
@@ -415,6 +488,10 @@ def main() -> None:
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--grpc", action="store_true", default=False,
         help="Serve frames via gRPC instead of stdout JSON")
+    parser.add_argument("--nats", action="store_true", default=False,
+        help="Publish PerceptionFrames to NATS subject (aria.perception.frames)")
+    parser.add_argument("--nats-url", dest="nats_url", default="nats://127.0.0.1:4222",
+        help="NATS server URL (default: nats://127.0.0.1:4222)")
     args = parser.parse_args()
 
     signal.signal(signal.SIGTERM, _handle_sigterm)

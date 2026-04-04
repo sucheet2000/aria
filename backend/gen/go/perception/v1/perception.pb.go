@@ -268,6 +268,9 @@ type HandGestureEvent struct {
 	PointingVector    *Point3D               `protobuf:"bytes,8,opt,name=pointing_vector,json=pointingVector,proto3" json:"pointing_vector,omitempty"`           // populated only when gesture == POINT (Week 9)
 	InterruptPriority uint32                 `protobuf:"varint,9,opt,name=interrupt_priority,json=interruptPriority,proto3" json:"interrupt_priority,omitempty"` // stream routing priority for multi-session kill signals
 	StreamId          string                 `protobuf:"bytes,10,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`                            // exact gRPC stream identifier for precise cancel
+	// Week 5: NATS async transport headers.
+	NatsSubject       string `protobuf:"bytes,11,opt,name=nats_subject,json=natsSubject,proto3" json:"nats_subject,omitempty"`                   // NATS subject this frame was published to
+	BackpressureToken string `protobuf:"bytes,12,opt,name=backpressure_token,json=backpressureToken,proto3" json:"backpressure_token,omitempty"` // opaque token for DiscardOld backpressure tracking
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -368,6 +371,20 @@ func (x *HandGestureEvent) GetInterruptPriority() uint32 {
 func (x *HandGestureEvent) GetStreamId() string {
 	if x != nil {
 		return x.StreamId
+	}
+	return ""
+}
+
+func (x *HandGestureEvent) GetNatsSubject() string {
+	if x != nil {
+		return x.NatsSubject
+	}
+	return ""
+}
+
+func (x *HandGestureEvent) GetBackpressureToken() string {
+	if x != nil {
+		return x.BackpressureToken
 	}
 	return ""
 }
@@ -807,7 +824,7 @@ const file_perception_proto_rawDesc = "" +
 	"\x01x\x18\x01 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x02R\x01y\x12\f\n" +
 	"\x01z\x18\x03 \x01(\x02R\x01zJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vx_quantizedR\vy_quantizedR\vz_quantizedR\n" +
-	"confidenceR\tdepth_raw\"\xca\x04\n" +
+	"confidenceR\tdepth_raw\"\xee\x04\n" +
 	"\x10HandGestureEvent\x122\n" +
 	"\x04hand\x18\x01 \x01(\x0e2\x1e.aria.perception.v1.HandednessR\x04hand\x129\n" +
 	"\tlandmarks\x18\x02 \x03(\v2\x1b.aria.perception.v1.Point3DR\tlandmarks\x12\x1f\n" +
@@ -823,7 +840,9 @@ const file_perception_proto_rawDesc = "" +
 	"\x0fpointing_vector\x18\b \x01(\v2\x1b.aria.perception.v1.Point3DR\x0epointingVector\x12-\n" +
 	"\x12interrupt_priority\x18\t \x01(\rR\x11interruptPriority\x12\x1b\n" +
 	"\tstream_id\x18\n" +
-	" \x01(\tR\bstreamIdJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10R\fnats_subjectR\x12backpressure_tokenR\x11spatial_anchor_idR\x10depth_confidenceR\x12registration_state\"\xb7\x01\n" +
+	" \x01(\tR\bstreamId\x12!\n" +
+	"\fnats_subject\x18\v \x01(\tR\vnatsSubject\x12-\n" +
+	"\x12backpressure_token\x18\f \x01(\tR\x11backpressureTokenJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10R\x11spatial_anchor_idR\x10depth_confidenceR\x12registration_state\"\xb7\x01\n" +
 	"\rSpatialAnchor\x12\x1b\n" +
 	"\tanchor_id\x18\x01 \x01(\tR\banchorId\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x127\n" +
