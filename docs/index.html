@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARIA v2.0.0 — Adaptive Realtime Intelligence Avatar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d10;
+      --surface:   #131318;
+      --card:      #18181f;
+      --border:    #2a2a38;
+      --accent:    #22d3ee;
+      --accent2:   #818cf8;
+      --accent3:   #34d399;
+      --warn:      #fbbf24;
+      --danger:    #f87171;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --tag-bg:    #1e2035;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Space Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 40px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 4px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+    }
+
+    .version-pill {
+      font-size: 11px;
+      background: var(--tag-bg);
+      border: 1px solid var(--accent2);
+      color: var(--accent2);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .tagline {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      font-style: italic;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+    .badge-go      { background: #003d5c; color: #00ADD8; border-color: #00ADD8; }
+    .badge-python  { background: #1a2a3a; color: #4B9CD3; border-color: #3776AB; }
+    .badge-next    { background: #1a1a1a; color: #e2e8f0; border-color: #444; }
+    .badge-ts      { background: #1a2040; color: #3178C6; border-color: #3178C6; }
+    .badge-tests   { background: #0d2d1a; color: #34d399; border-color: #34d399; }
+    .badge-apple   { background: #222; color: #aaa; border-color: #555; }
+    .badge-private { background: #2d1010; color: #f87171; border-color: #f87171; }
+
+    /* ── TABS ── */
+    nav.tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: none;
+    }
+
+    nav.tabs button {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    nav.tabs button:hover { color: var(--text); }
+
+    nav.tabs button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── MAIN ── */
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── TYPOGRAPHY ── */
+    h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      margin: 36px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2:first-child { margin-top: 0; }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent2);
+      margin: 24px 0 8px;
+      letter-spacing: 0.04em;
+    }
+
+    p { margin-bottom: 12px; color: var(--text); }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    strong { color: #fff; }
+
+    /* ── CODE BLOCKS ── */
+    pre {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+      line-height: 1.5;
+    }
+
+    pre code {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: #a5f3fc;
+    }
+
+    code {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #a5f3fc;
+    }
+
+    pre code { background: none; border: none; padding: 0; }
+
+    /* ── TABLES ── */
+    .table-wrap { overflow-x: auto; margin: 12px 0 20px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead tr {
+      background: var(--card);
+      border-bottom: 2px solid var(--border);
+    }
+
+    th {
+      text-align: left;
+      padding: 8px 14px;
+      color: var(--accent2);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: top;
+    }
+
+    tbody tr:hover { background: var(--card); }
+
+    /* ── LISTS ── */
+    ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    ul li {
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    /* ── VERSION CARDS ── */
+    .version-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .version-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .version-card summary,
+    .version-card .v-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+    }
+
+    .version-card summary::-webkit-details-marker { display: none; }
+
+    .version-card summary:hover,
+    .version-card details[open] summary {
+      background: var(--surface);
+    }
+
+    .v-tag {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 88px;
+    }
+
+    .v-label {
+      font-size: 12px;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .v-chevron {
+      color: var(--muted);
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    details[open] .v-chevron { transform: rotate(90deg); }
+
+    .version-card details ul {
+      padding: 0 16px 14px 32px;
+      border-top: 1px solid var(--border);
+      margin-top: 2px;
+      padding-top: 12px;
+    }
+
+    .version-card details ul li {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .version-card details ul li code {
+      font-size: 11px;
+    }
+
+    /* ── PIPELINE STAGES ── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 12px 0 20px;
+    }
+
+    .stage {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .stage-connector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 24px;
+    }
+
+    .stage-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+
+    .stage-dot.audio { background: var(--accent2); }
+    .stage-dot.cog   { background: var(--accent3); }
+
+    .stage-line {
+      width: 2px;
+      background: var(--border);
+      flex: 1;
+      min-height: 16px;
+    }
+
+    .stage-body {
+      padding-bottom: 14px;
+      flex: 1;
+    }
+
+    .stage-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 2px;
+    }
+
+    .stage-desc {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── ADR CARDS ── */
+    .adr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: 10px;
+      margin: 12px 0 20px;
+    }
+
+    .adr-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+
+    .adr-num {
+      font-size: 10px;
+      color: var(--accent2);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+
+    .adr-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .adr-rationale {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── SECURITY FINDINGS ── */
+    .finding {
+      display: flex;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+    }
+
+    .finding:last-child { border-bottom: none; }
+
+    .finding-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent2);
+      min-width: 24px;
+      padding-top: 1px;
+    }
+
+    .finding-body { flex: 1; }
+
+    .finding-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--danger);
+      margin-bottom: 3px;
+    }
+
+    .finding-fix {
+      font-size: 12px;
+      color: var(--accent3);
+      margin-bottom: 3px;
+    }
+
+    .finding-ver {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── CONSTRAINT CHIPS ── */
+    .constraints {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .chip {
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 5px 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .chip.danger { border-color: var(--danger); color: var(--danger); }
+    .chip.warn   { border-color: var(--warn);   color: var(--warn); }
+    .chip.ok     { border-color: var(--accent3); color: var(--accent3); }
+
+    /* ── ROADMAP ── */
+    .roadmap-row {
+      display: grid;
+      grid-template-columns: 60px 1fr 2fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 9px 14px;
+      border-radius: 5px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .roadmap-row:last-child { border-bottom: none; }
+    .roadmap-row:hover { background: var(--card); }
+
+    .week-num { color: var(--accent2); font-weight: 700; }
+    .rmod     { color: var(--text); font-weight: 700; }
+    .rdesc    { color: var(--muted); }
+
+    .status-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .status-complete    { background: #0d2d1a; color: var(--accent3); border: 1px solid var(--accent3); }
+    .status-inprogress  { background: #2d2310; color: var(--warn);    border: 1px solid var(--warn); }
+    .status-future      { background: #1a1a30; color: var(--accent2); border: 1px solid var(--accent2); }
+
+    /* ── TERMINAL BLOCKS ── */
+    .terminal {
+      background: #0a0a0c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 12px 0 20px;
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .terminal-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+
+    .t-close  { background: #f87171; }
+    .t-min    { background: #fbbf24; }
+    .t-expand { background: #34d399; }
+
+    .terminal-title {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 8px;
+      font-style: italic;
+    }
+
+    .terminal pre {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      margin: 0;
+      padding: 14px 18px;
+    }
+
+    .terminal pre code { color: #86efac; }
+
+    /* ── ENV TABLE ── */
+    .env-required { color: var(--danger); font-weight: 700; }
+    .env-optional { color: var(--muted); }
+
+    /* ── STACK GRID ── */
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+      margin: 12px 0;
+    }
+
+    .stack-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+
+    .stack-layer {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent2);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .stack-tech {
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── CALLOUT ── */
+    .callout {
+      background: var(--card);
+      border-left: 3px solid var(--accent2);
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      margin: 12px 0 20px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .callout.danger { border-left-color: var(--danger); }
+    .callout.ok     { border-left-color: var(--accent3); }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (max-width: 640px) {
+      header { padding: 20px 16px 0; }
+      main { padding: 24px 16px 60px; }
+      .adr-grid { grid-template-columns: 1fr; }
+      .roadmap-row { grid-template-columns: 40px 1fr; }
+      .roadmap-row .rdesc { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <h1>ARIA</h1>
+    <span class="version-pill">v2.0.0</span>
+  </div>
+  <p class="tagline">Adaptive Realtime Intelligence Avatar — on-device multimodal AI companion</p>
+  <div class="badges">
+    <span class="badge badge-go">Go 1.21+</span>
+    <span class="badge badge-python">Python 3.13</span>
+    <span class="badge badge-next">Next.js 14</span>
+    <span class="badge badge-ts">TypeScript 5</span>
+    <span class="badge badge-tests">160 Python · 20+ Go tests</span>
+    <span class="badge badge-apple">Apple Silicon</span>
+    <span class="badge badge-private">Private</span>
+  </div>
+  <nav class="tabs">
+    <button class="active" onclick="showTab('architecture')">Architecture</button>
+    <button onclick="showTab('pipeline')">Pipeline</button>
+    <button onclick="showTab('versions')">Versions</button>
+    <button onclick="showTab('quickstart')">Quick Start</button>
+    <button onclick="showTab('security')">Security</button>
+    <button onclick="showTab('roadmap')">Roadmap</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ═══════════════════════════════════════════
+       ARCHITECTURE
+  ═══════════════════════════════════════════ -->
+  <section id="architecture" class="tab-panel active">
+    <h2>Architecture</h2>
+    <p>Three-language stack with clean gRPC and subprocess boundaries. Go owns concurrency; Python owns ML; TypeScript owns the UI.</p>
+
+    <pre><code>  Browser (Next.js :3000)
+       |
+       | WebSocket  ws://localhost:8080/ws
+       | HTTP POST  /api/cognition
+       | HTTP POST  /api/tts
+       |
+  Go Server (:8080)
+       |-- gRPC stream --> Python Vision Worker (:50051)
+       |                    MediaPipe Tasks FaceLandmarker (478 points)
+       |                    Emotion classifier (7 classes, landmark geometry)
+       |                    Head pose via solvePnP (pitch / yaw / roll)
+       |                    Hand gesture classification (thumb_up, open_palm, pinch, point)
+       |                    CoreML acceleration (2.9x speedup on Apple Neural Engine)
+       |                    Typed proto frames via PerceptionService
+       |
+       |-- subprocess --> Python Audio Worker
+       |                    sounddevice microphone capture at 16 kHz
+       |                    webrtcvad voice activity detection
+       |                    DeepFilterNet noise isolation (--denoise flag)
+       |                    faster-whisper speech-to-text (CoreML backend)
+       |                    JSON to stdout on utterance end
+       |
+       |-- NATS --> Internal event bus
+       |                    Decoupled vision / audio / cognition events
+       |                    Reconnect backoff (prevents storm on disconnect)
+       |
+       |-- HTTP proxy --> Python FastAPI (:8000)
+                            Neurosymbolic prompt builder
+                            Conflict detection (speech vs visual sentiment)
+                            Claude Haiku / Sonnet tiered routing + prompt caching
+                            ChromaDB episodic memory + NetworkX graph memory
+                            SQLite spatial anchor registry</code></pre>
+
+    <h2>Design Decisions</h2>
+    <div class="adr-grid">
+      <div class="adr-card">
+        <div class="adr-num">ADR-001</div>
+        <div class="adr-title">Go for WebSocket, Python for ML</div>
+        <div class="adr-rationale">Goroutines handle concurrent connections with minimal overhead. Python has no viable alternative for MediaPipe, faster-whisper, and torch-based ML libraries.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-002</div>
+        <div class="adr-title">gRPC replacing stdout IPC for vision</div>
+        <div class="adr-rationale">Typed proto contract; bidirectional streaming; priority interrupt support. Stdout IPC had no schema enforcement and no cancellation primitive.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-003</div>
+        <div class="adr-title">webrtcvad over Silero VAD</div>
+        <div class="adr-rationale">No torch dependency; native ARM64; processes 30ms chunks in under 1ms. Silero caused dependency conflicts on Apple Silicon.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-004</div>
+        <div class="adr-title">Native ARM64 Python via miniconda</div>
+        <div class="adr-rationale">Avoids Rosetta x86_64 emulation conflicts. Unlocks Apple Neural Engine acceleration for all ML inference.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-005</div>
+        <div class="adr-title">MediaPipe Tasks API</div>
+        <div class="adr-rationale">Solutions API deprecated in 0.10.21+. Tasks API provides Metal GPU acceleration and cleaner interface.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-006</div>
+        <div class="adr-title">NATS for async transport</div>
+        <div class="adr-rationale">Decoupled event bus eliminates Go channel fan-out complexity. Subjects map cleanly to vision/audio/cognition streams.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-007</div>
+        <div class="adr-title">Claude Haiku / Sonnet tiered routing</div>
+        <div class="adr-rationale">Cost-sensitive fast path (Haiku) with Sonnet escalation for complex turns. Prompt caching on stable system prefix reduces latency further.</div>
+      </div>
+      <div class="adr-card">
+        <div class="adr-num">ADR-008</div>
+        <div class="adr-title">NetworkX graph memory alongside ChromaDB</div>
+        <div class="adr-rationale">Relational traversal for memory anchoring is not achievable via vector similarity alone. Graph edges encode explicit semantic relationships.</div>
+      </div>
+    </div>
+
+    <h2>v2.0.0 Full Stack</h2>
+    <div class="stack-grid">
+      <div class="stack-card">
+        <div class="stack-layer">WebSocket Server</div>
+        <div class="stack-tech">Go 1.21+, chi, gorilla/websocket, zerolog</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">gRPC Transport</div>
+        <div class="stack-tech">Go + Python, buf, protobuf<br>PerceptionService + CognitionService</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Event Bus</div>
+        <div class="stack-tech">NATS — async vision / audio / cognition decoupling</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Vision</div>
+        <div class="stack-tech">Python 3.13, MediaPipe Tasks 0.10.32+<br>OpenCV, CoreML (ANE, 2.9x)</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Gesture</div>
+        <div class="stack-tech">Python, 21-point hand landmark geometry classifier<br>thumb_up · open_palm · pinch · point</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Audio</div>
+        <div class="stack-tech">faster-whisper (CoreML), webrtcvad<br>sounddevice, DeepFilterNet</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Cognition</div>
+        <div class="stack-tech">Claude Haiku (fast path)<br>Claude Sonnet (escalated)<br>Prompt caching on system prefix</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Episodic Memory</div>
+        <div class="stack-tech">ChromaDB 1.5.5<br>profile · episodic · working collections</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Graph Memory</div>
+        <div class="stack-tech">NetworkX — relational traversal<br>for memory anchor resolution</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Spatial Anchors</div>
+        <div class="stack-tech">SQLite — persistent registry<br>keyed by session + world position</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Frontend</div>
+        <div class="stack-tech">Next.js 14, TypeScript, Three.js<br>Tailwind CSS, Zustand</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">TTS</div>
+        <div class="stack-tech">ElevenLabs streaming<br>Web Speech API fallback</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       PIPELINE
+  ═══════════════════════════════════════════ -->
+  <section id="pipeline" class="tab-panel">
+    <h2>Vision Pipeline</h2>
+    <p style="color:var(--muted); font-size:12px; margin-bottom:16px;">gRPC, continuous at up to 15 fps</p>
+
+    <div class="pipeline">
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Webcam frame</div><div class="stage-desc">Raw frame captured from system default camera</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">MediaPipe FaceLandmarker</div><div class="stage-desc">478 normalized landmarks (x, y, z) per frame</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Emotion classifier</div><div class="stage-desc">7 classes from landmark geometry · 5-frame smoothing</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Head pose estimation (solvePnP)</div><div class="stage-desc">pitch / yaw / roll in degrees</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Gesture classifier</div><div class="stage-desc">thumb_up · open_palm · pinch · point — 21-point hand geometry</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">CoreML inference backend</div><div class="stage-desc">2.9x speedup via Apple Neural Engine on M1 Pro</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">PerceptionService gRPC frame</div><div class="stage-desc">Typed proto streamed to Go server (:50051)</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot"></div></div>
+        <div class="stage-body"><div class="stage-name">Browser update</div><div class="stage-desc">Landmark overlay · emotion display · gesture state</div></div>
+      </div>
+    </div>
+
+    <h2>Audio Pipeline</h2>
+    <p style="color:var(--muted); font-size:12px; margin-bottom:16px;">Per utterance, wake-word gated</p>
+
+    <div class="pipeline">
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Microphone (16 kHz)</div><div class="stage-desc">sounddevice capture, system default input device</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">DeepFilterNet (optional)</div><div class="stage-desc">Noise isolation — enable with <code>--denoise</code> flag</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">webrtcvad (30ms chunks)</div><div class="stage-desc">Voice activity boundary detection, aggressiveness=2</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">faster-whisper (CoreML)</div><div class="stage-desc">Speech-to-text, base model, int8 quantization</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Go reads stdout → NATS publish</div><div class="stage-desc">Transcript broadcast over WebSocket to browser</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">FastAPI neurosymbolic prompt</div><div class="stage-desc">Claude Haiku (fast path) or Sonnet (escalated) responds</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot audio"></div></div>
+        <div class="stage-body"><div class="stage-name">ElevenLabs TTS → browser plays</div><div class="stage-desc">Streaming audio · Web Speech API fallback</div></div>
+      </div>
+    </div>
+
+    <h2>Neurosymbolic Cognition Loop</h2>
+
+    <div class="pipeline">
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Perceptual state</div><div class="stage-desc">emotion · head pose · gesture · face_detected</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">Go working memory (circular buffer)</div><div class="stage-desc">Last 10 symbolic inferences, keyed by session UUID</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">ChromaDB + NetworkX retrieval</div><div class="stage-desc">Long-term profile + episodic facts + relational anchor traversal</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div><div class="stage-line"></div></div>
+        <div class="stage-body"><div class="stage-name">FastAPI structured prompt (cached prefix)</div><div class="stage-desc">Haiku / Sonnet tiered routing · prompt caching on stable system prefix</div></div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div><div class="stage-line"></div></div>
+        <div class="stage-body">
+          <div class="stage-name">Claude structured response</div>
+          <div class="stage-desc">symbolic_inference · world_model_update (triple + confidence) · natural_language_response</div>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="stage-connector"><div class="stage-dot cog"></div></div>
+        <div class="stage-body"><div class="stage-name">World model update</div><div class="stage-desc">Triple written to ChromaDB + NetworkX · spatial anchors persisted to SQLite</div></div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Conflict detection:</strong> if <code>|speech_sentiment − visual_sentiment| &gt; 0.4</code>, ARIA responds to the observable affect via open invitation — not validating the stated emotion.
+    </div>
+    <div class="callout">
+      <strong>Priority interrupt:</strong> <code>FaceExitDetector → gRPC → StreamRegistry.CancelActive(session_id)</code> — concrete session IDs only, rejected at gRPC ingress if no matching session.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       VERSIONS
+  ═══════════════════════════════════════════ -->
+  <section id="versions" class="tab-panel">
+    <h2>Version History</h2>
+    <div class="version-grid">
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.0.0</span><span class="v-label">Voice companion (baseline)</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Go WebSocket server, Python vision + audio workers</li>
+            <li>MediaPipe FaceLandmarker, emotion classifier (7 classes), head pose</li>
+            <li>faster-whisper STT, webrtcvad VAD, ElevenLabs TTS</li>
+            <li>Claude Haiku cognition, ChromaDB layered memory</li>
+            <li>Wake word: <code>"Hey ARIA"</code> — sleep: <code>"That would be all"</code></li>
+            <li>Next.js 14 frontend with 3D avatar placeholder</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.1.0</span><span class="v-label">gRPC transport layer</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Replaced stdout JSON IPC with typed gRPC stream (PerceptionService on :50051)</li>
+            <li><code>buf.gen.yaml</code> generates Go + Python stubs from <code>proto/perception.proto</code></li>
+            <li><code>perception.proto</code>: Point3D, HandGestureEvent, SpatialAnchor, Handedness enum</li>
+            <li>Go server implements PerceptionService client; Python vision worker implements server</li>
+            <li>Proto tag budget reserved for all future weeks</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.2.0</span><span class="v-label">Bidirectional gRPC + priority interrupt</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Bidirectional gRPC streaming between Go and Python vision worker</li>
+            <li>Priority interrupt path: FaceExitDetector → gRPC → StreamRegistry.CancelActive()</li>
+            <li>CognitionService gRPC interface defined</li>
+            <li>Interrupt scoped to concrete session UUIDs — no wildcard cancellation</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.3.0</span><span class="v-label">CoreML / ANE acceleration (2.9x)</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>CoreML inference backend for MediaPipe gesture and emotion models</li>
+            <li>Apple Neural Engine: 2.9x throughput on M1 Pro vs CPU baseline</li>
+            <li>Accuracy benchmarked before enabling — CoreML fallback safety guard retained</li>
+            <li>faster-whisper CoreML backend enabled for STT</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.4.0</span><span class="v-label">Codex hardening sprint</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Codex adversarial review integrated into sprint workflow</li>
+            <li>All P0 findings fixed before merge</li>
+            <li>Session ID UUIDs enforced end-to-end; "default" wildcard removed</li>
+            <li>Pending cancel map bounded at 32 entries with 10s TTL eviction</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.5.0</span><span class="v-label">Security review — 12 Codex findings resolved</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>gRPC services rebound to 127.0.0.1 (were 0.0.0.0)</li>
+            <li>vision_grpc_server.py: loopback-only bind enforced</li>
+            <li><code>session_init</code> sent on WebSocket open — no anonymous sessions</li>
+            <li>Worker replay attack surface closed</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.6.0</span><span class="v-label">Session isolation</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Full session UUID isolation across WebSocket hub, gRPC, and cognition</li>
+            <li>StreamRegistry enforces concrete session IDs at gRPC ingress</li>
+            <li>CancelActive() only cancels the caller's own session</li>
+            <li>Working memory keyed per session UUID</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.7.0</span><span class="v-label">NATS async transport</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>NATS replaces Go channel fan-out for vision / audio / cognition events</li>
+            <li>Reconnect backoff implemented in subscriber — prevents reconnect storm</li>
+            <li>All internal event buses decoupled via NATS subjects</li>
+            <li>NATS subscriber DisconnectErrHandler + ReconnectHandler wired</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.8.0</span><span class="v-label">LMCache + tiered Claude routing</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Prompt caching enabled for neurosymbolic system prompt (stable prefix)</li>
+            <li>Claude Haiku / Sonnet tiered routing: Haiku for fast path, Sonnet for escalated turns</li>
+            <li>LMCache KV-cache reuse reduces cognition latency on repeated context</li>
+            <li>Cost per cognition turn reduced significantly on cached sessions</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v1.9.0</span><span class="v-label">Shannon memory graph</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>NetworkX graph memory alongside ChromaDB for relational traversal</li>
+            <li><code>graph_memory.py</code>: node insertion, edge linking, traversal for anchor resolution</li>
+            <li>Episodic memory anchored to graph nodes for contextual retrieval</li>
+            <li>ChromaDB + NetworkX queried in parallel per cognition turn</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v2.0.0-beta</span><span class="v-label">Gesture classification</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Gesture classifier: thumb_up, open_palm, pinch, point (21-point hand landmark geometry)</li>
+            <li>Magic constant: thumb_up uses landmark distance threshold = 0.4</li>
+            <li>Gesture events streamed via PerceptionService proto (HandGestureEvent)</li>
+            <li>Gesture state included in cognition context</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v2.0.0</span><span class="v-label">Spatial anchoring — current</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>SQLite spatial anchor registry: anchors persisted by session + world position</li>
+            <li>SpatialAnchor proto message activated (Week 9 reserved tags)</li>
+            <li>Anchor creation via hand gesture + gaze direction</li>
+            <li>Anchor retrieval included in cognition context for object reference resolution</li>
+          </ul>
+        </details>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       QUICK START
+  ═══════════════════════════════════════════ -->
+  <section id="quickstart" class="tab-panel">
+    <h2>Prerequisites</h2>
+    <ul>
+      <li>macOS Apple Silicon (M1/M2/M3) or Linux</li>
+      <li>Go 1.21+</li>
+      <li>Node.js 20+</li>
+      <li>Anthropic API key</li>
+      <li>ElevenLabs API key (optional — falls back to browser TTS)</li>
+    </ul>
+
+    <h2>1. Clone</h2>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">bash</span>
+      </div>
+      <pre><code>git clone https://github.com/sucheet2000/aria.git
+cd aria
+cp backend/.env.example backend/.env
+# Add your ANTHROPIC_API_KEY to backend/.env</code></pre>
+    </div>
+
+    <h2>2. Python Environment (Apple Silicon)</h2>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">bash</span>
+      </div>
+      <pre><code>curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
+bash Miniconda3-latest-MacOSX-arm64.sh -b -p ~/miniconda-arm64
+source ~/miniconda-arm64/bin/activate
+
+pip install mediapipe opencv-python torch faster-whisper webrtcvad \
+            sounddevice structlog pydantic pydantic-settings \
+            anthropic fastapi uvicorn chromadb deepfilternet networkx</code></pre>
+    </div>
+    <div class="callout">Always use <code>/Users/YOUR_USERNAME/miniconda-arm64/bin/python3</code> — never system Python or conda base.</div>
+
+    <h2>3. Backend &amp; Frontend</h2>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">bash</span>
+      </div>
+      <pre><code>cd backend && go mod download
+cd ../frontend && npm install</code></pre>
+    </div>
+
+    <h2>4. Run (three terminals)</h2>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">Terminal 1 — FastAPI cognition + memory service</span>
+      </div>
+      <pre><code>cd backend
+PYTHONPATH=backend /Users/YOUR_USERNAME/miniconda-arm64/bin/python3 \
+  -m uvicorn app.main:app --port 8000</code></pre>
+    </div>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">Terminal 2 — Go server (gRPC vision worker + NATS)</span>
+      </div>
+      <pre><code>cd backend
+go run cmd/server/main.go</code></pre>
+    </div>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">Terminal 3 — Frontend</span>
+      </div>
+      <pre><code>cd frontend
+npm run dev</code></pre>
+    </div>
+    <p>Open <code>http://localhost:3000</code> and allow camera and microphone access.</p>
+
+    <h2>Testing</h2>
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot t-close"></div>
+        <div class="terminal-dot t-min"></div>
+        <div class="terminal-dot t-expand"></div>
+        <span class="terminal-title">bash</span>
+      </div>
+      <pre><code># Python — 160 tests
+PYTHONPATH=backend python3 -m pytest backend/tests/ -v
+
+# Go — 20+ tests
+cd backend && go build ./... && go vet ./... && go test ./...
+
+# Frontend
+cd frontend && npm run build</code></pre>
+    </div>
+
+    <h2>Environment Variables</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>ANTHROPIC_API_KEY</code></td><td class="env-required">required</td><td>Claude API key</td></tr>
+          <tr><td><code>PYTHON_BIN</code></td><td><code>python3</code></td><td>Path to ARM64 Python binary</td></tr>
+          <tr><td><code>WHISPER_MODEL</code></td><td><code>base</code></td><td>faster-whisper model size (tiny / base / small)</td></tr>
+          <tr><td><code>AUDIO_ENABLED</code></td><td><code>true</code></td><td>Set <code>false</code> to disable the audio worker</td></tr>
+          <tr><td><code>ELEVENLABS_API_KEY</code></td><td class="env-optional">optional</td><td>ElevenLabs TTS key — falls back to browser TTS</td></tr>
+          <tr><td><code>ELEVENLABS_VOICE_ID</code></td><td>Rachel</td><td>ElevenLabs voice ID</td></tr>
+          <tr><td><code>TTS_PROVIDER</code></td><td><code>elevenlabs</code></td><td>Set <code>browser</code> for lower latency</td></tr>
+          <tr><td><code>USE_OLLAMA</code></td><td><code>false</code></td><td>Use local Ollama instead of Claude</td></tr>
+          <tr><td><code>PORT</code></td><td><code>8080</code></td><td>Go server port</td></tr>
+          <tr><td><code>DEBUG</code></td><td><code>false</code></td><td>Verbose server logging</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Development Commands</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Command</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>go run cmd/server/main.go</code></td><td>Start Go server with gRPC vision worker + NATS</td></tr>
+          <tr><td><code>uvicorn app.main:app --port 8000</code></td><td>Start FastAPI cognition + memory service</td></tr>
+          <tr><td><code>npm run dev</code></td><td>Start Next.js frontend</td></tr>
+          <tr><td><code>python3 -m pytest backend/tests/ -v</code></td><td>Run Python test suite (160 tests)</td></tr>
+          <tr><td><code>cd backend &amp;&amp; go test ./...</code></td><td>Run Go test suite (20+ tests)</td></tr>
+          <tr><td><code>cd frontend &amp;&amp; npm run build</code></td><td>Type-check + build frontend</td></tr>
+          <tr><td><code>cd proto &amp;&amp; buf generate</code></td><td>Regenerate Go + Python proto stubs</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SECURITY
+  ═══════════════════════════════════════════ -->
+  <section id="security" class="tab-panel">
+    <h2>Security</h2>
+    <p>All 12 Codex adversarial review findings resolved in v1.3.0–v1.7.0. Security findings are P0 — fixed before merging any sprint.</p>
+
+    <div style="margin: 20px 0;">
+      <div class="finding">
+        <div class="finding-num">01</div>
+        <div class="finding-body">
+          <div class="finding-title">gRPC PerceptionService bound to 0.0.0.0</div>
+          <div class="finding-fix">Rebound to 127.0.0.1:50051</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">02</div>
+        <div class="finding-body">
+          <div class="finding-title">gRPC CognitionService bound to 0.0.0.0</div>
+          <div class="finding-fix">Rebound to 127.0.0.1:50052</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">03</div>
+        <div class="finding-body">
+          <div class="finding-title">vision_grpc_server.py exposed on all interfaces</div>
+          <div class="finding-fix">Loopback-only bind enforced in Python server startup</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">04</div>
+        <div class="finding-body">
+          <div class="finding-title">Session IDs used "default" wildcard in working memory</div>
+          <div class="finding-fix">UUIDs end-to-end — wildcard key removed, rejected on lookup</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">05</div>
+        <div class="finding-body">
+          <div class="finding-title">Interrupt path accepted any string as session ID</div>
+          <div class="finding-fix">Rejected at gRPC ingress if no matching session in StreamRegistry</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">06</div>
+        <div class="finding-body">
+          <div class="finding-title">CancelActive() had no session scope guard</div>
+          <div class="finding-fix">Scoped to caller's concrete session UUID only</div>
+          <div class="finding-ver">Fixed in v1.6.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">07</div>
+        <div class="finding-body">
+          <div class="finding-title">Pending cancel map unbounded — OOM under load</div>
+          <div class="finding-fix">Bounded at 32 entries with 10s TTL eviction</div>
+          <div class="finding-ver">Fixed in v1.5.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">08</div>
+        <div class="finding-body">
+          <div class="finding-title">WebSocket connections had no session_init handshake</div>
+          <div class="finding-fix">session_init sent on WS open before any routing or message forwarding</div>
+          <div class="finding-ver">Fixed in v1.6.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">09</div>
+        <div class="finding-body">
+          <div class="finding-title">Audio worker replay: same utterance could trigger cognition twice</div>
+          <div class="finding-fix">Utterance dedup by timestamp + content hash</div>
+          <div class="finding-ver">Fixed in v1.6.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">10</div>
+        <div class="finding-body">
+          <div class="finding-title">NATS subscriber had no reconnect backoff</div>
+          <div class="finding-fix">Exponential backoff in ReconnectHandler — prevents reconnect storm on disconnect</div>
+          <div class="finding-ver">Fixed in v1.7.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">11</div>
+        <div class="finding-body">
+          <div class="finding-title">CoreML backend enabled without accuracy gate</div>
+          <div class="finding-fix">Accuracy benchmarked vs CPU baseline before enabling; fallback safety guard retained</div>
+          <div class="finding-ver">Fixed in v1.3.0</div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">12</div>
+        <div class="finding-body">
+          <div class="finding-title">ANE acceleration not verified against CPU baseline</div>
+          <div class="finding-fix">Benchmark required before enabling — 2.9x confirmed on M1 Pro</div>
+          <div class="finding-ver">Fixed in v1.3.0</div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Ongoing Constraints</h2>
+    <div class="constraints">
+      <span class="chip ok">127.0.0.1 only — never 0.0.0.0 for gRPC</span>
+      <span class="chip danger">backend/.env is gitignored — never commit</span>
+      <span class="chip danger">API keys never hardcoded</span>
+      <span class="chip warn">Security findings are P0 — fix before any sprint merge</span>
+      <span class="chip warn">No security debt carried forward between versions</span>
+    </div>
+
+    <h2>v3 Security Requirements</h2>
+    <ul>
+      <li>mTLS on gRPC services when ARIA exposes to local network</li>
+      <li>WebSocket rate limiting: max N connections per IP</li>
+      <li>Session token expiry: UUID sessions expire after 30 min idle</li>
+      <li>Audit log: all cognition requests logged with session_id + timestamp</li>
+      <li>Input validation: sanitize all WebSocket message payloads before routing</li>
+    </ul>
+
+    <h2>v4 Security Requirements (Agent Trust Boundaries)</h2>
+    <ul>
+      <li>Segregation of duties enforced via gitagent <code>DUTIES.md</code></li>
+      <li>code-builder agent cannot approve its own work</li>
+      <li>Agent-to-agent communication authenticated (not just localhost trust)</li>
+      <li>API key rotation: ANTHROPIC_API_KEY rotated every 90 days</li>
+      <li>No agent can write to <code>SOUL.md</code> without human approval (human-in-the-loop)</li>
+    </ul>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       ROADMAP
+  ═══════════════════════════════════════════ -->
+  <section id="roadmap" class="tab-panel">
+    <h2>Completed — Weeks 0–9</h2>
+
+    <div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 0</span>
+        <span class="rmod">Proto</span>
+        <span class="rdesc">Protobuf data contract (perception.proto)</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 1</span>
+        <span class="rmod">gRPC Transport</span>
+        <span class="rdesc">Typed gRPC stream replacing stdout IPC</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 2</span>
+        <span class="rmod">Session State</span>
+        <span class="rdesc">UUID session isolation across all subsystems</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 3</span>
+        <span class="rmod">Priority Interrupt</span>
+        <span class="rdesc">FaceExitDetector → StreamRegistry interrupt path</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 4</span>
+        <span class="rmod">ANE Acceleration</span>
+        <span class="rdesc">CoreML backend, 2.9x speedup, accuracy gate</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 5</span>
+        <span class="rmod">NATS Transport</span>
+        <span class="rdesc">NATS event bus, reconnect backoff</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 6</span>
+        <span class="rmod">LMCache + Tiered Routing</span>
+        <span class="rdesc">Prompt caching, Haiku/Sonnet routing</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 7</span>
+        <span class="rmod">Shannon Memory Graph</span>
+        <span class="rdesc">NetworkX graph memory + ChromaDB integration</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 8</span>
+        <span class="rmod">Gesture Classification</span>
+        <span class="rdesc">thumb_up, open_palm, pinch, point via HandGestureEvent</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 9</span>
+        <span class="rmod">Spatial Anchoring</span>
+        <span class="rdesc">SQLite anchor registry, SpatialAnchor proto</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+    </div>
+
+    <h2>In Progress</h2>
+    <div>
+      <div class="roadmap-row">
+        <span class="week-num">Week 10</span>
+        <span class="rmod">Hardening</span>
+        <span class="rdesc">NATS reconnect Go unit tests, anchor delete/update API, observability</span>
+        <span class="status-badge status-inprogress">In Progress</span>
+      </div>
+    </div>
+
+    <h2>Future</h2>
+    <div>
+      <div class="roadmap-row">
+        <span class="week-num">v3</span>
+        <span class="rmod">Spatial Computing</span>
+        <span class="rdesc">ARKit integration, persistent spatial map, multi-anchor scene understanding</span>
+        <span class="status-badge status-future">Planned</span>
+      </div>
+      <div class="roadmap-row">
+        <span class="week-num">v4</span>
+        <span class="rmod">Autonomous Agent</span>
+        <span class="rdesc">Multi-agent delegation, SOUL.md human-in-the-loop gate, gitagent DUTIES.md</span>
+        <span class="status-badge status-future">Planned</span>
+      </div>
+    </div>
+
+    <h2>Hard Constraints</h2>
+    <div class="constraints">
+      <span class="chip danger">Sub-100ms interrupt latency is non-negotiable</span>
+      <span class="chip warn">Proto tags 1–15 only for hot-path fields (1-byte wire cost)</span>
+      <span class="chip warn">All timestamps as int64 microseconds — no Timestamp sub-message</span>
+      <span class="chip ok">Backward compatibility non-negotiable after Week 1</span>
+      <span class="chip danger">No security debt carried between versions</span>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  function showTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    const tabs = ['architecture','pipeline','versions','quickstart','security','roadmap'];
+    const idx = tabs.indexOf(id);
+    document.querySelectorAll('nav.tabs button')[idx].classList.add('active');
+  }
+</script>
+
+</body>
+</html>
