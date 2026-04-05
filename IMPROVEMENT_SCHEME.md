@@ -43,6 +43,33 @@
 ## Week 9 — Spatial Anchoring
 *Details coming soon.*
 
+## Security Architecture (Ongoing)
+
+### Completed (Codex-found, fixed in v1.5.0–v1.6.0)
+- gRPC services bound to 127.0.0.1 only (not 0.0.0.0)
+- Session IDs: UUIDs end-to-end, no "default" wildcard
+- Interrupt path: concrete session IDs only, rejected at gRPC ingress
+- Pending cancel map: bounded at 32 entries, 10s TTL eviction
+- vision_grpc_server.py: loopback only
+
+### v3 Security Requirements
+- mTLS on gRPC services when ARIA exposes to local network
+- WebSocket rate limiting: max N connections per IP
+- Session token expiry: UUID sessions expire after 30 min idle
+- Audit log: all cognition requests logged with session_id + timestamp
+- Input validation: sanitize all WebSocket message payloads before routing
+
+### v4 Security Requirements (Agent Trust Boundaries)
+- Segregation of duties enforced via gitagent DUTIES.md
+- code-builder agent cannot approve its own work
+- Agent-to-agent communication authenticated (not just localhost trust)
+- API key rotation: ANTHROPIC_API_KEY rotated every 90 days
+- No agent can write to SOUL.md without human approval (human-in-the-loop)
+
+### Critical Design Constraint
+Security findings from Codex adversarial review are P0 — fix before
+merging any sprint. No security debt carried forward between versions.
+
 ## Critical Design Constraints
 - Tags 1-15 in proto messages cost 1 byte on the wire
 - Tags 16+ cost 2 bytes — never put hot-path fields here
