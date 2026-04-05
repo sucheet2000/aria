@@ -248,9 +248,16 @@ class GestureClassifier:
         self,
         left_landmarks: list[list[float]],
         right_landmarks: list[list[float]],
+        dt_ms: float = 33.0,
     ) -> TwoHandGesture:
         """
-        Classify a two-hand gesture from simultaneous left and right landmarks.
+        Classify a two-hand gesture.
+
+        Args:
+            dt_ms: Time delta since last frame in milliseconds.
+                   Defaults to 33.0 (~30fps). velocity_vector magnitude
+                   is only valid relative to the frame rate used.
+                   Pass actual frame delta for correct velocity magnitude.
 
         Priority: BOND > THROW > EXPAND > HOLD > NONE
         """
@@ -262,7 +269,7 @@ class GestureClassifier:
             self._prev_right = right_landmarks
             return TwoHandGesture(TWO_HAND_BOND, 1.0, distance=distance)
 
-        # THROW: previous frame was a fist, current is open palm
+        # THROW: previous frame was a fist, current is open palm with sufficient velocity
         if self._prev_left is not None and self._prev_right is not None:
             prev_left_fist  = _fist(self._prev_left) > 0
             prev_right_fist = _fist(self._prev_right) > 0
@@ -275,10 +282,12 @@ class GestureClassifier:
             if throw_detected:
                 active_prev = self._prev_left if (prev_left_fist and curr_left_open) else self._prev_right
                 active_curr = left_landmarks if (prev_left_fist and curr_left_open) else right_landmarks
-                vel = self.compute_velocity(active_prev, active_curr, dt_ms=33.0)
-                self._prev_left = left_landmarks
-                self._prev_right = right_landmarks
-                return TwoHandGesture(TWO_HAND_THROW, 0.9, velocity_vector=vel)
+                vel = self.compute_velocity(active_prev, active_curr, dt_ms=dt_ms)
+                speed = math.sqrt(vel[0] ** 2 + vel[1] ** 2 + vel[2] ** 2)
+                if speed >= _THROW_VELOCITY_THRESHOLD:
+                    self._prev_left = left_landmarks
+                    self._prev_right = right_landmarks
+                    return TwoHandGesture(TWO_HAND_THROW, 0.9, velocity_vector=vel)
 
         # EXPAND: wrists far apart
         if distance > 0.3:
