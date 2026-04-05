@@ -13,6 +13,8 @@
 [![License](https://img.shields.io/badge/License-Private-red?style=flat-square)](#)
 
 A real-time multimodal AI companion. Sees you through your camera, hears you through your microphone, reasons about your emotional and cognitive state using a neurosymbolic architecture, and maintains a persistent world model of who you are across sessions — entirely on-device.
+> **[→ Interactive site](https://sucheet2000.github.io/aria)** — live demo of the architecture
+
 
 </div>
 
