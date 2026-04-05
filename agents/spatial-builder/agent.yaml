@@ -1,0 +1,4 @@
+spec_version: "0.1.0"
+name: spatial-builder
+version: 0.1.0
+description: Builds Three.js spatial canvas and persistent anchor visualization
