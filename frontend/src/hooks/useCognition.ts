@@ -44,6 +44,7 @@ export function useCognition() {
       faceLandmarks,
       handLandmarks,
       conversationHistory,
+      visionState,
     } = state;
 
     addMessage("user", text.trim());
@@ -70,6 +71,9 @@ export function useCognition() {
             hands_detected: handLandmarks.length > 0,
           },
           conversation_history: conversationHistory,
+          gesture: visionState?.gesture_name ?? "none",
+          two_hand_gesture: visionState?.two_hand_gesture ?? "NONE",
+          pointing_vector: visionState?.pointing_vector ?? null,
         }),
       });
 
