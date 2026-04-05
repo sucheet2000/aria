@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { useWorldModel } from "./useWorldModel";
@@ -39,8 +39,13 @@ export function SpatialCanvas() {
     };
   }, [addAnchor]);
 
+  const cameraConfig = useMemo(
+    () => ({ position: [0, 0, 5] as [number, number, number], fov: 60 }),
+    []
+  );
+
   return (
-    <Canvas camera={{ position: [0, 0, 5], fov: 60 }}>
+    <Canvas camera={cameraConfig}>
       <ambientLight intensity={0.3} />
       <pointLight position={[10, 10, 10]} intensity={0.8} />
       <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade />

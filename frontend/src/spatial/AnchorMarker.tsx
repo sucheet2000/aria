@@ -35,13 +35,14 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
     <group position={[anchor.x, anchor.y, anchor.z]}>
       <mesh
         ref={meshRef}
+        scale={hovered ? 1.2 : 1}
         onPointerOver={(e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
           setHovered(true);
         }}
         onPointerOut={() => setHovered(false)}
       >
-        <sphereGeometry args={[hovered ? 0.12 : 0.1, 16, 16]} />
+        <sphereGeometry args={[0.1, 16, 16]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
