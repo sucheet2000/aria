@@ -110,3 +110,24 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 - If result is obvious, stop. No explanation needed.
 - Commit messages: one line, no body unless critical.
 - Test output: show only failures and final count. Not every PASS.
+
+## Codex Review Workflow
+- After each sprint: /code-review-graph:review-delta first
+- Then: /codex:adversarial-review --background
+- Check: /codex:status then /codex:result
+- Max 3 Codex rounds per sprint
+- Document architectural findings as v2 scope instead of looping
+- Start a fresh Claude Code session for each sprint to keep Codex skill enabled
+
+## Codex Review Workflow
+- After each sprint: /code-review-graph:review-delta first
+- Then: /codex:adversarial-review --background
+- Check: /codex:status then /codex:result
+- Max 3 Codex rounds per sprint
+- Document architectural findings as v2 scope instead of looping
+- Start a fresh Claude Code session for each sprint to keep Codex skill enabled
+
+## Known Test Gaps (tracked)
+- NATS subscriber reconnect path (DisconnectErrHandler, ReconnectHandler)
+  has no Go unit test. Follow-up: add embedded nats-server test in Week 10.
+- Anchor registry has no delete/update API. Pruning stale anchors is Week 10 scope.

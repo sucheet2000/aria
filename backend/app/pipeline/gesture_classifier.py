@@ -84,6 +84,8 @@ def _thumb_up(landmarks: list[list[float]]) -> float:
         return 0.0
 
     # Confidence: how far the thumb is above the wrist
+    # * 4 calibrated for ~60cm camera distance; thumb must be
+    # at least 25% of frame height above wrist to register as thumbs-up
     height_ratio = min(1.0, (wrist.y - thumb_tip.y) * 4)
     return 0.5 + 0.5 * (curl_count / 4) * height_ratio
 
