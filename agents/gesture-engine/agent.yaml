@@ -1,0 +1,4 @@
+spec_version: "0.1.0"
+name: gesture-engine
+version: 0.1.0
+description: Builds two-hand gesture primitives HOLD, EXPAND, THROW, BOND
