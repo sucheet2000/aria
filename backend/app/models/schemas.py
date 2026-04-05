@@ -48,6 +48,11 @@ class CognitionRequest(BaseModel):
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     working_memory: list[str] = Field(default_factory=list)
     episodic_memory: list[str] = Field(default_factory=list)
+    # Gesture fields forwarded from vision_worker JSON
+    gesture: str = "none"
+    two_hand_gesture: str = "NONE"
+    pointing_vector: list[float] | None = None
+    session_id: str = ""
 
 
 class WorldModelTriple(BaseModel):
