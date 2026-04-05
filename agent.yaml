@@ -1,0 +1,6 @@
+spec_version: "0.1.0"
+name: aria-orchestrator
+version: 3.0.0-dev
+description: Coordinates ARIA v3 spatial computing development
+model:
+  preferred: claude-sonnet-4-6
