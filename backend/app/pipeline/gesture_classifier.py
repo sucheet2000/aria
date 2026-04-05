@@ -21,7 +21,8 @@ A finger is CURLED when its TIP y > its MCP y.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 # ── MediaPipe index constants ─────────────────────────────────────────────────
@@ -51,6 +52,24 @@ class GestureResult(NamedTuple):
     gesture_type: int    # GestureType enum int
     confidence: float    # 0.0–1.0
     pointing_vector: tuple[float, float, float] | None  # only for POINT
+
+
+# Two-hand gesture types
+TWO_HAND_HOLD   = "HOLD"
+TWO_HAND_EXPAND = "EXPAND"
+TWO_HAND_THROW  = "THROW"
+TWO_HAND_BOND   = "BOND"
+TWO_HAND_NONE   = "NONE"
+
+_THROW_VELOCITY_THRESHOLD = 0.0005  # normalized units per ms
+
+
+@dataclass
+class TwoHandGesture:
+    gesture_type: str  # "HOLD", "EXPAND", "THROW", "BOND", "NONE"
+    confidence: float
+    velocity_vector: tuple[float, float, float] | None = None
+    distance: float | None = None  # for BOND — distance between hands
 
 
 def _lm(landmarks: list[list[float]], idx: int) -> Point3D:
@@ -153,6 +172,16 @@ def _compute_pointing_vector(
     return (dx / mag, dy / mag, dz / mag)
 
 
+def _wrist_distance(
+    left: list[list[float]],
+    right: list[list[float]],
+) -> float:
+    """Euclidean distance between left and right wrist landmarks."""
+    lw = _lm(left, _WRIST)
+    rw = _lm(right, _WRIST)
+    return math.sqrt((lw.x - rw.x) ** 2 + (lw.y - rw.y) ** 2 + (lw.z - rw.z) ** 2)
+
+
 class GestureClassifier:
     """
     Rule-based gesture classifier.
@@ -160,6 +189,10 @@ class GestureClassifier:
     Input: 21 Point3D landmarks as list[list[float]] with [x, y, z] per point.
     Output: GestureResult(gesture_type, confidence, pointing_vector)
     """
+
+    def __init__(self) -> None:
+        self._prev_left: list[list[float]] | None = None
+        self._prev_right: list[list[float]] | None = None
 
     def classify(self, landmarks: list[list[float]]) -> GestureResult:
         if len(landmarks) != 21:
@@ -191,3 +224,78 @@ class GestureClassifier:
             confidence=round(best_conf, 3),
             pointing_vector=pointing_vector,
         )
+
+    def compute_velocity(
+        self,
+        prev_landmarks: list[list[float]],
+        curr_landmarks: list[list[float]],
+        dt_ms: float,
+    ) -> tuple[float, float, float]:
+        """Compute wrist (landmark 0) velocity in normalized units per ms."""
+        if dt_ms <= 0:
+            return (0.0, 0.0, 0.0)
+        pw = prev_landmarks[_WRIST]
+        cw = curr_landmarks[_WRIST]
+        pz = pw[2] if len(pw) > 2 else 0.0
+        cz = cw[2] if len(cw) > 2 else 0.0
+        return (
+            (cw[0] - pw[0]) / dt_ms,
+            (cw[1] - pw[1]) / dt_ms,
+            (cz - pz) / dt_ms,
+        )
+
+    def classify_two_hand(
+        self,
+        left_landmarks: list[list[float]],
+        right_landmarks: list[list[float]],
+    ) -> TwoHandGesture:
+        """
+        Classify a two-hand gesture from simultaneous left and right landmarks.
+
+        Priority: BOND > THROW > EXPAND > HOLD > NONE
+        """
+        distance = _wrist_distance(left_landmarks, right_landmarks)
+
+        # BOND: wrists very close together
+        if distance < 0.05:
+            self._prev_left = left_landmarks
+            self._prev_right = right_landmarks
+            return TwoHandGesture(TWO_HAND_BOND, 1.0, distance=distance)
+
+        # THROW: previous frame was a fist, current is open palm
+        if self._prev_left is not None and self._prev_right is not None:
+            prev_left_fist  = _fist(self._prev_left) > 0
+            prev_right_fist = _fist(self._prev_right) > 0
+            curr_left_open  = _open_palm(left_landmarks) > 0
+            curr_right_open = _open_palm(right_landmarks) > 0
+
+            throw_detected = (prev_left_fist and curr_left_open) or (
+                prev_right_fist and curr_right_open
+            )
+            if throw_detected:
+                active_prev = self._prev_left if (prev_left_fist and curr_left_open) else self._prev_right
+                active_curr = left_landmarks if (prev_left_fist and curr_left_open) else right_landmarks
+                vel = self.compute_velocity(active_prev, active_curr, dt_ms=33.0)
+                self._prev_left = left_landmarks
+                self._prev_right = right_landmarks
+                return TwoHandGesture(TWO_HAND_THROW, 0.9, velocity_vector=vel)
+
+        # EXPAND: wrists far apart
+        if distance > 0.3:
+            confidence = min(1.0, distance / 0.5)
+            self._prev_left = left_landmarks
+            self._prev_right = right_landmarks
+            return TwoHandGesture(TWO_HAND_EXPAND, round(confidence, 3), distance=distance)
+
+        # HOLD: one hand is an open palm
+        left_open  = _open_palm(left_landmarks)
+        right_open = _open_palm(right_landmarks)
+        if left_open > 0 or right_open > 0:
+            confidence = max(left_open, right_open)
+            self._prev_left = left_landmarks
+            self._prev_right = right_landmarks
+            return TwoHandGesture(TWO_HAND_HOLD, round(confidence, 3))
+
+        self._prev_left = left_landmarks
+        self._prev_right = right_landmarks
+        return TwoHandGesture(TWO_HAND_NONE, 0.0)
