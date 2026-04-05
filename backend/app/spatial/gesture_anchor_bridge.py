@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 
+from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
 
 
@@ -46,6 +47,8 @@ class GestureAnchorBridge:
         Returns:
             A dict describing the spatial event, or None when no action applies.
         """
+        MetricsCollector().record_gesture_event(two_hand_gesture if two_hand_gesture != "NONE" else gesture)
+
         # ── single-hand: POINT registers a new anchor ─────────────────────────
         if gesture == "point" and pointing_vector is not None and len(pointing_vector) >= 3:
             vec: tuple[float, float, float] = (
