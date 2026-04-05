@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
 import { useWorldModel } from "./useWorldModel";
-import { broadcastAnchorAdded, broadcastAnchorRemoved } from "./useSpatialSync";
+import { useSpatialSync, broadcastAnchorAdded, broadcastAnchorRemoved } from "./useSpatialSync";
 import type { SpatialAnchor } from "./useWorldModel";
 
 // ── BroadcastChannel mock ────────────────────────────────────────────────────
@@ -9,7 +10,6 @@ type MessageHandler = (event: { data: unknown }) => void;
 
 const mockPostMessage = vi.fn();
 const mockClose = vi.fn();
-let capturedOnMessage: MessageHandler | null = null;
 
 class MockBroadcastChannel {
   name: string;
@@ -17,13 +17,7 @@ class MockBroadcastChannel {
 
   constructor(name: string) {
     this.name = name;
-    // expose this instance so tests can simulate incoming messages
     MockBroadcastChannel.lastInstance = this;
-    // track onmessage assignment via setter
-    Object.defineProperty(this, "onmessage", {
-      set(fn: MessageHandler) { capturedOnMessage = fn; },
-      get() { return capturedOnMessage; },
-    });
   }
   postMessage = mockPostMessage;
   close = mockClose;
@@ -39,11 +33,7 @@ function resetStore() {
   useWorldModel.setState({ anchors: new Map(), activeGesture: null });
 }
 
-function simulateIncoming(data: unknown) {
-  capturedOnMessage?.({ data });
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────────
+// ── broadcastAnchorAdded ─────────────────────────────────────────────────────
 
 describe("broadcastAnchorAdded", () => {
   beforeEach(() => {
@@ -59,6 +49,8 @@ describe("broadcastAnchorAdded", () => {
   });
 });
 
+// ── broadcastAnchorRemoved ───────────────────────────────────────────────────
+
 describe("broadcastAnchorRemoved", () => {
   beforeEach(() => {
     mockPostMessage.mockClear();
@@ -70,60 +62,66 @@ describe("broadcastAnchorRemoved", () => {
     expect(mockPostMessage).toHaveBeenCalledWith({ type: "anchor_removed", id: "b1" });
     expect(mockClose).toHaveBeenCalled();
   });
+
+  it("channel is opened with correct name", () => {
+    broadcastAnchorAdded({ id: "x1", label: "test", x: 0, y: 0, z: 0 });
+    expect(MockBroadcastChannel.lastInstance?.name).toBe("aria-spatial-world");
+  });
 });
+
+// ── useSpatialSync incoming messages (real hook via renderHook) ───────────────
 
 describe("useSpatialSync incoming messages", () => {
   beforeEach(() => {
     resetStore();
-    capturedOnMessage = null;
+    MockBroadcastChannel.lastInstance = null;
   });
 
-  it("anchor_added message adds anchor to the store", async () => {
-    // Manually wire the onmessage handler the same way the hook does
-    const { addAnchor, removeAnchor } = useWorldModel.getState();
-    capturedOnMessage = (event: { data: unknown }) => {
-      const msg = event.data as { type: string; anchor?: SpatialAnchor; id?: string };
-      if (msg.type === "anchor_added" && msg.anchor) addAnchor(msg.anchor);
-      else if (msg.type === "anchor_removed" && msg.id) removeAnchor(msg.id);
-    };
+  it("anchor_added message adds anchor to the store", () => {
+    const { unmount } = renderHook(() => useSpatialSync());
+    const instance = MockBroadcastChannel.lastInstance!;
 
     const anchor: SpatialAnchor = { id: "c1", label: "place", x: 0, y: 1, z: 2 };
-    simulateIncoming({ type: "anchor_added", anchor });
+    act(() => {
+      instance.onmessage?.({ data: { type: "anchor_added", anchor } });
+    });
 
-    const { anchors } = useWorldModel.getState();
-    expect(anchors.size).toBe(1);
-    expect(anchors.get("c1")).toEqual(anchor);
+    expect(useWorldModel.getState().anchors.get("c1")).toEqual(anchor);
+    unmount();
   });
 
   it("anchor_removed message removes anchor from the store", () => {
     useWorldModel.getState().addAnchor({ id: "c2", label: "object", x: 0, y: 0, z: 0 });
 
-    const { addAnchor, removeAnchor } = useWorldModel.getState();
-    capturedOnMessage = (event: { data: unknown }) => {
-      const msg = event.data as { type: string; anchor?: SpatialAnchor; id?: string };
-      if (msg.type === "anchor_added" && msg.anchor) addAnchor(msg.anchor);
-      else if (msg.type === "anchor_removed" && msg.id) removeAnchor(msg.id);
-    };
+    const { unmount } = renderHook(() => useSpatialSync());
+    const instance = MockBroadcastChannel.lastInstance!;
 
-    simulateIncoming({ type: "anchor_removed", id: "c2" });
+    act(() => {
+      instance.onmessage?.({ data: { type: "anchor_removed", id: "c2" } });
+    });
 
     expect(useWorldModel.getState().anchors.size).toBe(0);
+    unmount();
   });
 
   it("unknown message type is ignored without throwing", () => {
-    const { addAnchor, removeAnchor } = useWorldModel.getState();
-    capturedOnMessage = (event: { data: unknown }) => {
-      const msg = event.data as { type: string; anchor?: SpatialAnchor; id?: string };
-      if (msg.type === "anchor_added" && msg.anchor) addAnchor(msg.anchor);
-      else if (msg.type === "anchor_removed" && msg.id) removeAnchor(msg.id);
-    };
+    const { unmount } = renderHook(() => useSpatialSync());
+    const instance = MockBroadcastChannel.lastInstance!;
 
-    expect(() => simulateIncoming({ type: "unknown_event" })).not.toThrow();
+    expect(() =>
+      act(() => {
+        instance.onmessage?.({ data: { type: "unknown_event" } });
+      })
+    ).not.toThrow();
+
     expect(useWorldModel.getState().anchors.size).toBe(0);
+    unmount();
   });
 
-  it("channel is opened with correct name", () => {
-    broadcastAnchorAdded({ id: "x1", label: "test", x: 0, y: 0, z: 0 });
-    expect(MockBroadcastChannel.lastInstance?.name).toBe("aria-spatial-world");
+  it("unmount closes the channel", () => {
+    mockClose.mockClear();
+    const { unmount } = renderHook(() => useSpatialSync());
+    unmount();
+    expect(mockClose).toHaveBeenCalled();
   });
 });
