@@ -71,3 +71,4 @@ mcp-servers-repo/
 *.xls
 *.pptx
 *.ppt
+.claude/settings.json
