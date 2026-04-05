@@ -111,6 +111,73 @@ class TestDepthQuantization:
         assert restored.confidence == pytest.approx(0.95, abs=1e-5)
 
 
+class TestAnchorDelete:
+    def test_delete_existing_anchor_returns_true(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "shelf")
+        assert registry.delete_anchor(anchor_id) is True
+
+    def test_deleted_anchor_is_not_retrievable(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "shelf")
+        registry.delete_anchor(anchor_id)
+        assert registry.get_anchor(anchor_id) is None
+
+    def test_delete_absent_anchor_returns_false(self, registry: AnchorRegistry) -> None:
+        assert registry.delete_anchor("nonexistent-id") is False
+
+    def test_delete_removes_only_target_anchor(self, registry: AnchorRegistry) -> None:
+        id_a = registry.register_anchor((0.0, 0.0, -1.0), "a")
+        id_b = registry.register_anchor((0.1, 0.1, -0.5), "b")
+        registry.delete_anchor(id_a)
+        assert registry.get_anchor(id_a) is None
+        assert registry.get_anchor(id_b) is not None
+
+    def test_delete_reduces_list_count(self, registry: AnchorRegistry) -> None:
+        id_a = registry.register_anchor((0.0, 0.0, -1.0), "a")
+        registry.register_anchor((0.1, 0.1, -0.5), "b")
+        registry.delete_anchor(id_a)
+        assert len(registry.list_anchors()) == 1
+
+    def test_double_delete_returns_false_on_second(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "x")
+        assert registry.delete_anchor(anchor_id) is True
+        assert registry.delete_anchor(anchor_id) is False
+
+
+class TestAnchorUpdate:
+    def test_update_label_returns_updated_anchor(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.5, 0.5, -0.8), "old label")
+        updated = registry.update_anchor(anchor_id, "new label")
+        assert updated is not None
+        assert updated.label == "new label"
+
+    def test_update_preserves_position(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.5, 0.5, -0.8), "item")
+        updated = registry.update_anchor(anchor_id, "renamed item")
+        assert updated.x == pytest.approx(0.5)
+        assert updated.y == pytest.approx(0.5)
+        assert updated.z == pytest.approx(-0.8)
+
+    def test_update_preserves_created_at_us(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "thing")
+        original = registry.get_anchor(anchor_id)
+        updated = registry.update_anchor(anchor_id, "thing v2")
+        assert updated.created_at_us == original.created_at_us
+
+    def test_update_is_persisted(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "before")
+        registry.update_anchor(anchor_id, "after")
+        fetched = registry.get_anchor(anchor_id)
+        assert fetched.label == "after"
+
+    def test_update_absent_anchor_returns_none(self, registry: AnchorRegistry) -> None:
+        assert registry.update_anchor("no-such-id", "label") is None
+
+    def test_update_anchor_id_is_unchanged(self, registry: AnchorRegistry) -> None:
+        anchor_id = registry.register_anchor((0.0, 0.0, -1.0), "old")
+        updated = registry.update_anchor(anchor_id, "new")
+        assert updated.anchor_id == anchor_id
+
+
 class TestRegisterAnchorRPC:
     def test_spatial_anchor_proto_fields(self) -> None:
         """SpatialAnchor proto message has all required fields."""

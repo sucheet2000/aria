@@ -85,6 +85,45 @@ class AnchorRegistry:
             created_at_us=row[5],
         )
 
+    def delete_anchor(self, anchor_id: str) -> bool:
+        """Delete the anchor with the given ID.
+
+        Returns True if a row was deleted, False if no such anchor existed.
+        """
+        with self._lock:
+            with sqlite3.connect(self._db_path) as conn:
+                cursor = conn.execute(
+                    "DELETE FROM anchors WHERE anchor_id = ?",
+                    (anchor_id,),
+                )
+                conn.commit()
+        return cursor.rowcount > 0
+
+    def update_anchor(self, anchor_id: str, label: str) -> SpatialAnchor | None:
+        """Update the label of an existing anchor.
+
+        Returns the updated SpatialAnchor, or None if no such anchor exists.
+        """
+        with self._lock:
+            with sqlite3.connect(self._db_path) as conn:
+                cursor = conn.execute(
+                    "UPDATE anchors SET label = ? WHERE anchor_id = ?",
+                    (label, anchor_id),
+                )
+                conn.commit()
+                if cursor.rowcount == 0:
+                    return None
+                row = conn.execute(
+                    "SELECT anchor_id, label, x, y, z, created_at_us FROM anchors WHERE anchor_id = ?",
+                    (anchor_id,),
+                ).fetchone()
+        if row is None:
+            return None
+        return SpatialAnchor(
+            anchor_id=row[0], label=row[1], x=row[2], y=row[3], z=row[4],
+            created_at_us=row[5],
+        )
+
     def list_anchors(self) -> list[SpatialAnchor]:
         with self._lock:
             with sqlite3.connect(self._db_path) as conn:
