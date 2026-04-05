@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import { useWorldModel } from "@/spatial/useWorldModel";
+import type { SpatialAnchor } from "@/spatial/useWorldModel";
+import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
 // importing useCognition (which would create a circular dependency).
@@ -17,6 +20,35 @@ interface CognitionResponse {
     confidence: number;
     source: string;
   } | null;
+  spatial_event?: Record<string, unknown> | null;
+}
+
+function handleSpatialEvent(event: Record<string, unknown> | null | undefined): void {
+  if (!event) return;
+  const store = useWorldModel.getState();
+
+  if (event.type === "anchor_registered" && event.anchor) {
+    const anchor = event.anchor as SpatialAnchor;
+    store.addAnchor(anchor);
+    broadcastAnchorAdded(anchor);
+  }
+
+  if (event.type === "anchors_bonded" && Array.isArray(event.anchor_ids)) {
+    store.setActiveGesture("BOND");
+    setTimeout(() => store.setActiveGesture(null), 800);
+  }
+
+  if (event.type === "world_expand" && event.factor) {
+    store.setActiveGesture("EXPAND");
+    setTimeout(() => store.setActiveGesture(null), 600);
+  }
+
+  if (event.type === "anchor_thrown" && event.anchor_id && event.velocity) {
+    store.setAnchorVelocity(
+      event.anchor_id as string,
+      event.velocity as [number, number, number]
+    );
+  }
 }
 
 export function useCognition() {
@@ -93,6 +125,7 @@ export function useCognition() {
           timestamp: Date.now(),
         });
       }
+      handleSpatialEvent(data.spatial_event);
       window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
         onResponse(data.natural_language_response);
