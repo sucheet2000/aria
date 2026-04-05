@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Avatar3D from "@/components/Avatar3D";
+import VRMAvatar from "@/components/VRMAvatar";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
 import StatusBar from "@/components/StatusBar";
@@ -106,7 +106,7 @@ export default function Home() {
           position: "relative",
           transition: "flex 0.3s ease",
         }}>
-          <Avatar3D />
+          <VRMAvatar />
         </div>
 
         {/* Spatial canvas panel */}
