@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { useWorldModel } from "./useWorldModel";
 import { AnchorMarker } from "./AnchorMarker";
+import { useSpatialSync, broadcastAnchorAdded } from "./useSpatialSync";
 import type { SpatialAnchor } from "./useWorldModel";
 
 interface AnchorRegisteredPayload {
@@ -19,6 +20,8 @@ export function SpatialCanvas() {
   const anchors = useWorldModel((s) => s.anchors);
   const addAnchor = useWorldModel((s) => s.addAnchor);
 
+  useSpatialSync();
+
   useEffect(() => {
     function handleAnchorRegistered(e: Event) {
       const payload = (e as CustomEvent<AnchorRegisteredPayload>).detail;
@@ -31,6 +34,7 @@ export function SpatialCanvas() {
         z: payload.z ?? 0,
       };
       addAnchor(anchor);
+      broadcastAnchorAdded(anchor);
     }
 
     window.addEventListener("aria:anchor_registered", handleAnchorRegistered);

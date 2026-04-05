@@ -6,6 +6,7 @@ import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
 import StatusBar from "@/components/StatusBar";
 import VoiceDot from "@/components/VoiceDot";
+import { SpatialCanvas } from "@/spatial/SpatialCanvas";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
@@ -33,6 +34,16 @@ function MemoryIcon() {
   );
 }
 
+function SpatialIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; icon: () => JSX.Element }> = [
   { id: "chat", icon: ChatIcon },
   { id: "memory", icon: MemoryIcon },
@@ -40,6 +51,7 @@ const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; icon: () => JSX.Element }> = [
 
 export default function Home() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
+  const [showSpatial, setShowSpatial] = useState(false);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const assistantMessageCount = conversationHistory.filter(m => m.role === "assistant").length;
   const isThinking = useAriaStore(s => s.isThinking);
@@ -81,13 +93,34 @@ export default function Home() {
         animation: "aria-ambient-pulse 4s ease-in-out infinite",
       }} />
 
-      {/* Full-bleed avatar */}
+      {/* Avatar + spatial split layout */}
       <div style={{
         position: "absolute",
         top: 0, right: 0, bottom: 0, left: 0,
         zIndex: 1,
+        display: "flex",
       }}>
-        <Avatar3D />
+        {/* Avatar — shrinks when spatial is open */}
+        <div style={{
+          flex: showSpatial ? "0 0 50%" : "1 1 100%",
+          position: "relative",
+          transition: "flex 0.3s ease",
+        }}>
+          <Avatar3D />
+        </div>
+
+        {/* Spatial canvas panel */}
+        {showSpatial && (
+          <div style={{
+            flex: "0 0 50%",
+            position: "relative",
+            borderLeft: "1px solid var(--outline-ghost)",
+            background: "#000",
+            animation: "aria-fade-up 0.2s ease forwards",
+          }}>
+            <SpatialCanvas />
+          </div>
+        )}
       </div>
 
       {/* Top status bar */}
@@ -131,6 +164,16 @@ export default function Home() {
             <Icon />
           </button>
         ))}
+
+        {/* Spatial toggle */}
+        <button
+          type="button"
+          onClick={() => setShowSpatial(prev => !prev)}
+          className={`sidebar-btn${showSpatial ? " sidebar-btn-active" : ""}`}
+          title="Toggle spatial canvas"
+        >
+          <SpatialIcon />
+        </button>
       </nav>
 
       {/* Slide-out log panel — chat */}
