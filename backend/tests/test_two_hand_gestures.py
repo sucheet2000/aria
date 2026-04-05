@@ -145,30 +145,35 @@ class TestExpand:
 # ── THROW ──────────────────────────────────────────────────────────────────────
 
 class TestThrow:
-    # Wrists kept 0.2 apart (< 0.3) so EXPAND is not triggered.
+    # Wrists kept < 0.3 apart so EXPAND is not triggered.
+    # Wrist moves 0.05 units in 33 ms → speed = 0.05/33 ≈ 0.00152 > threshold 0.0005.
     def test_fist_then_open_palm_returns_throw(self, clf: GestureClassifier) -> None:
+        # Frame 1: right fist at x=0.5
         clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _fist_lm(wrist_x=0.5))
-        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.5))
+        # Frame 2: right open palm at x=0.55 (wrist moved 0.05 units in 33ms)
+        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
         assert result.gesture_type == TWO_HAND_THROW
 
     def test_throw_has_velocity_vector(self, clf: GestureClassifier) -> None:
         clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _fist_lm(wrist_x=0.5))
-        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.5))
+        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
         assert result.velocity_vector is not None
 
     def test_throw_confidence_in_range(self, clf: GestureClassifier) -> None:
         clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _fist_lm(wrist_x=0.5))
-        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.5))
+        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
         assert 0.0 < result.confidence <= 1.0
 
     def test_no_throw_without_prior_fist(self, clf: GestureClassifier) -> None:
         # First call — no previous state; open palm should not be THROW
-        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.5))
+        result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
         assert result.gesture_type != TWO_HAND_THROW
 
     def test_left_hand_throw(self, clf: GestureClassifier) -> None:
+        # Frame 1: left fist at x=0.4
         clf.classify_two_hand(_fist_lm(wrist_x=0.4), _neutral_lm(wrist_x=0.5))
-        result = clf.classify_two_hand(_open_palm_lm(wrist_x=0.4), _neutral_lm(wrist_x=0.5))
+        # Frame 2: left open palm at x=0.45 (wrist moved 0.05 units)
+        result = clf.classify_two_hand(_open_palm_lm(wrist_x=0.45), _neutral_lm(wrist_x=0.5))
         assert result.gesture_type == TWO_HAND_THROW
 
 
