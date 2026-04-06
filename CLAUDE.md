@@ -33,7 +33,12 @@ Never use system python3 or conda base python
 Python: PYTHONPATH=backend python3 -m pytest backend/tests/ -v
 Go: cd backend && go build ./... && go vet ./... && go test ./...
 Frontend: cd frontend && npm run build
-Current count: 93 Python tests, all must pass
+Current count: 174 Python tests, all must pass
+
+## CI
+CI runs 3 jobs: python-tests (174 tests), go-backend (build/vet/test), frontend (lint/typecheck/build)
+Dependencies are pinned in backend/requirements.txt — update pins when bumping versions locally
+setuptools>=78.1.1 required (3 CVEs below that version)
 
 ## Branch Strategy
 - main: stable releases only
@@ -62,6 +67,7 @@ See docs/ARIA_V4_VISION.md for long-term vision.
 - Never use 0.0.0.0 for gRPC binds (use 127.0.0.1)
 - Never skip tests before committing
 - Never add --grpc or --coreml to default startup without benchmarking
+- Never use unpinned heavy deps (torch, chromadb, faster-whisper) — pip backtracking breaks CI
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
