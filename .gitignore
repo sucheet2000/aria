@@ -72,3 +72,4 @@ mcp-servers-repo/
 *.pptx
 *.ppt
 .claude/settings.json
+backend/data/anchors.db
