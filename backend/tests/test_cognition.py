@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from fastapi.testclient import TestClient
 
 from app.cognition.conflict import detect_conflict, speech_sentiment, visual_sentiment
 from app.cognition.prompt import CONFLICT_INSTRUCTION, NO_CONFLICT_INSTRUCTION, build_system_prompt
@@ -98,3 +101,68 @@ def test_symbolic_response_with_world_model_update():
     )
     assert sr.world_model_update is not None
     assert sr.world_model_update.triple.object == "dark mode"
+
+
+# --- cognition route: gesture → spatial_event ---
+
+def _make_test_client() -> TestClient:
+    from app.main import app
+    return TestClient(app)
+
+
+def _stub_llm_client() -> MagicMock:
+    stub = MagicMock()
+    stub.complete = AsyncMock(
+        return_value=SymbolicResponse(
+            symbolic_inference="user is pointing",
+            natural_language_response="I see you pointing.",
+        )
+    )
+    return stub
+
+
+def _stub_memory() -> MagicMock:
+    mem = MagicMock()
+    mem.loaded = True
+    mem.store_triple = AsyncMock()
+    mem.query_relevant = AsyncMock(return_value=[])
+    return mem
+
+
+def test_cognition_route_point_gesture_produces_spatial_event():
+    """gesture='point' + pointing_vector → spatial_event is not None."""
+    client = _make_test_client()
+    with (
+        patch("app.api.cognition_route.get_client", return_value=_stub_llm_client()),
+        patch("app.api.cognition_route.get_memory", return_value=_stub_memory()),
+    ):
+        resp = client.post(
+            "/api/cognition",
+            json={
+                "message": "look at that",
+                "gesture": "point",
+                "pointing_vector": [0.1, -0.2, 0.9],
+                "session_id": "test-session-001",
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["spatial_event"] is not None
+    assert data["spatial_event"]["type"] == "anchor_registered"
+
+
+def test_cognition_route_no_gesture_spatial_event_is_none():
+    """Default gesture fields → spatial_event is None."""
+    client = _make_test_client()
+    with (
+        patch("app.api.cognition_route.get_client", return_value=_stub_llm_client()),
+        patch("app.api.cognition_route.get_memory", return_value=_stub_memory()),
+    ):
+        resp = client.post(
+            "/api/cognition",
+            json={"message": "hello"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["spatial_event"] is None
