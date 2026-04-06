@@ -136,31 +136,31 @@ func (GestureType) EnumDescriptor() ([]byte, []int) {
 type HandGestureType int32
 
 const (
-	HandGestureType_HAND_GESTURE_UNSPECIFIED HandGestureType = 0
-	HandGestureType_HAND_GESTURE_NONE        HandGestureType = 1
-	HandGestureType_HAND_GESTURE_THUMB_UP    HandGestureType = 2
-	HandGestureType_HAND_GESTURE_OPEN_PALM   HandGestureType = 3
-	HandGestureType_HAND_GESTURE_PINCH       HandGestureType = 4
-	HandGestureType_HAND_GESTURE_POINT       HandGestureType = 5
+	HandGestureType_HAND_GESTURE_TYPE_UNSPECIFIED HandGestureType = 0
+	HandGestureType_HAND_GESTURE_TYPE_NONE        HandGestureType = 1
+	HandGestureType_HAND_GESTURE_TYPE_THUMB_UP    HandGestureType = 2
+	HandGestureType_HAND_GESTURE_TYPE_OPEN_PALM   HandGestureType = 3
+	HandGestureType_HAND_GESTURE_TYPE_PINCH       HandGestureType = 4
+	HandGestureType_HAND_GESTURE_TYPE_POINT       HandGestureType = 5
 )
 
 // Enum value maps for HandGestureType.
 var (
 	HandGestureType_name = map[int32]string{
-		0: "HAND_GESTURE_UNSPECIFIED",
-		1: "HAND_GESTURE_NONE",
-		2: "HAND_GESTURE_THUMB_UP",
-		3: "HAND_GESTURE_OPEN_PALM",
-		4: "HAND_GESTURE_PINCH",
-		5: "HAND_GESTURE_POINT",
+		0: "HAND_GESTURE_TYPE_UNSPECIFIED",
+		1: "HAND_GESTURE_TYPE_NONE",
+		2: "HAND_GESTURE_TYPE_THUMB_UP",
+		3: "HAND_GESTURE_TYPE_OPEN_PALM",
+		4: "HAND_GESTURE_TYPE_PINCH",
+		5: "HAND_GESTURE_TYPE_POINT",
 	}
 	HandGestureType_value = map[string]int32{
-		"HAND_GESTURE_UNSPECIFIED": 0,
-		"HAND_GESTURE_NONE":        1,
-		"HAND_GESTURE_THUMB_UP":    2,
-		"HAND_GESTURE_OPEN_PALM":   3,
-		"HAND_GESTURE_PINCH":       4,
-		"HAND_GESTURE_POINT":       5,
+		"HAND_GESTURE_TYPE_UNSPECIFIED": 0,
+		"HAND_GESTURE_TYPE_NONE":        1,
+		"HAND_GESTURE_TYPE_THUMB_UP":    2,
+		"HAND_GESTURE_TYPE_OPEN_PALM":   3,
+		"HAND_GESTURE_TYPE_PINCH":       4,
+		"HAND_GESTURE_TYPE_POINT":       5,
 	}
 )
 
@@ -197,31 +197,31 @@ func (HandGestureType) EnumDescriptor() ([]byte, []int) {
 type TwoHandGestureType int32
 
 const (
-	TwoHandGestureType_TWO_HAND_GESTURE_UNSPECIFIED TwoHandGestureType = 0
-	TwoHandGestureType_TWO_HAND_GESTURE_NONE        TwoHandGestureType = 1
-	TwoHandGestureType_TWO_HAND_GESTURE_HOLD        TwoHandGestureType = 2
-	TwoHandGestureType_TWO_HAND_GESTURE_EXPAND      TwoHandGestureType = 3
-	TwoHandGestureType_TWO_HAND_GESTURE_THROW       TwoHandGestureType = 4
-	TwoHandGestureType_TWO_HAND_GESTURE_BOND        TwoHandGestureType = 5
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_UNSPECIFIED TwoHandGestureType = 0
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_NONE        TwoHandGestureType = 1
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_HOLD        TwoHandGestureType = 2
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_EXPAND      TwoHandGestureType = 3
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_THROW       TwoHandGestureType = 4
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_BOND        TwoHandGestureType = 5
 )
 
 // Enum value maps for TwoHandGestureType.
 var (
 	TwoHandGestureType_name = map[int32]string{
-		0: "TWO_HAND_GESTURE_UNSPECIFIED",
-		1: "TWO_HAND_GESTURE_NONE",
-		2: "TWO_HAND_GESTURE_HOLD",
-		3: "TWO_HAND_GESTURE_EXPAND",
-		4: "TWO_HAND_GESTURE_THROW",
-		5: "TWO_HAND_GESTURE_BOND",
+		0: "TWO_HAND_GESTURE_TYPE_UNSPECIFIED",
+		1: "TWO_HAND_GESTURE_TYPE_NONE",
+		2: "TWO_HAND_GESTURE_TYPE_HOLD",
+		3: "TWO_HAND_GESTURE_TYPE_EXPAND",
+		4: "TWO_HAND_GESTURE_TYPE_THROW",
+		5: "TWO_HAND_GESTURE_TYPE_BOND",
 	}
 	TwoHandGestureType_value = map[string]int32{
-		"TWO_HAND_GESTURE_UNSPECIFIED": 0,
-		"TWO_HAND_GESTURE_NONE":        1,
-		"TWO_HAND_GESTURE_HOLD":        2,
-		"TWO_HAND_GESTURE_EXPAND":      3,
-		"TWO_HAND_GESTURE_THROW":       4,
-		"TWO_HAND_GESTURE_BOND":        5,
+		"TWO_HAND_GESTURE_TYPE_UNSPECIFIED": 0,
+		"TWO_HAND_GESTURE_TYPE_NONE":        1,
+		"TWO_HAND_GESTURE_TYPE_HOLD":        2,
+		"TWO_HAND_GESTURE_TYPE_EXPAND":      3,
+		"TWO_HAND_GESTURE_TYPE_THROW":       4,
+		"TWO_HAND_GESTURE_TYPE_BOND":        5,
 	}
 )
 
@@ -1148,21 +1148,21 @@ const file_perception_proto_rawDesc = "" +
 	"\x11GESTURE_TYPE_STOP\x10\x01\x12\x16\n" +
 	"\x12GESTURE_TYPE_POINT\x10\x02\x12\x18\n" +
 	"\x14GESTURE_TYPE_CONFIRM\x10\x03\x12\x17\n" +
-	"\x13GESTURE_TYPE_CANCEL\x10\x04*\xad\x01\n" +
-	"\x0fHandGestureType\x12\x1c\n" +
-	"\x18HAND_GESTURE_UNSPECIFIED\x10\x00\x12\x15\n" +
-	"\x11HAND_GESTURE_NONE\x10\x01\x12\x19\n" +
-	"\x15HAND_GESTURE_THUMB_UP\x10\x02\x12\x1a\n" +
-	"\x16HAND_GESTURE_OPEN_PALM\x10\x03\x12\x16\n" +
-	"\x12HAND_GESTURE_PINCH\x10\x04\x12\x16\n" +
-	"\x12HAND_GESTURE_POINT\x10\x05*\xc0\x01\n" +
-	"\x12TwoHandGestureType\x12 \n" +
-	"\x1cTWO_HAND_GESTURE_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15TWO_HAND_GESTURE_NONE\x10\x01\x12\x19\n" +
-	"\x15TWO_HAND_GESTURE_HOLD\x10\x02\x12\x1b\n" +
-	"\x17TWO_HAND_GESTURE_EXPAND\x10\x03\x12\x1a\n" +
-	"\x16TWO_HAND_GESTURE_THROW\x10\x04\x12\x19\n" +
-	"\x15TWO_HAND_GESTURE_BOND\x10\x052\xce\x01\n" +
+	"\x13GESTURE_TYPE_CANCEL\x10\x04*\xcb\x01\n" +
+	"\x0fHandGestureType\x12!\n" +
+	"\x1dHAND_GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16HAND_GESTURE_TYPE_NONE\x10\x01\x12\x1e\n" +
+	"\x1aHAND_GESTURE_TYPE_THUMB_UP\x10\x02\x12\x1f\n" +
+	"\x1bHAND_GESTURE_TYPE_OPEN_PALM\x10\x03\x12\x1b\n" +
+	"\x17HAND_GESTURE_TYPE_PINCH\x10\x04\x12\x1b\n" +
+	"\x17HAND_GESTURE_TYPE_POINT\x10\x05*\xde\x01\n" +
+	"\x12TwoHandGestureType\x12%\n" +
+	"!TWO_HAND_GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_NONE\x10\x01\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_HOLD\x10\x02\x12 \n" +
+	"\x1cTWO_HAND_GESTURE_TYPE_EXPAND\x10\x03\x12\x1f\n" +
+	"\x1bTWO_HAND_GESTURE_TYPE_THROW\x10\x04\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_BOND\x10\x052\xce\x01\n" +
 	"\x10CognitionService\x12b\n" +
 	"\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x010\x01\x12V\n" +
 	"\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchor2m\n" +

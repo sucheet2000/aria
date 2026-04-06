@@ -56,24 +56,24 @@ enum GestureType {
 // classifier. Distinct from GestureType, which encodes semantic intent.
 // This enum is the canonical type for physical single-hand poses.
 enum HandGestureType {
-  HAND_GESTURE_UNSPECIFIED = 0;
-  HAND_GESTURE_NONE        = 1;
-  HAND_GESTURE_THUMB_UP    = 2;
-  HAND_GESTURE_OPEN_PALM   = 3;
-  HAND_GESTURE_PINCH       = 4;
-  HAND_GESTURE_POINT       = 5;
+  HAND_GESTURE_TYPE_UNSPECIFIED = 0;
+  HAND_GESTURE_TYPE_NONE        = 1;
+  HAND_GESTURE_TYPE_THUMB_UP    = 2;
+  HAND_GESTURE_TYPE_OPEN_PALM   = 3;
+  HAND_GESTURE_TYPE_PINCH       = 4;
+  HAND_GESTURE_TYPE_POINT       = 5;
 }
 
 // TwoHandGestureType classifies gestures that require both hands simultaneously.
 // Absent from GestureType/HandGestureType intentionally — two-hand gestures are
 // a distinct semantic layer with their own spatial semantics (bond, throw, expand).
 enum TwoHandGestureType {
-  TWO_HAND_GESTURE_UNSPECIFIED = 0;
-  TWO_HAND_GESTURE_NONE        = 1;
-  TWO_HAND_GESTURE_HOLD        = 2;
-  TWO_HAND_GESTURE_EXPAND      = 3;
-  TWO_HAND_GESTURE_THROW       = 4;
-  TWO_HAND_GESTURE_BOND        = 5;
+  TWO_HAND_GESTURE_TYPE_UNSPECIFIED = 0;
+  TWO_HAND_GESTURE_TYPE_NONE        = 1;
+  TWO_HAND_GESTURE_TYPE_HOLD        = 2;
+  TWO_HAND_GESTURE_TYPE_EXPAND      = 3;
+  TWO_HAND_GESTURE_TYPE_THROW       = 4;
+  TWO_HAND_GESTURE_TYPE_BOND        = 5;
 }
 
 // ─── Perception Events ────────────────────────────────────────────────────────

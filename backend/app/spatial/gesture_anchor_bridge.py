@@ -59,6 +59,10 @@ class GestureAnchorBridge:
             return SpatialEvent(
                 event_type="anchor_registered",
                 anchor_id=anchor_id,
+                label="object",
+                x=vec[0],
+                y=vec[1],
+                z=vec[2],
             )
 
         # ── two-hand gestures ─────────────────────────────────────────────────

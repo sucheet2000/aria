@@ -113,7 +113,7 @@ def _make_test_client() -> TestClient:
 def _stub_llm_client() -> MagicMock:
     stub = MagicMock()
     stub.complete = AsyncMock(
-        return_value=SymbolicResponse(
+        return_value=CognitionResponse(
             symbolic_inference="user is pointing",
             natural_language_response="I see you pointing.",
         )
@@ -140,7 +140,7 @@ def test_cognition_route_point_gesture_produces_spatial_event():
             "/api/cognition",
             json={
                 "message": "look at that",
-                "gesture": "point",
+                "hand_gesture": "point",
                 "pointing_vector": [0.1, -0.2, 0.9],
                 "session_id": "test-session-001",
             },
@@ -149,7 +149,7 @@ def test_cognition_route_point_gesture_produces_spatial_event():
     assert resp.status_code == 200
     data = resp.json()
     assert data["spatial_event"] is not None
-    assert data["spatial_event"]["type"] == "anchor_registered"
+    assert data["spatial_event"]["event_type"] == "anchor_registered"
 
 
 def test_cognition_route_no_gesture_spatial_event_is_none():

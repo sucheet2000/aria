@@ -100,3 +100,7 @@ class SpatialEvent:
     anchor_ids: list[str] = dc_field(default_factory=list)
     velocity: list[float] = dc_field(default_factory=list)
     factor: float = 1.0
+    label: str = ""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0

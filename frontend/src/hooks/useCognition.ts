@@ -17,7 +17,10 @@ interface SpatialEvent {
   anchor_ids?: string[];
   velocity?: [number, number, number];
   factor?: number;
-  payload?: Record<string, unknown>;
+  label?: string;
+  x?: number;
+  y?: number;
+  z?: number;
 }
 
 interface CognitionResponse {
@@ -30,6 +33,21 @@ interface CognitionResponse {
   spatial_event: SpatialEvent | null;
 }
 
+function isWorldModelUpdate(obj: unknown): obj is WorldModelUpdate {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  const triple = o.triple as Record<string, unknown> | undefined;
+  return (
+    typeof triple === "object" &&
+    triple !== null &&
+    typeof triple.subject === "string" &&
+    typeof triple.predicate === "string" &&
+    typeof triple.object === "string" &&
+    typeof o.confidence === "number" &&
+    typeof o.source === "string"
+  );
+}
+
 function handleSpatialEvent(event: SpatialEvent | null | undefined): void {
   if (!event) return;
   const store = useWorldModel.getState();
@@ -37,10 +55,10 @@ function handleSpatialEvent(event: SpatialEvent | null | undefined): void {
   if (event.event_type === "anchor_registered" && event.anchor_id) {
     const anchor: SpatialAnchor = {
       anchor_id: event.anchor_id,
-      label: (event.payload?.label as string | undefined) ?? "object",
-      x: (event.payload?.x as number | undefined) ?? 0,
-      y: (event.payload?.y as number | undefined) ?? 0,
-      z: (event.payload?.z as number | undefined) ?? 0,
+      label: event.label ?? "object",
+      x: event.x ?? 0,
+      y: event.y ?? 0,
+      z: event.z ?? 0,
     };
     store.addAnchor(anchor);
     broadcastAnchorAdded(anchor);
@@ -129,9 +147,9 @@ export function useCognition() {
       setAvatarEmotion(data.avatar_emotion);
       setProcessingMs(data.processing_ms);
       setSymbolicInference(data.symbolic_inference ?? "");
-      if (data.world_model_update) {
+      if (data.world_model_update && isWorldModelUpdate(data.world_model_update)) {
         addWorldModelUpdate({
-          ...(data.world_model_update as unknown as WorldModelUpdate),
+          ...data.world_model_update,
           timestamp: Date.now(),
         });
       }
