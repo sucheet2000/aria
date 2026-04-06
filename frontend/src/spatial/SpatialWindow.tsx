@@ -23,7 +23,7 @@ export function SpatialWindow() {
         <pointLight position={[10, 10, 10]} intensity={0.8} />
         <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade />
         {Array.from(anchors.values()).map((anchor) => (
-          <AnchorMarker key={anchor.id} anchor={anchor} />
+          <AnchorMarker key={anchor.anchor_id} anchor={anchor} />
         ))}
         <OrbitControls enablePan={false} enableZoom={false} />
       </Canvas>

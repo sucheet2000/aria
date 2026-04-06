@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import type { WorldModelUpdate } from "@/store/ariaStore";
 import { useWorldModel } from "@/spatial/useWorldModel";
 import type { SpatialAnchor } from "@/spatial/useWorldModel";
 import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
@@ -10,53 +11,53 @@ import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
 // importing useCognition (which would create a circular dependency).
 export const abortCognitionRef: { current: (() => void) | null } = { current: null };
 
+interface SpatialEvent {
+  event_type: string;
+  anchor_id?: string;
+  anchor_ids?: string[];
+  velocity?: [number, number, number];
+  factor?: number;
+  payload?: Record<string, unknown>;
+}
+
 interface CognitionResponse {
+  symbolic_inference: string;
+  world_model_update: Record<string, unknown> | null;
   natural_language_response: string;
   avatar_emotion: string;
   processing_ms: number;
-  symbolic_inference: string;
-  world_model_update?: {
-    triple: { subject: string; predicate: string; object: string };
-    confidence: number;
-    source: string;
-  } | null;
-  spatial_event?: Record<string, unknown> | null;
+  episodic_memory: string[];
+  spatial_event: SpatialEvent | null;
 }
 
-function handleSpatialEvent(event: Record<string, unknown> | null | undefined): void {
+function handleSpatialEvent(event: SpatialEvent | null | undefined): void {
   if (!event) return;
   const store = useWorldModel.getState();
 
-  if (event.type === "anchor_registered" && event.payload) {
-    const p = event.payload as Record<string, unknown>;
-    if (typeof p.anchor_id === "string" && typeof p.label === "string") {
-      const anchor: SpatialAnchor = {
-        id: p.anchor_id,
-        label: p.label,
-        x: typeof p.x === "number" ? p.x : 0,
-        y: typeof p.y === "number" ? p.y : 0,
-        z: typeof p.z === "number" ? p.z : 0,
-      };
-      store.addAnchor(anchor);
-      broadcastAnchorAdded(anchor);
-    }
+  if (event.event_type === "anchor_registered" && event.anchor_id) {
+    const anchor: SpatialAnchor = {
+      anchor_id: event.anchor_id,
+      label: (event.payload?.label as string | undefined) ?? "object",
+      x: (event.payload?.x as number | undefined) ?? 0,
+      y: (event.payload?.y as number | undefined) ?? 0,
+      z: (event.payload?.z as number | undefined) ?? 0,
+    };
+    store.addAnchor(anchor);
+    broadcastAnchorAdded(anchor);
   }
 
-  if (event.type === "anchors_bonded" && Array.isArray(event.anchor_ids)) {
+  if (event.event_type === "anchors_bonded" && Array.isArray(event.anchor_ids)) {
     store.setActiveGesture("BOND");
     setTimeout(() => store.setActiveGesture(null), 800);
   }
 
-  if (event.type === "world_expand" && event.factor) {
+  if (event.event_type === "world_expand" && event.factor) {
     store.setActiveGesture("EXPAND");
     setTimeout(() => store.setActiveGesture(null), 600);
   }
 
-  if (event.type === "anchor_thrown" && typeof event.anchor_id === "string" && Array.isArray(event.velocity) && event.velocity.length >= 3) {
-    store.setAnchorVelocity(
-      event.anchor_id,
-      [event.velocity[0] as number, event.velocity[1] as number, event.velocity[2] as number],
-    );
+  if (event.event_type === "anchor_thrown" && event.anchor_id && event.velocity) {
+    store.setAnchorVelocity(event.anchor_id, event.velocity);
   }
 }
 
@@ -130,7 +131,7 @@ export function useCognition() {
       setSymbolicInference(data.symbolic_inference ?? "");
       if (data.world_model_update) {
         addWorldModelUpdate({
-          ...data.world_model_update,
+          ...(data.world_model_update as unknown as WorldModelUpdate),
           timestamp: Date.now(),
         });
       }
