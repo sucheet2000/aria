@@ -74,3 +74,4 @@ mcp-servers-repo/
 .claude/settings.json
 backend/data/anchors.db
 backend/data/*.db
+backend/data/*.db
