@@ -6,6 +6,7 @@ export interface SpatialAnchor {
   x: number;
   y: number;
   z: number;
+  velocity?: [number, number, number];
 }
 
 interface WorldModelState {
@@ -15,6 +16,7 @@ interface WorldModelState {
   removeAnchor: (id: string) => void;
   updateAnchor: (id: string, label: string) => void;
   setActiveGesture: (gesture: string | null) => void;
+  setAnchorVelocity: (id: string, velocity: [number, number, number]) => void;
 }
 
 export const useWorldModel = create<WorldModelState>((set) => ({
@@ -45,4 +47,13 @@ export const useWorldModel = create<WorldModelState>((set) => ({
     }),
 
   setActiveGesture: (gesture) => set({ activeGesture: gesture }),
+
+  setAnchorVelocity: (id, velocity) =>
+    set((state) => {
+      const existing = state.anchors.get(id);
+      if (!existing) return {};
+      const next = new Map(state.anchors);
+      next.set(id, { ...existing, velocity });
+      return { anchors: next };
+    }),
 }));

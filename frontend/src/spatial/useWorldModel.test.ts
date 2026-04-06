@@ -5,6 +5,10 @@ function resetStore() {
   useWorldModel.setState({ anchors: new Map(), activeGesture: null });
 }
 
+function magnitude(v: [number, number, number]): number {
+  return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+}
+
 describe("useWorldModel", () => {
   beforeEach(resetStore);
 
@@ -63,6 +67,28 @@ describe("useWorldModel", () => {
     expect(useWorldModel.getState().activeGesture).toBe("point");
     useWorldModel.getState().setActiveGesture(null);
     expect(useWorldModel.getState().activeGesture).toBeNull();
+  });
+
+  it("setAnchorVelocity sets velocity on the anchor", () => {
+    useWorldModel.getState().addAnchor({ id: "a1", label: "person", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().setAnchorVelocity("a1", [1, 2, 3]);
+    const anchor = useWorldModel.getState().anchors.get("a1");
+    expect(anchor?.velocity).toEqual([1, 2, 3]);
+  });
+
+  it("setAnchorVelocity on unknown id is a no-op", () => {
+    useWorldModel.getState().setAnchorVelocity("ghost", [1, 0, 0]);
+    expect(useWorldModel.getState().anchors.size).toBe(0);
+  });
+
+  it("anchor with velocity [0,0,0] has zero magnitude", () => {
+    const v: [number, number, number] = [0, 0, 0];
+    expect(magnitude(v)).toBe(0);
+  });
+
+  it("anchor velocity magnitude is computed correctly", () => {
+    const v: [number, number, number] = [3, 4, 0];
+    expect(magnitude(v)).toBeCloseTo(5);
   });
 
   it("multiple anchors coexist independently", () => {
