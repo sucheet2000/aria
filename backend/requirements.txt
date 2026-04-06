@@ -17,6 +17,8 @@ structlog
 pytest
 pytest-asyncio
 httpx
+ruff>=0.9.0
+mypy>=1.0.0
 faster-whisper==1.2.1
 ctranslate2==4.7.1
 onnxruntime==1.24.4

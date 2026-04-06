@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-import asyncio
 
 
 def test_memory_store_initializes_unloaded() -> None:
@@ -27,7 +26,7 @@ def test_triple_text_format() -> None:
 
 @pytest.mark.asyncio
 async def test_store_and_query_profile(tmp_path) -> None:
-    chromadb = pytest.importorskip("chromadb")
+    pytest.importorskip("chromadb")
 
     from app.cognition.memory import MemoryStore
     store = MemoryStore(persist_dir=str(tmp_path))
@@ -41,7 +40,7 @@ async def test_store_and_query_profile(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_clear_working(tmp_path) -> None:
-    chromadb = pytest.importorskip("chromadb")
+    pytest.importorskip("chromadb")
 
     from app.cognition.memory import MemoryStore
     store = MemoryStore(persist_dir=str(tmp_path))

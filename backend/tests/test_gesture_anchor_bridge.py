@@ -129,7 +129,7 @@ class TestThrowGesture:
     def test_throw_result_has_anchor_id_and_velocity(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
     ) -> None:
-        aid = registry.register_anchor((0.0, 0.0, -1.0), "obj")
+        registry.register_anchor((0.0, 0.0, -1.0), "obj")
         result = bridge.on_gesture_event("none", "THROW", [0.1, 0.0, -0.9], "s1")
         assert "anchor_id" in result
         assert "velocity" in result
