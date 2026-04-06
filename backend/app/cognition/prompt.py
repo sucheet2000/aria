@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pathlib
 
-from app.models.schemas import VisionContext
+from app.models.schemas import PerceptionFrame
 from app.cognition.conflict import detect_conflict
 
 _OBSERVATION_TEMPLATE = """\
@@ -45,7 +45,7 @@ CONFLICT_INSTRUCTION = (
 
 
 def build_system_prompt(
-    vision: VisionContext,
+    vision: PerceptionFrame,
     transcript: str,
     working_memory: list[str],
     episodic_memory: list[str],

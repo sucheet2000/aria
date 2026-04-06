@@ -1,3 +1,4 @@
+import dataclasses
 import time
 
 from fastapi import APIRouter
@@ -5,7 +6,12 @@ from fastapi import APIRouter
 from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
 from app.config import settings
-from app.models.schemas import CognitionRequest, SymbolicResponse, VisionContext
+from app.models.schemas import (
+    CognitionRequest,
+    CognitionResponse,
+    PerceptionFrame,
+    SpatialEvent,
+)
 from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
 from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
@@ -44,7 +50,7 @@ async def cognition(req: CognitionRequest) -> dict:
     client = get_client()
     start = time.time()
 
-    vision = VisionContext(
+    vision = PerceptionFrame(
         emotion=req.vision_state.emotion,
         confidence=req.vision_state.confidence,
         pitch=req.vision_state.pitch,
@@ -54,7 +60,7 @@ async def cognition(req: CognitionRequest) -> dict:
         hands_detected=req.vision_state.hands_detected,
     )
 
-    result: SymbolicResponse = await client.complete(
+    result: CognitionResponse = await client.complete(
         message=req.message,
         vision=vision,
         conversation_history=req.conversation_history,
@@ -79,11 +85,11 @@ async def cognition(req: CognitionRequest) -> dict:
 
     episodic = await memory.query_relevant(req.message, n_results=5)
 
-    spatial_event: dict | None = None
-    if req.gesture != "none" or req.two_hand_gesture != "NONE":
+    spatial_event: SpatialEvent | None = None
+    if req.hand_gesture != "none" or req.two_hand_gesture != "NONE":
         bridge = get_bridge()
         spatial_event = bridge.on_gesture_event(
-            gesture=req.gesture,
+            gesture=req.hand_gesture,
             two_hand_gesture=req.two_hand_gesture,
             pointing_vector=req.pointing_vector,
             session_id=req.session_id,
@@ -97,7 +103,7 @@ async def cognition(req: CognitionRequest) -> dict:
         "natural_language_response": result.natural_language_response,
         "processing_ms": processing_ms,
         "episodic_memory": episodic,
-        "spatial_event": spatial_event,
+        "spatial_event": dataclasses.asdict(spatial_event) if spatial_event is not None else None,
     }
 
 

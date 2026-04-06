@@ -38,24 +38,22 @@ class TestPointGesture:
             session_id="s1",
         )
         assert result is not None
-        assert result["type"] == "anchor_registered"
+        assert result.event_type == "anchor_registered"
 
     def test_point_result_has_anchor_id(self, bridge: GestureAnchorBridge) -> None:
         result = bridge.on_gesture_event("point", "NONE", [0.5, 0.5, -0.7], "s1")
-        assert "anchor_id" in result
-        assert len(result["anchor_id"]) > 0
+        assert result.anchor_id != ""
 
     def test_point_result_payload_matches_registry(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
     ) -> None:
         result = bridge.on_gesture_event("point", "NONE", [0.1, 0.2, 0.3], "s1")
-        anchor = registry.get_anchor(result["anchor_id"])
+        anchor = registry.get_anchor(result.anchor_id)
         assert anchor is not None
-        payload = result["payload"]
-        assert payload["x"] == pytest.approx(0.1)
-        assert payload["y"] == pytest.approx(0.2)
-        assert payload["z"] == pytest.approx(0.3)
-        assert payload["label"] == "object"
+        assert anchor.x == pytest.approx(0.1)
+        assert anchor.y == pytest.approx(0.2)
+        assert anchor.z == pytest.approx(0.3)
+        assert anchor.label == "object"
 
     def test_point_without_vector_returns_none(
         self, bridge: GestureAnchorBridge
@@ -80,7 +78,7 @@ class TestBondGesture:
         registry.register_anchor((0.2, 0.0, 0.0), "b")
         result = bridge.on_gesture_event("none", "BOND", None, "s1")
         assert result is not None
-        assert result["type"] == "anchors_bonded"
+        assert result.event_type == "anchors_bonded"
 
     def test_bond_returns_two_anchor_ids(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
@@ -88,8 +86,8 @@ class TestBondGesture:
         id1 = registry.register_anchor((0.0, 0.0, -1.0), "x")
         id2 = registry.register_anchor((0.1, 0.0, -1.0), "y")
         result = bridge.on_gesture_event("none", "BOND", None, "s1")
-        assert len(result["anchor_ids"]) == 2
-        assert set(result["anchor_ids"]) == {id1, id2}
+        assert len(result.anchor_ids) == 2
+        assert set(result.anchor_ids) == {id1, id2}
 
     def test_bond_picks_nearest_pair(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
@@ -99,7 +97,7 @@ class TestBondGesture:
         id_b = registry.register_anchor((0.1, 0.0, 0.0), "b")
         _id_c = registry.register_anchor((10.0, 0.0, 0.0), "c")
         result = bridge.on_gesture_event("none", "BOND", None, "s1")
-        assert set(result["anchor_ids"]) == {id_a, id_b}
+        assert set(result.anchor_ids) == {id_a, id_b}
 
     def test_bond_with_no_anchors_returns_none(
         self, bridge: GestureAnchorBridge
@@ -124,16 +122,16 @@ class TestThrowGesture:
         registry.register_anchor((0.0, 0.0, -1.0), "obj")
         result = bridge.on_gesture_event("none", "THROW", [0.0, 0.0, -1.0], "s1")
         assert result is not None
-        assert result["type"] == "anchor_thrown"
+        assert result.event_type == "anchor_thrown"
 
     def test_throw_result_has_anchor_id_and_velocity(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
     ) -> None:
-        aid = registry.register_anchor((0.0, 0.0, -1.0), "obj")
+        registry.register_anchor((0.0, 0.0, -1.0), "obj")
         result = bridge.on_gesture_event("none", "THROW", [0.1, 0.0, -0.9], "s1")
-        assert "anchor_id" in result
-        assert "velocity" in result
-        assert isinstance(result["velocity"], list)
+        assert result.anchor_id != ""
+        assert len(result.velocity) > 0
+        assert isinstance(result.velocity, list)
 
     def test_throw_velocity_matches_pointing_vector(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
@@ -141,14 +139,14 @@ class TestThrowGesture:
         registry.register_anchor((0.0, 0.0, -1.0), "obj")
         vec = [0.3, 0.1, -0.8]
         result = bridge.on_gesture_event("none", "THROW", vec, "s1")
-        assert result["velocity"] == vec
+        assert result.velocity == vec
 
     def test_throw_no_vector_uses_default_velocity(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
     ) -> None:
         registry.register_anchor((0.0, 0.0, -1.0), "obj")
         result = bridge.on_gesture_event("none", "THROW", None, "s1")
-        assert result["velocity"] == [0.0, 0.0, -1.0]
+        assert result.velocity == [0.0, 0.0, -1.0]
 
     def test_throw_picks_most_aligned_anchor(
         self, bridge: GestureAnchorBridge, registry: AnchorRegistry
@@ -157,7 +155,7 @@ class TestThrowGesture:
         id_f = registry.register_anchor((0.0, 0.0, -1.0), "forward")
         _id_b = registry.register_anchor((0.0, 0.0, 1.0), "behind")
         result = bridge.on_gesture_event("none", "THROW", [0.0, 0.0, -1.0], "s1")
-        assert result["anchor_id"] == id_f
+        assert result.anchor_id == id_f
 
     def test_throw_with_no_anchors_returns_none(
         self, bridge: GestureAnchorBridge
@@ -174,11 +172,11 @@ class TestExpandGesture:
     ) -> None:
         result = bridge.on_gesture_event("none", "EXPAND", None, "s1")
         assert result is not None
-        assert result["type"] == "world_expand"
+        assert result.event_type == "world_expand"
 
     def test_expand_factor_is_1_5(self, bridge: GestureAnchorBridge) -> None:
         result = bridge.on_gesture_event("none", "EXPAND", None, "s1")
-        assert result["factor"] == pytest.approx(1.5)
+        assert result.factor == pytest.approx(1.5)
 
 
 # ── fallback → None ───────────────────────────────────────────────────────────

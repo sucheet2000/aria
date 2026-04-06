@@ -22,8 +22,12 @@ from mediapipe.tasks.python import vision as mp_vision
 from app.pipeline.emotion import EmotionClassifier
 from app.pipeline.gesture_classifier import (
     GestureClassifier as RuleGestureClassifier,
-    GESTURE_TYPE_UNSPECIFIED,
-    GESTURE_TYPE_POINT,
+    HAND_GESTURE_NONE,
+    HAND_GESTURE_THUMB_UP,
+    HAND_GESTURE_OPEN_PALM,
+    HAND_GESTURE_PINCH,
+    HAND_GESTURE_POINT,
+    HAND_GESTURE_UNSPECIFIED,
 )
 
 # 6-point 3D face model in mm (nose tip, chin, eye corners, mouth corners)
@@ -351,7 +355,7 @@ def run_camera(args: argparse.Namespace) -> None:
     face_exit_detector = FaceExitDetector()
     classifier = EmotionClassifier()
     gesture_clf = RuleGestureClassifier()
-    _last_gesture_type: int = GESTURE_TYPE_UNSPECIFIED
+    _last_gesture_type: int = HAND_GESTURE_UNSPECIFIED
 
     # Week 4 ANE note: MediaPipe 0.10+ automatically activates the CoreML delegate
     # on Apple Silicon when using mp_tasks.BaseOptions with a .task file (not .tflite).
@@ -436,13 +440,18 @@ def run_camera(args: argparse.Namespace) -> None:
                 gesture_confidence = g_result.confidence
 
                 _GESTURE_NAMES = {
-                    0: "none", 1: "stop", 2: "point", 3: "confirm", 4: "cancel"
+                    HAND_GESTURE_UNSPECIFIED: "none",
+                    HAND_GESTURE_NONE:        "none",
+                    HAND_GESTURE_THUMB_UP:    "confirm",
+                    HAND_GESTURE_OPEN_PALM:   "stop",
+                    HAND_GESTURE_PINCH:       "cancel",
+                    HAND_GESTURE_POINT:       "point",
                 }
                 gesture_name = _GESTURE_NAMES.get(g_result.gesture_type, "none")
 
                 if g_result.gesture_type != _last_gesture_type:
                     _last_gesture_type = g_result.gesture_type
-                    if g_result.gesture_type != GESTURE_TYPE_UNSPECIFIED:
+                    if g_result.gesture_type != HAND_GESTURE_UNSPECIFIED:
                         print(
                             f"gesture change: {gesture_name} "
                             f"(conf={gesture_confidence:.2f})",
@@ -450,7 +459,7 @@ def run_camera(args: argparse.Namespace) -> None:
                             flush=True,
                         )
 
-                if g_result.gesture_type == GESTURE_TYPE_POINT and g_result.pointing_vector:
+                if g_result.gesture_type == HAND_GESTURE_POINT and g_result.pointing_vector:
                     pointing_vector = list(g_result.pointing_vector)
 
             if _interrupt_queue is not None and _active_session_id:

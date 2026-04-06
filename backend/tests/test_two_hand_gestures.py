@@ -98,7 +98,7 @@ class TestTwoHandGestureDataclass:
 
     def test_all_fields(self) -> None:
         g = TwoHandGesture("BOND", 1.0, velocity_vector=(0.1, 0.2, 0.0), distance=0.03)
-        assert g.gesture_type == "BOND"
+        assert g.hand_gesture_type == "BOND"
         assert g.confidence == 1.0
         assert g.velocity_vector == (0.1, 0.2, 0.0)
         assert g.distance == pytest.approx(0.03)
@@ -109,11 +109,11 @@ class TestTwoHandGestureDataclass:
 class TestHold:
     def test_left_open_palm_returns_hold(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_open_palm_lm(wrist_x=0.3), _fist_lm(wrist_x=0.5))
-        assert result.gesture_type == TWO_HAND_HOLD
+        assert result.hand_gesture_type == TWO_HAND_HOLD
 
     def test_right_open_palm_returns_hold(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_fist_lm(wrist_x=0.3), _open_palm_lm(wrist_x=0.5))
-        assert result.gesture_type == TWO_HAND_HOLD
+        assert result.hand_gesture_type == TWO_HAND_HOLD
 
     def test_hold_confidence_in_range(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_open_palm_lm(wrist_x=0.3), _fist_lm(wrist_x=0.5))
@@ -126,7 +126,7 @@ class TestExpand:
     def test_wrists_far_apart_returns_expand(self, clf: GestureClassifier) -> None:
         # wrist x=0.1 vs x=0.9 → distance = 0.8 > 0.3
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.1), _neutral_lm(wrist_x=0.9))
-        assert result.gesture_type == TWO_HAND_EXPAND
+        assert result.hand_gesture_type == TWO_HAND_EXPAND
 
     def test_expand_distance_field_set(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.1), _neutral_lm(wrist_x=0.9))
@@ -139,7 +139,7 @@ class TestExpand:
 
     def test_wrists_close_not_expand(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.45), _neutral_lm(wrist_x=0.55))
-        assert result.gesture_type != TWO_HAND_EXPAND
+        assert result.hand_gesture_type != TWO_HAND_EXPAND
 
 
 # ── THROW ──────────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ class TestThrow:
         clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _fist_lm(wrist_x=0.5))
         # Frame 2: right open palm at x=0.55 (wrist moved 0.05 units in 33ms)
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
-        assert result.gesture_type == TWO_HAND_THROW
+        assert result.hand_gesture_type == TWO_HAND_THROW
 
     def test_throw_has_velocity_vector(self, clf: GestureClassifier) -> None:
         clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _fist_lm(wrist_x=0.5))
@@ -167,14 +167,14 @@ class TestThrow:
     def test_no_throw_without_prior_fist(self, clf: GestureClassifier) -> None:
         # First call — no previous state; open palm should not be THROW
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.4), _open_palm_lm(wrist_x=0.55))
-        assert result.gesture_type != TWO_HAND_THROW
+        assert result.hand_gesture_type != TWO_HAND_THROW
 
     def test_left_hand_throw(self, clf: GestureClassifier) -> None:
         # Frame 1: left fist at x=0.4
         clf.classify_two_hand(_fist_lm(wrist_x=0.4), _neutral_lm(wrist_x=0.5))
         # Frame 2: left open palm at x=0.45 (wrist moved 0.05 units)
         result = clf.classify_two_hand(_open_palm_lm(wrist_x=0.45), _neutral_lm(wrist_x=0.5))
-        assert result.gesture_type == TWO_HAND_THROW
+        assert result.hand_gesture_type == TWO_HAND_THROW
 
 
 # ── BOND ───────────────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ class TestBond:
     def test_wrists_touching_returns_bond(self, clf: GestureClassifier) -> None:
         # wrists at nearly same position
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.50), _neutral_lm(wrist_x=0.51))
-        assert result.gesture_type == TWO_HAND_BOND
+        assert result.hand_gesture_type == TWO_HAND_BOND
 
     def test_bond_distance_below_threshold(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_neutral_lm(wrist_x=0.50), _neutral_lm(wrist_x=0.51))
@@ -201,7 +201,7 @@ class TestNone:
     def test_neutral_landmarks_returns_none(self, clf: GestureClassifier) -> None:
         # wrists at 0.38 / 0.62 — distance ≈ 0.24 < 0.3, no open palm
         result = clf.classify_two_hand(_fist_lm(wrist_x=0.38), _fist_lm(wrist_x=0.62))
-        assert result.gesture_type == TWO_HAND_NONE
+        assert result.hand_gesture_type == TWO_HAND_NONE
 
     def test_none_confidence_is_zero(self, clf: GestureClassifier) -> None:
         result = clf.classify_two_hand(_fist_lm(wrist_x=0.38), _fist_lm(wrist_x=0.62))

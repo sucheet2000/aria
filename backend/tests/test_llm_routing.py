@@ -84,8 +84,8 @@ class TestLocalHandlers:
         client._client.messages.create = mock_create
         client._last_response = "prior answer"
 
-        from app.models.schemas import VisionContext
-        vision = VisionContext(
+        from app.models.schemas import PerceptionFrame
+        vision = PerceptionFrame(
             emotion="neutral",
             confidence=0.9,
             pitch=0.0,
