@@ -18,6 +18,44 @@ interface CognitionResponse {
     confidence: number;
     source: string;
   } | null;
+  spatial_event?: Record<string, unknown> | null;
+}
+
+function handleSpatialEvent(event: Record<string, unknown> | null | undefined): void {
+  if (!event) return;
+  const store = useWorldModel.getState();
+
+  if (event.type === "anchor_registered" && event.payload) {
+    const p = event.payload as Record<string, unknown>;
+    if (typeof p.anchor_id === "string" && typeof p.label === "string") {
+      const anchor: SpatialAnchor = {
+        id: p.anchor_id,
+        label: p.label,
+        x: typeof p.x === "number" ? p.x : 0,
+        y: typeof p.y === "number" ? p.y : 0,
+        z: typeof p.z === "number" ? p.z : 0,
+      };
+      store.addAnchor(anchor);
+      broadcastAnchorAdded(anchor);
+    }
+  }
+
+  if (event.type === "anchors_bonded" && Array.isArray(event.anchor_ids)) {
+    store.setActiveGesture("BOND");
+    setTimeout(() => store.setActiveGesture(null), 800);
+  }
+
+  if (event.type === "world_expand" && event.factor) {
+    store.setActiveGesture("EXPAND");
+    setTimeout(() => store.setActiveGesture(null), 600);
+  }
+
+  if (event.type === "anchor_thrown" && typeof event.anchor_id === "string" && Array.isArray(event.velocity) && event.velocity.length >= 3) {
+    store.setAnchorVelocity(
+      event.anchor_id,
+      [event.velocity[0] as number, event.velocity[1] as number, event.velocity[2] as number],
+    );
+  }
 }
 
 function isWorldModelUpdate(obj: unknown): obj is Omit<WorldModelUpdate, "timestamp"> {
@@ -60,6 +98,7 @@ export function useCognition() {
       faceLandmarks,
       handLandmarks,
       conversationHistory,
+      visionState,
     } = state;
 
     addMessage("user", text.trim());
@@ -88,6 +127,9 @@ export function useCognition() {
             hands_detected: handLandmarks.length > 0,
           },
           conversation_history: conversationHistory,
+          gesture: visionState?.gesture_name ?? "none",
+          two_hand_gesture: visionState?.two_hand_gesture ?? "NONE",
+          pointing_vector: visionState?.pointing_vector ?? null,
         }),
       });
 
@@ -107,6 +149,7 @@ export function useCognition() {
           timestamp: Date.now(),
         });
       }
+      handleSpatialEvent(data.spatial_event);
       window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
         onResponse(data.natural_language_response);

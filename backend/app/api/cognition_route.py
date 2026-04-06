@@ -6,11 +6,15 @@ from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
 from app.config import settings
 from app.models.schemas import CognitionRequest, SymbolicResponse, VisionContext
+from app.observability.metrics import MetricsCollector
+from app.spatial.anchor_registry import AnchorRegistry
+from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
 router = APIRouter()
 
 _client: LLMClient | None = None
 _memory: MemoryStore | None = None
+_bridge: GestureAnchorBridge | None = None
 
 
 def get_client() -> LLMClient:
@@ -26,6 +30,13 @@ def get_memory() -> MemoryStore:
         _memory = MemoryStore(persist_dir="./memory")
         _memory.load()
     return _memory
+
+
+def get_bridge() -> GestureAnchorBridge:
+    global _bridge
+    if _bridge is None:
+        _bridge = GestureAnchorBridge(AnchorRegistry())
+    return _bridge
 
 
 @router.post("/api/cognition")
@@ -52,6 +63,7 @@ async def cognition(req: CognitionRequest) -> dict:
     )
 
     processing_ms = int((time.time() - start) * 1000)
+    MetricsCollector().record_cognition_latency(processing_ms)
 
     memory = get_memory()
 
@@ -67,12 +79,25 @@ async def cognition(req: CognitionRequest) -> dict:
 
     episodic = await memory.query_relevant(req.message, n_results=5)
 
+    spatial_event: dict | None = None
+    if req.gesture != "none" or req.two_hand_gesture != "NONE":
+        bridge = get_bridge()
+        spatial_event = bridge.on_gesture_event(
+            gesture=req.gesture,
+            two_hand_gesture=req.two_hand_gesture,
+            pointing_vector=req.pointing_vector,
+            session_id=req.session_id,
+        )
+        if spatial_event is not None:
+            MetricsCollector().record_anchor_created()
+
     return {
         "symbolic_inference": result.symbolic_inference,
         "world_model_update": result.world_model_update.model_dump() if result.world_model_update else None,
         "natural_language_response": result.natural_language_response,
         "processing_ms": processing_ms,
         "episodic_memory": episodic,
+        "spatial_event": spatial_event,
     }
 
 

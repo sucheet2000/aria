@@ -1,0 +1,17 @@
+name: build-v3-feature
+description: Standard pipeline for any v3 feature
+steps:
+  build:
+    agent: spatial-builder OR gesture-engine
+    depends_on: []
+  review:
+    agent: reviewer
+    depends_on: [build]
+    prompt: |
+      Run /code-review-graph:review_changes then
+      /codex:adversarial-review --base v3/main
+      Max 3 Codex rounds. Document v1 constraints instead of looping.
+  merge:
+    tool: bash
+    command: "git checkout v3/main && git merge --no-ff"
+    depends_on: [review]

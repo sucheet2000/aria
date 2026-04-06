@@ -2,17 +2,19 @@
 
 # ARIA
 
-**Adaptive Realtime Intelligence Avatar — v2.0.0**
+**Adaptive Realtime Intelligence Avatar — v3.0.0**
 
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://golang.org)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/Tests-160%20Python%20%7C%2020%2B%20Go-brightgreen?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-196%20Python%20%7C%2020%2B%20Go%20%7C%2020%20vitest-brightgreen?style=flat-square)](#testing)
 [![Platform](https://img.shields.io/badge/Platform-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white)](https://apple.com/mac)
 [![License](https://img.shields.io/badge/License-Private-red?style=flat-square)](#)
 
 A real-time multimodal AI companion. Sees you through your camera, hears you through your microphone, reasons about your emotional and cognitive state using a neurosymbolic architecture, and maintains a persistent world model of who you are across sessions — entirely on-device.
+> **[→ Interactive site](https://sucheet2000.github.io/aria)** — live demo of the architecture
+
 
 </div>
 
@@ -259,6 +261,48 @@ Each cognition turn:
 
 </details>
 
+<details>
+<summary><strong>v2.1.0</strong> — Week 10 hardening</summary>
+
+- NATS subscriber reconnect Go unit test (embedded nats-server)
+- Anchor registry delete_anchor() and update_anchor() API
+- 172 Python tests (up from 160)
+
+</details>
+
+<details>
+<summary><strong>v3.0.0-alpha</strong> — Spatial canvas + two-hand gestures</summary>
+
+- Three.js spatial canvas (SpatialCanvas, AnchorMarker, useWorldModel)
+- Two-hand gesture primitives: HOLD, EXPAND, THROW, BOND
+- Multi-agent development workflow: spatial-builder + gesture-engine + reviewer agents
+- gitagent SOUL.md / DUTIES.md segregation of duties
+
+</details>
+
+<details>
+<summary><strong>v3.0.0-beta</strong> — Full gesture→spatial loop</summary>
+
+- SpatialCanvas mounted in main UI — 50/50 avatar split with toggle
+- BroadcastChannel multi-window sync — /spatial route for second monitor
+- GestureAnchorBridge — gesture events produce spatial_event in cognition response
+- spatial_event wired into frontend world model
+
+</details>
+
+<details>
+<summary><strong>v3.0.0</strong> — VRM avatar + observability + hardened</summary>
+
+- VRM avatar with emotion blendshapes (happy/sad/angry/surprised/neutral)
+- Head pose drives VRM head bone rotation
+- Breathing idle animation via useFrame
+- Structured observability: MetricsCollector, /metrics endpoint
+- THROW animation with velocity decay using refs (60fps safe)
+- 2 HIGH + 1 MEDIUM hardening fixes before tag
+- KNOWN_ISSUES.md documents remaining low-severity items
+
+</details>
+
 ---
 
 ## Quick Start
@@ -354,15 +398,16 @@ See `backend/.env.example` for the full list.
 ### Testing
 
 ```bash
-# Python — 160 tests
+# Python — 196 tests
 PYTHONPATH=backend /Users/sucheetboppana/miniconda-arm64/bin/python3 \
   -m pytest backend/tests/ -v
 
 # Go — 20+ tests
 cd backend && go build ./... && go vet ./... && go test ./...
 
-# Frontend
+# Frontend (build + 20+ vitest)
 cd frontend && npm run build
+cd frontend && npm test
 ```
 
 ### Development commands
@@ -372,7 +417,7 @@ cd frontend && npm run build
 | `go run cmd/server/main.go` | Start Go server with gRPC vision worker + NATS |
 | `uvicorn app.main:app --port 8000` | Start FastAPI cognition + memory service |
 | `npm run dev` | Start Next.js frontend |
-| `PYTHONPATH=backend python3 -m pytest backend/tests/ -v` | Run Python test suite (160 tests) |
+| `PYTHONPATH=backend python3 -m pytest backend/tests/ -v` | Run Python test suite (196 tests) |
 | `cd backend && go test ./...` | Run Go test suite (20+ tests) |
 | `cd frontend && npm run build` | Type-check + build frontend |
 | `cd proto && buf generate` | Regenerate Go + Python proto stubs |
@@ -423,18 +468,19 @@ All 12 Codex adversarial review findings resolved in v1.5.0–v1.6.0:
 | 8 | Gesture Classification | thumb_up, open_palm, pinch, point via HandGestureEvent | Complete |
 | 9 | Spatial Anchoring | SQLite anchor registry, SpatialAnchor proto | Complete |
 
-### In Progress
+| 10 | Hardening | NATS reconnect Go unit tests, anchor delete/update API, observability | Complete |
 
-| Week | Module | Deliverable | Status |
-|------|--------|-------------|--------|
-| 10 | Hardening | NATS reconnect Go unit tests, anchor delete/update API, observability | In Progress |
+### v3
+
+| Version | Scope | Status |
+|---------|-------|--------|
+| v3.0.0 | Spatial computing — VRM avatar, gesture-spatial bridge, multi-window, observability | Complete |
 
 ### Future
 
 | Version | Scope |
 |---------|-------|
-| v3 | Spatial computing environment — ARKit integration, persistent spatial map, multi-anchor scene understanding |
-| v4 | Autonomous agent architecture — multi-agent task delegation, SOUL.md human-in-the-loop gate, gitagent DUTIES.md segregation |
+| v4 | Autonomous agent — task router, auto-reviewer trigger, ARIA SOUL.md |
 
 **Hard constraints:**
 - Sub-100ms interrupt latency is non-negotiable
@@ -446,7 +492,7 @@ All 12 Codex adversarial review findings resolved in v1.5.0–v1.6.0:
 
 ## Stack
 
-### v2.0.0 full stack
+### v3.0.0 full stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -455,11 +501,16 @@ All 12 Codex adversarial review findings resolved in v1.5.0–v1.6.0:
 | Event bus | NATS (async vision / audio / cognition decoupling) |
 | Vision | Python 3.13, MediaPipe Tasks 0.10.32+, OpenCV, CoreML (ANE) |
 | Gesture | Python, 21-point hand landmark geometry classifier |
+| Two-hand gestures | GestureClassifier.classify_two_hand — HOLD, EXPAND, THROW, BOND |
 | Audio | Python 3.13, faster-whisper (CoreML), webrtcvad, sounddevice, DeepFilterNet |
 | Cognition | Claude Haiku (fast path) + Claude Sonnet (escalated), prompt caching |
 | Episodic memory | ChromaDB 1.5.5 (profile / episodic / working collections) |
 | Graph memory | NetworkX — relational traversal for memory anchor resolution |
 | Spatial anchors | SQLite — persistent anchor registry keyed by session + world position |
+| Spatial canvas | Three.js R3F, SpatialCanvas, AnchorMarker, useWorldModel (Zustand), BroadcastChannel |
+| VRM avatar | @pixiv/three-vrm, GLTFLoader, VRMLoaderPlugin, emotion blendshapes |
+| Observability | MetricsCollector singleton, /metrics endpoint, Histogram dataclass |
+| Multi-agent | gitagent (SOUL.md / DUTIES.md), worktrees, reviewer segregation |
 | Frontend | Next.js 14, TypeScript, Three.js, Tailwind CSS, Zustand |
 | TTS | ElevenLabs streaming (Web Speech API fallback) |
 | Proto codegen | buf (`cd proto && buf generate`) |

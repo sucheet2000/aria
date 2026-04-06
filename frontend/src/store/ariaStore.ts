@@ -20,6 +20,9 @@ export interface VisionFrame {
   head_pose: { pitch: number; yaw: number; roll: number };
   hand_landmarks: number[][];
   timestamp: number;
+  gesture_name?: string;
+  two_hand_gesture?: string;
+  pointing_vector?: number[] | null;
 }
 
 export interface ARIAStore {
@@ -66,6 +69,9 @@ export interface ARIAStore {
 
   // Session
   sessionId: string;
+
+  // Latest vision frame (includes gesture fields)
+  visionState: VisionFrame | null;
 
   // Actions
   setWsConnected: (v: boolean) => void;
@@ -126,6 +132,8 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
 
   worldModelUpdates: [],
 
+  visionState: null,
+
   setWsConnected: (v) => set({ wsConnected: v }),
   setWsError: (v) => set({ wsError: v }),
   setSessionId: (id) => set({ sessionId: id }),
@@ -138,6 +146,7 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
       emotionConfidence: frame.emotion_confidence ?? 0,
       avatarEmotion: frame.emotion,
       lastFrameTimestamp: frame.timestamp,
+      visionState: frame,
     }),
   setAvatarEmotion: (v) => set({ avatarEmotion: v }),
   setIsSpeaking: (v) => set({ isSpeaking: v }),
