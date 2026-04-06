@@ -79,13 +79,16 @@ async def cognition(req: CognitionRequest) -> dict:
 
     spatial_event: dict | None = None
     if req.gesture != "none" or req.two_hand_gesture != "NONE":
-        bridge = get_bridge()
-        spatial_event = bridge.on_gesture_event(
-            gesture=req.gesture,
-            two_hand_gesture=req.two_hand_gesture,
-            pointing_vector=req.pointing_vector,
-            session_id=req.session_id,
-        )
+        try:
+            bridge = get_bridge()
+            spatial_event = bridge.on_gesture_event(
+                gesture=req.gesture,
+                two_hand_gesture=req.two_hand_gesture,
+                pointing_vector=req.pointing_vector,
+                session_id=req.session_id,
+            )
+        except Exception:
+            spatial_event = None
 
     return {
         "symbolic_inference": result.symbolic_inference,
