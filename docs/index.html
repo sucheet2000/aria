@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ARIA v2.0.0 — Adaptive Realtime Intelligence Avatar</title>
+  <title>ARIA v3.0.0 — Adaptive Realtime Intelligence Avatar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
@@ -604,7 +604,7 @@
 <header>
   <div class="header-top">
     <h1>ARIA</h1>
-    <span class="version-pill">v2.0.0</span>
+    <span class="version-pill">v3.0.0</span>
   </div>
   <p class="tagline">Adaptive Realtime Intelligence Avatar — on-device multimodal AI companion</p>
   <div class="badges">
@@ -612,7 +612,7 @@
     <span class="badge badge-python">Python 3.13</span>
     <span class="badge badge-next">Next.js 14</span>
     <span class="badge badge-ts">TypeScript 5</span>
-    <span class="badge badge-tests">160 Python · 20+ Go tests</span>
+    <span class="badge badge-tests">196 Python · 20+ Go · 20 vitest</span>
     <span class="badge badge-apple">Apple Silicon</span>
     <span class="badge badge-private">Private</span>
   </div>
@@ -666,7 +666,23 @@
                             Conflict detection (speech vs visual sentiment)
                             Claude Haiku / Sonnet tiered routing + prompt caching
                             ChromaDB episodic memory + NetworkX graph memory
-                            SQLite spatial anchor registry</code></pre>
+                            SQLite spatial anchor registry
+
+  v3 Spatial Layer
+       |
+       | BroadcastChannel('aria-spatial-world')
+       |
+  Browser /spatial route (SpatialWindow)
+       |
+  SpatialCanvas (Three.js R3F)
+       |-- AnchorMarker       — glowing sphere per anchor (velocity-decay THROW animation)
+       |-- useWorldModel      — Zustand 3D world (anchors Map, activeGesture)
+       |-- useSpatialSync     — BroadcastChannel multi-window sync
+       |
+  VRMAvatar (@pixiv/three-vrm)
+       |-- emotion blendshapes  — driven by classifier (happy/sad/angry/surprised/neutral)
+       |-- head bone rotation   — driven by vision headPose (pitch/yaw/roll)
+       |-- breathing animation  — useFrame idle chest Y oscillation</code></pre>
 
     <h2>Design Decisions</h2>
     <div class="adr-grid">
@@ -712,7 +728,7 @@
       </div>
     </div>
 
-    <h2>v2.0.0 Full Stack</h2>
+    <h2>v3.0.0 Full Stack</h2>
     <div class="stack-grid">
       <div class="stack-card">
         <div class="stack-layer">WebSocket Server</div>
@@ -761,6 +777,22 @@
       <div class="stack-card">
         <div class="stack-layer">TTS</div>
         <div class="stack-tech">ElevenLabs streaming<br>Web Speech API fallback</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Spatial Canvas</div>
+        <div class="stack-tech">Three.js R3F, SpatialCanvas, AnchorMarker<br>useWorldModel (Zustand), BroadcastChannel sync</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">VRM Avatar</div>
+        <div class="stack-tech">@pixiv/three-vrm, GLTFLoader, VRMLoaderPlugin<br>Emotion blendshapes · head bone · idle breathing</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Observability</div>
+        <div class="stack-tech">MetricsCollector singleton, /metrics endpoint<br>Histogram dataclass</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Multi-Agent</div>
+        <div class="stack-tech">gitagent (SOUL.md / DUTIES.md)<br>Worktrees · reviewer segregation of duties</div>
       </div>
     </div>
   </section>
@@ -1025,12 +1057,62 @@
 
       <div class="version-card">
         <details>
-          <summary><span class="v-tag">v2.0.0</span><span class="v-label">Spatial anchoring — current</span><span class="v-chevron">▶</span></summary>
+          <summary><span class="v-tag">v2.0.0</span><span class="v-label">Spatial anchoring</span><span class="v-chevron">▶</span></summary>
           <ul>
             <li>SQLite spatial anchor registry: anchors persisted by session + world position</li>
             <li>SpatialAnchor proto message activated (Week 9 reserved tags)</li>
             <li>Anchor creation via hand gesture + gaze direction</li>
             <li>Anchor retrieval included in cognition context for object reference resolution</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v2.1.0</span><span class="v-label">Week 10 hardening</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>NATS subscriber reconnect Go unit test (embedded nats-server)</li>
+            <li>Anchor registry <code>delete_anchor()</code> and <code>update_anchor()</code> API</li>
+            <li>172 Python tests (up from 160)</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v3.0.0-alpha</span><span class="v-label">Spatial canvas + two-hand gestures</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>Three.js spatial canvas (SpatialCanvas, AnchorMarker, useWorldModel)</li>
+            <li>Two-hand gesture primitives: HOLD, EXPAND, THROW, BOND</li>
+            <li>Multi-agent development workflow: spatial-builder + gesture-engine + reviewer agents</li>
+            <li>gitagent SOUL.md / DUTIES.md segregation of duties</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v3.0.0-beta</span><span class="v-label">Full gesture→spatial loop</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>SpatialCanvas mounted in main UI — 50/50 avatar split with toggle</li>
+            <li>BroadcastChannel multi-window sync — <code>/spatial</code> route for second monitor</li>
+            <li>GestureAnchorBridge — gesture events produce <code>spatial_event</code> in cognition response</li>
+            <li><code>spatial_event</code> wired into frontend world model</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="version-card">
+        <details>
+          <summary><span class="v-tag">v3.0.0</span><span class="v-label">VRM avatar + observability + hardened — current</span><span class="v-chevron">▶</span></summary>
+          <ul>
+            <li>VRM avatar with emotion blendshapes (happy/sad/angry/surprised/neutral)</li>
+            <li>Head pose drives VRM head bone rotation</li>
+            <li>Breathing idle animation via <code>useFrame</code></li>
+            <li>Structured observability: MetricsCollector, <code>/metrics</code> endpoint</li>
+            <li>THROW animation with velocity decay using refs (60fps safe)</li>
+            <li>2 HIGH + 1 MEDIUM hardening fixes before tag</li>
+            <li>KNOWN_ISSUES.md documents remaining low-severity items</li>
           </ul>
         </details>
       </div>
@@ -1137,14 +1219,15 @@ npm run dev</code></pre>
         <div class="terminal-dot t-expand"></div>
         <span class="terminal-title">bash</span>
       </div>
-      <pre><code># Python — 160 tests
+      <pre><code># Python — 196 tests
 PYTHONPATH=backend python3 -m pytest backend/tests/ -v
 
 # Go — 20+ tests
 cd backend && go build ./... && go vet ./... && go test ./...
 
-# Frontend
-cd frontend && npm run build</code></pre>
+# Frontend (build + 20 vitest)
+cd frontend && npm run build
+cd frontend && npm test</code></pre>
     </div>
 
     <h2>Environment Variables</h2>
@@ -1178,7 +1261,7 @@ cd frontend && npm run build</code></pre>
           <tr><td><code>go run cmd/server/main.go</code></td><td>Start Go server with gRPC vision worker + NATS</td></tr>
           <tr><td><code>uvicorn app.main:app --port 8000</code></td><td>Start FastAPI cognition + memory service</td></tr>
           <tr><td><code>npm run dev</code></td><td>Start Next.js frontend</td></tr>
-          <tr><td><code>python3 -m pytest backend/tests/ -v</code></td><td>Run Python test suite (160 tests)</td></tr>
+          <tr><td><code>python3 -m pytest backend/tests/ -v</code></td><td>Run Python test suite (196 tests)</td></tr>
           <tr><td><code>cd backend &amp;&amp; go test ./...</code></td><td>Run Go test suite (20+ tests)</td></tr>
           <tr><td><code>cd frontend &amp;&amp; npm run build</code></td><td>Type-check + build frontend</td></tr>
           <tr><td><code>cd proto &amp;&amp; buf generate</code></td><td>Regenerate Go + Python proto stubs</td></tr>
@@ -1390,28 +1473,29 @@ cd frontend && npm run build</code></pre>
       </div>
     </div>
 
-    <h2>In Progress</h2>
-    <div>
       <div class="roadmap-row">
         <span class="week-num">Week 10</span>
         <span class="rmod">Hardening</span>
         <span class="rdesc">NATS reconnect Go unit tests, anchor delete/update API, observability</span>
-        <span class="status-badge status-inprogress">In Progress</span>
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+
+    <h2>v3</h2>
+    <div>
+      <div class="roadmap-row">
+        <span class="week-num">v3.0.0</span>
+        <span class="rmod">Spatial Computing</span>
+        <span class="rdesc">VRM avatar, gesture-spatial bridge, multi-window, observability</span>
+        <span class="status-badge status-complete">Complete</span>
       </div>
     </div>
 
     <h2>Future</h2>
     <div>
       <div class="roadmap-row">
-        <span class="week-num">v3</span>
-        <span class="rmod">Spatial Computing</span>
-        <span class="rdesc">ARKit integration, persistent spatial map, multi-anchor scene understanding</span>
-        <span class="status-badge status-future">Planned</span>
-      </div>
-      <div class="roadmap-row">
         <span class="week-num">v4</span>
         <span class="rmod">Autonomous Agent</span>
-        <span class="rdesc">Multi-agent delegation, SOUL.md human-in-the-loop gate, gitagent DUTIES.md</span>
+        <span class="rdesc">Task router, auto-reviewer trigger, ARIA SOUL.md</span>
         <span class="status-badge status-future">Planned</span>
       </div>
     </div>

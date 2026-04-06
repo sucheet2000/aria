@@ -27,10 +27,19 @@ function handleSpatialEvent(event: Record<string, unknown> | null | undefined): 
   if (!event) return;
   const store = useWorldModel.getState();
 
-  if (event.type === "anchor_registered" && event.anchor) {
-    const anchor = event.anchor as SpatialAnchor;
-    store.addAnchor(anchor);
-    broadcastAnchorAdded(anchor);
+  if (event.type === "anchor_registered" && event.payload) {
+    const p = event.payload as Record<string, unknown>;
+    if (typeof p.anchor_id === "string" && typeof p.label === "string") {
+      const anchor: SpatialAnchor = {
+        id: p.anchor_id,
+        label: p.label,
+        x: typeof p.x === "number" ? p.x : 0,
+        y: typeof p.y === "number" ? p.y : 0,
+        z: typeof p.z === "number" ? p.z : 0,
+      };
+      store.addAnchor(anchor);
+      broadcastAnchorAdded(anchor);
+    }
   }
 
   if (event.type === "anchors_bonded" && Array.isArray(event.anchor_ids)) {
@@ -43,10 +52,10 @@ function handleSpatialEvent(event: Record<string, unknown> | null | undefined): 
     setTimeout(() => store.setActiveGesture(null), 600);
   }
 
-  if (event.type === "anchor_thrown" && event.anchor_id && event.velocity) {
+  if (event.type === "anchor_thrown" && typeof event.anchor_id === "string" && Array.isArray(event.velocity) && event.velocity.length >= 3) {
     store.setAnchorVelocity(
-      event.anchor_id as string,
-      event.velocity as [number, number, number]
+      event.anchor_id,
+      [event.velocity[0] as number, event.velocity[1] as number, event.velocity[2] as number],
     );
   }
 }

@@ -66,9 +66,9 @@ function VRMScene() {
       vrm.expressionManager.update();
     }
 
-    // Head pose from vision state (degrees → radians)
+    // Head pose from vision state (degrees → radians); guard against null frame
     const head = vrm.humanoid?.getNormalizedBoneNode(VRMHumanBoneName.Head);
-    if (head) {
+    if (head && headPose) {
       const DEG = Math.PI / 180;
       head.rotation.set(
         headPose.pitch * DEG,

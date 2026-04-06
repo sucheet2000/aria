@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame, ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
 import * as THREE from "three";
@@ -34,33 +34,43 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
   const color = getLabelColor(anchor.label);
   const setAnchorVelocity = useWorldModel((s) => s.setAnchorVelocity);
 
+  // Local refs track animated position and velocity — no Zustand writes in the
+  // render loop. Store is only written once when velocity decays to zero.
+  const positionRef = useRef<[number, number, number]>([anchor.x, anchor.y, anchor.z]);
+  const velocityRef = useRef<[number, number, number] | null>(anchor.velocity ?? null);
+
+  // Sync refs when a new throw arrives from the store.
+  useEffect(() => {
+    if (anchor.velocity) {
+      velocityRef.current = anchor.velocity;
+      positionRef.current = [anchor.x, anchor.y, anchor.z];
+    }
+  }, [anchor.velocity, anchor.x, anchor.y, anchor.z]);
+
   useFrame(() => {
-    const v = anchor.velocity;
+    const v = velocityRef.current;
     if (!v) return;
     const mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-    if (mag < 0.001) return;
-
-    const next: [number, number, number] = [v[0] * 0.95, v[1] * 0.95, v[2] * 0.95];
-    const newX = anchor.x + v[0];
-    const newY = anchor.y + v[1];
-    const newZ = anchor.z + v[2];
-
-    if (groupRef.current) {
-      groupRef.current.position.set(newX, newY, newZ);
+    if (mag < 0.001) {
+      velocityRef.current = null;
+      setAnchorVelocity(anchor.id, [0, 0, 0]); // store write: once to clear
+      return;
     }
 
-    const nextMag = Math.sqrt(next[0] * next[0] + next[1] * next[1] + next[2] * next[2]);
-    if (nextMag < 0.001) {
-      setAnchorVelocity(anchor.id, [0, 0, 0]);
-    } else {
-      useWorldModel.setState((state) => {
-        const existing = state.anchors.get(anchor.id);
-        if (!existing) return {};
-        const updated = { ...existing, x: newX, y: newY, z: newZ, velocity: next };
-        const next_map = new Map(state.anchors);
-        next_map.set(anchor.id, updated);
-        return { anchors: next_map };
-      });
+    const next: [number, number, number] = [v[0] * 0.95, v[1] * 0.95, v[2] * 0.95];
+    positionRef.current = [
+      positionRef.current[0] + v[0],
+      positionRef.current[1] + v[1],
+      positionRef.current[2] + v[2],
+    ];
+    velocityRef.current = next;
+
+    if (groupRef.current) {
+      groupRef.current.position.set(
+        positionRef.current[0],
+        positionRef.current[1],
+        positionRef.current[2],
+      );
     }
   });
 
