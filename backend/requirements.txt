@@ -1,14 +1,13 @@
-setuptools>=65.0.0
+setuptools>=78.1.1
 wheel
 fastapi
 uvicorn[standard]
 websockets
-mediapipe
+mediapipe==0.10.32
 opencv-python
-anthropic
-chromadb
-torch
-torchvision
+anthropic==0.85.0
+chromadb==1.5.5
+torch==2.10.0
 pillow
 numpy
 pydantic
@@ -18,6 +17,10 @@ structlog
 pytest
 pytest-asyncio
 httpx
-faster-whisper
+faster-whisper==1.2.1
+ctranslate2==4.7.1
+onnxruntime==1.24.4
 sounddevice
-deepfilternet  # noise suppression; ONNX path preferred, falls back to native df backend
+deepfilternet==0.5.6  # noise suppression; ONNX path preferred, falls back to native df backend
+networkx==3.6.1
+nats-py==2.14.0
