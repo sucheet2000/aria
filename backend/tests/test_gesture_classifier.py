@@ -1,9 +1,10 @@
 """
 Week 8: Gesture classifier tests.
 
-- test_stop_gesture: open palm landmarks → STOP
-- test_point_gesture: pointing landmarks → POINT + vector computed
-- test_fist_gesture: fist landmarks → CANCEL
+- test_stop_gesture: open palm landmarks → GESTURE_TYPE_STOP
+- test_point_gesture: pointing landmarks → GESTURE_TYPE_POINT + vector computed
+- test_fist_gesture: fist landmarks → GESTURE_TYPE_CANCEL
+- test_confirm_gesture: thumbs-up landmarks → GESTURE_TYPE_CONFIRM
 - test_classifier_confidence: each gesture returns 0.0–1.0 confidence
 """
 from __future__ import annotations
@@ -155,6 +156,16 @@ class TestPointGesture:
 
     def test_confidence_in_range(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_point_landmarks())
+        assert 0.0 <= result.confidence <= 1.0
+
+
+class TestConfirmGesture:
+    def test_thumbs_up_returns_confirm(self, classifier: GestureClassifier) -> None:
+        result = classifier.classify(_thumbs_up_landmarks())
+        assert result.gesture_type == GESTURE_TYPE_CONFIRM
+
+    def test_confidence_in_range(self, classifier: GestureClassifier) -> None:
+        result = classifier.classify(_thumbs_up_landmarks())
         assert 0.0 <= result.confidence <= 1.0
 
 

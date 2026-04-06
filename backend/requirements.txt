@@ -1,3 +1,5 @@
+setuptools>=65.0.0
+wheel
 fastapi
 uvicorn[standard]
 websockets
