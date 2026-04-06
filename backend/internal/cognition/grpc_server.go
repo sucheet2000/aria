@@ -11,6 +11,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Local message-type constants mirror server.MsgType* to avoid an import cycle
+// (server imports cognition; cognition cannot import server).
+const (
+	msgTypeAriaInterrupt = "aria_interrupt"
+	msgTypeGestureEvent  = "gesture_event"
+	msgTypeTextInput     = "text_input"
+)
+
 // Broadcaster is satisfied by server.Hub — defined here to avoid an import cycle.
 type Broadcaster interface {
 	Broadcast([]byte)
@@ -53,7 +61,7 @@ func (s *CognitionGRPCServer) StreamCognition(
 				}
 				s.registry.Cancel(sessionID)
 				payload, _ := json.Marshal(map[string]string{
-					"type":       "aria_interrupt",
+					"type":       msgTypeAriaInterrupt,
 					"session_id": sessionID,
 				})
 				s.hub.Broadcast(payload)
@@ -62,14 +70,14 @@ func (s *CognitionGRPCServer) StreamCognition(
 
 		case *perceptionv1.CognitionRequest_GestureEvent:
 			payload, _ := json.Marshal(map[string]any{
-				"type":    "gesture_event",
+				"type":    msgTypeGestureEvent,
 				"payload": p.GestureEvent,
 			})
 			s.hub.Broadcast(payload)
 
 		case *perceptionv1.CognitionRequest_TextInput:
 			payload, _ := json.Marshal(map[string]any{
-				"type":    "text_input",
+				"type":    msgTypeTextInput,
 				"payload": p.TextInput,
 			})
 			s.hub.Broadcast(payload)
