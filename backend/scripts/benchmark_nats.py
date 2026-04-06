@@ -52,7 +52,7 @@ async def _run_nats_benchmark() -> list[float]:
 
     try:
         await asyncio.wait_for(received.wait(), timeout=10.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print(f"WARNING: only received {count}/{NUM_FRAMES} frames", file=sys.stderr)
 
     await sub.unsubscribe()

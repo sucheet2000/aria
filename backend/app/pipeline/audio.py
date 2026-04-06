@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import structlog
 
-from app.pipeline.vad import VADProcessor
 from app.pipeline.transcriber import Transcriber
+from app.pipeline.vad import VADProcessor
 
 logger = structlog.get_logger()
 

@@ -8,8 +8,13 @@ from typing import Literal
 import structlog
 from anthropic import AsyncAnthropic
 
-from app.models.schemas import SymbolicResponse, VisionContext, WorldModelTriple, WorldModelUpdate
 from app.cognition.prompt import build_system_prompt
+from app.models.schemas import (
+    SymbolicResponse,
+    VisionContext,
+    WorldModelTriple,
+    WorldModelUpdate,
+)
 
 logger = structlog.get_logger()
 

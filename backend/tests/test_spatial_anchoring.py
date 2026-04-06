@@ -17,8 +17,9 @@ BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(BACKEND_DIR / "gen" / "python"))
 
-from app.spatial.anchor_registry import AnchorRegistry, SpatialAnchor
 from perception.v1 import perception_pb2
+
+from app.spatial.anchor_registry import AnchorRegistry
 
 
 @pytest.fixture

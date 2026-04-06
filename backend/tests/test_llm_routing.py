@@ -7,13 +7,11 @@ Week 6: LMCache + tiered LLM routing tests.
 """
 from __future__ import annotations
 
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.cognition.llm import LLMClient, classify_tier, _handle_local
-
+from app.cognition.llm import LLMClient, _handle_local, classify_tier
 
 # ── tier classification ───────────────────────────────────────────────────────
 
