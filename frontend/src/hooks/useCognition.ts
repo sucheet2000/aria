@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
 import type { WorldModelUpdate } from "@/store/ariaStore";
+import { useWorldModel } from "@/spatial/useWorldModel";
+import type { SpatialAnchor } from "@/spatial/useWorldModel";
+import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
 // importing useCognition (which would create a circular dependency).
