@@ -52,6 +52,30 @@ enum GestureType {
   GESTURE_TYPE_CANCEL      = 4;
 }
 
+// HandGestureType classifies the physical hand pose detected by the gesture
+// classifier. Distinct from GestureType, which encodes semantic intent.
+// This enum is the canonical type for physical single-hand poses.
+enum HandGestureType {
+  HAND_GESTURE_UNSPECIFIED = 0;
+  HAND_GESTURE_NONE        = 1;
+  HAND_GESTURE_THUMB_UP    = 2;
+  HAND_GESTURE_OPEN_PALM   = 3;
+  HAND_GESTURE_PINCH       = 4;
+  HAND_GESTURE_POINT       = 5;
+}
+
+// TwoHandGestureType classifies gestures that require both hands simultaneously.
+// Absent from GestureType/HandGestureType intentionally — two-hand gestures are
+// a distinct semantic layer with their own spatial semantics (bond, throw, expand).
+enum TwoHandGestureType {
+  TWO_HAND_GESTURE_UNSPECIFIED = 0;
+  TWO_HAND_GESTURE_NONE        = 1;
+  TWO_HAND_GESTURE_HOLD        = 2;
+  TWO_HAND_GESTURE_EXPAND      = 3;
+  TWO_HAND_GESTURE_THROW       = 4;
+  TWO_HAND_GESTURE_BOND        = 5;
+}
+
 // ─── Perception Events ────────────────────────────────────────────────────────
 
 // HandGestureEvent is the primary per-frame perception payload.
@@ -144,6 +168,25 @@ message SpatialAnchor {
   Point3D position    = 3;
   float radius        = 4; // interaction/collision radius in metres
   int64 created_at_us = 5; // microseconds since Unix epoch (consistent with HandGestureEvent)
+}
+
+// ─── Spatial Events ───────────────────────────────────────────────────────────
+
+// SpatialEvent describes a discrete spatial action produced by the gesture-anchor
+// bridge in response to a single- or two-hand gesture. Returned in the HTTP
+// cognition API response under the "spatial_event" key.
+//
+// event_type values (canonical):
+//   "anchor_registered" — anchor_id populated; a new anchor was registered
+//   "anchors_bonded"    — anchor_ids populated; two nearest anchors were bonded
+//   "anchor_thrown"     — anchor_id + velocity populated; anchor given momentum
+//   "world_expand"      — factor populated; scale the world model
+message SpatialEvent {
+  string event_type          = 1; // canonical event type string (see above)
+  string anchor_id           = 2; // primary anchor (anchor_registered, anchor_thrown)
+  repeated string anchor_ids = 3; // anchors involved in bond events
+  repeated float velocity    = 4; // throw direction vector [x, y, z]
+  float factor               = 5; // scale factor for world_expand events
 }
 
 // ─── gRPC Bi-directional Service ─────────────────────────────────────────────
