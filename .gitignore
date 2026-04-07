@@ -79,3 +79,4 @@ backend/data/*.db
 .cursor/
 .mcp.json
 backend/data/*.db
+backend/data/*.db
