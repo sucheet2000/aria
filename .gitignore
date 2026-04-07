@@ -78,3 +78,4 @@ backend/data/*.db
 .claude/
 .cursor/
 .mcp.json
+backend/data/*.db
