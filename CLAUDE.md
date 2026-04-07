@@ -30,10 +30,18 @@ Always use: /Users/sucheetboppana/miniconda-arm64/bin/python3
 Never use system python3 or conda base python
 
 ## Testing
-Python: PYTHONPATH=backend python3 -m pytest backend/tests/ -v
+Python: PYTHONPATH=/Users/sucheetboppana/aria/backend python3 -m pytest /Users/sucheetboppana/aria/backend/tests/ -v
 Go: cd backend && go build ./... && go vet ./... && go test ./...
 Frontend: cd frontend && npm run build
-Current count: 93 Python tests, all must pass
+Current count: 234 Python tests, all must pass
+ruff and mypy must also pass: cd backend && ruff check . && mypy app tests
+ruff>=0.9.0 and mypy>=1.0.0 are pinned in backend/requirements.txt
+
+## CI
+CI runs 3 jobs: python-tests (234 tests), go-backend (build/vet/test), frontend (lint/typecheck/build)
+python-tests job order: ruff check → mypy → pytest (ruff and mypy must pass before pytest runs)
+Dependencies are pinned in backend/requirements.txt — update pins when bumping versions locally
+setuptools>=78.1.1 required (3 CVEs below that version)
 
 ## Branch Strategy
 - main: stable releases only
@@ -62,6 +70,8 @@ See docs/ARIA_V4_VISION.md for long-term vision.
 - Never use 0.0.0.0 for gRPC binds (use 127.0.0.1)
 - Never skip tests before committing
 - Never add --grpc or --coreml to default startup without benchmarking
+- Never use unpinned heavy deps (torch, chromadb, faster-whisper) — pip backtracking breaks CI
+- Never add code that fails ruff check . in backend/
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph

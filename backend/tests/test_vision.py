@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from app.models.schemas import VisionState
-from app.pipeline.vision import VisionPipeline
 from app.pipeline.emotion import EmotionClassifier
+from app.pipeline.vision import VisionPipeline
 
 BACKEND_DIR = Path(__file__).parent.parent
 WORKER = BACKEND_DIR / "app" / "pipeline" / "vision_worker.py"
@@ -75,7 +75,7 @@ def test_worker_synthetic_output_schema() -> None:
         env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [l for l in result.stdout.splitlines() if l.strip()]
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) > 0, "worker produced no output lines"
 
     for line in lines:
@@ -105,7 +105,7 @@ def test_worker_synthetic_face_landmarks_count() -> None:
         env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [l for l in result.stdout.splitlines() if l.strip()]
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) > 0, "worker produced no output lines"
 
     first = json.loads(lines[0])
@@ -143,7 +143,7 @@ def test_worker_synthetic_output_includes_emotion_confidence() -> None:
         env=_WORKER_ENV,
     )
     assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [l for l in result.stdout.splitlines() if l.strip()]
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) > 0, "worker produced no output lines"
 
     parsed = json.loads(lines[0])

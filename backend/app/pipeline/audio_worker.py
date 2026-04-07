@@ -12,12 +12,12 @@ import sys
 import threading
 import time
 
-import structlog
 import numpy as np
+import structlog
 
-from app.pipeline.vad import VADProcessor
-from app.pipeline.transcriber import Transcriber
 from app.pipeline.denoiser import Denoiser
+from app.pipeline.transcriber import Transcriber
+from app.pipeline.vad import VADProcessor
 
 CHUNK_MS = 30
 SAMPLE_RATE = 16000
@@ -107,6 +107,7 @@ def _watch_stdin(vad: VADProcessor) -> None:
 
 def run_microphone(args: argparse.Namespace) -> None:
     import queue
+
     import sounddevice as sd
 
     vad = VADProcessor()
@@ -151,7 +152,7 @@ def run_microphone(args: argparse.Namespace) -> None:
 
     device_info = sd.query_devices(device)
     native_sr = int(device_info['default_samplerate'])
-    capture_sr = [native_sr]
+
 
     logger.info(
         "audio capture config",

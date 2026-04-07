@@ -8,19 +8,15 @@ Week 5: NATS async transport tests.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import patch
 
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(BACKEND_DIR / "gen" / "python"))
 
 from perception.v1 import perception_pb2
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -144,6 +140,7 @@ class TestVisionWorkerNATSFlag:
         # We patch sys.argv to avoid triggering actual parsing side-effects.
         with patch.object(sys, "argv", ["vision_worker.py"]):
             import importlib
+
             import app.pipeline.vision_worker as vw
             importlib.reload(vw)
 

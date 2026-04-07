@@ -184,7 +184,7 @@ def main() -> None:
             )
             cv2.putText(
                 frame,
-                f"emotion: neutral",
+                "emotion: neutral",
                 (10, 60),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,

@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.cognition.conflict import detect_conflict, speech_sentiment, visual_sentiment
-from app.cognition.prompt import CONFLICT_INSTRUCTION, NO_CONFLICT_INSTRUCTION, build_system_prompt
-from app.models.schemas import SymbolicResponse, VisionContext, WorldModelTriple, WorldModelUpdate
-
+from app.cognition.prompt import (
+    CONFLICT_INSTRUCTION,
+    NO_CONFLICT_INSTRUCTION,
+    build_system_prompt,
+)
+from app.models.schemas import (
+    SymbolicResponse,
+    VisionContext,
+    WorldModelTriple,
+    WorldModelUpdate,
+)
 
 # --- speech_sentiment ---
 

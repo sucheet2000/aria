@@ -4,7 +4,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +26,7 @@ def test_audio_transcript_schema() -> None:
 def test_vad_processor_init() -> None:
     from app.pipeline.vad import VADProcessor
 
-    vad = VADProcessor()
+    VADProcessor()
     assert VADProcessor.SAMPLE_RATE == 16000
     assert VADProcessor.CHUNK_MS == 30
     assert VADProcessor.CHUNK_SAMPLES == 480
@@ -57,14 +56,14 @@ def test_denoiser_enhance_passthrough_when_not_loaded() -> None:
 
 
 def test_transcriber_build_initial_prompt_no_keywords() -> None:
-    from app.pipeline.transcriber import Transcriber, BASE_DOMAIN_PROMPT
+    from app.pipeline.transcriber import BASE_DOMAIN_PROMPT, Transcriber
 
     t = Transcriber()
     assert t._build_initial_prompt() == BASE_DOMAIN_PROMPT
 
 
 def test_transcriber_build_initial_prompt_with_keywords() -> None:
-    from app.pipeline.transcriber import Transcriber, BASE_DOMAIN_PROMPT
+    from app.pipeline.transcriber import BASE_DOMAIN_PROMPT, Transcriber
 
     t = Transcriber()
     t.set_dynamic_keywords(["Arsenal", "football", "Premier League"])
@@ -93,8 +92,9 @@ def test_transcriber_reset_context_disables_conditioning() -> None:
 
 
 def test_transcriber_condition_restored_after_transcribe() -> None:
+    from unittest.mock import MagicMock
+
     from app.pipeline.transcriber import Transcriber
-    from unittest.mock import MagicMock, patch
 
     t = Transcriber()
     t.reset_context()

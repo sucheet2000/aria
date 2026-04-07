@@ -88,7 +88,7 @@ def stats(latencies: list[float]) -> dict:
 
 def benchmark_faster_whisper(audio: np.ndarray) -> tuple[dict, str]:
     from faster_whisper import WhisperModel
-    print(f"\n[faster-whisper] loading model (tiny, cpu, int8)…")
+    print("\n[faster-whisper] loading model (tiny, cpu, int8)…")
     model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
     # Decode settings must match Transcriber and WhisperCoreML production settings
@@ -122,7 +122,7 @@ def benchmark_coreml(audio: np.ndarray) -> tuple[dict, str] | tuple[None, str]:
     if not ENCODER_PATH.exists():
         return None, "encoder .mlpackage not found — skipped"
 
-    print(f"\n[coreml] loading encoder + whisper decoder…")
+    print("\n[coreml] loading encoder + whisper decoder…")
     try:
         import coremltools as ct
         import torch

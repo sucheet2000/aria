@@ -79,11 +79,11 @@ class GestureAnchorBridge:
             return {"type": "anchors_bonded", "anchor_ids": ids}
 
         if two_hand_gesture == "THROW":
-            anchor_id = self._nearest_anchor_id(pointing_vector)
-            if anchor_id is None:
+            throw_target = self._nearest_anchor_id(pointing_vector)
+            if throw_target is None:
                 return None
             velocity = list(pointing_vector) if pointing_vector is not None else [0.0, 0.0, -1.0]
-            return {"type": "anchor_thrown", "anchor_id": anchor_id, "velocity": velocity}
+            return {"type": "anchor_thrown", "anchor_id": throw_target, "velocity": velocity}
 
         if two_hand_gesture == "EXPAND":
             return {"type": "world_expand", "factor": 1.5}

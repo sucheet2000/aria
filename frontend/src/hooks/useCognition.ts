@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAriaStore } from "@/store/ariaStore";
+import type { WorldModelUpdate } from "@/store/ariaStore";
 import { useWorldModel } from "@/spatial/useWorldModel";
 import type { SpatialAnchor } from "@/spatial/useWorldModel";
 import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
@@ -60,6 +61,21 @@ function handleSpatialEvent(event: Record<string, unknown> | null | undefined): 
   }
 }
 
+function isWorldModelUpdate(obj: unknown): obj is Omit<WorldModelUpdate, "timestamp"> {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  const triple = o.triple as Record<string, unknown> | undefined;
+  return (
+    typeof triple === "object" &&
+    triple !== null &&
+    typeof triple.subject === "string" &&
+    typeof triple.predicate === "string" &&
+    typeof triple.object === "string" &&
+    typeof o.confidence === "number" &&
+    typeof o.source === "string"
+  );
+}
+
 export function useCognition() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +123,9 @@ export function useCognition() {
           session_id: useAriaStore.getState().sessionId,
           vision_state: {
             emotion,
-            head_pose: headPose,
+            pitch: headPose?.pitch ?? 0,
+            yaw: headPose?.yaw ?? 0,
+            roll: headPose?.roll ?? 0,
             face_detected: faceLandmarks.length > 0,
             hands_detected: handLandmarks.length > 0,
           },
@@ -128,7 +146,7 @@ export function useCognition() {
       setAvatarEmotion(data.avatar_emotion);
       setProcessingMs(data.processing_ms);
       setSymbolicInference(data.symbolic_inference ?? "");
-      if (data.world_model_update) {
+      if (data.world_model_update && isWorldModelUpdate(data.world_model_update)) {
         addWorldModelUpdate({
           ...data.world_model_update,
           timestamp: Date.now(),

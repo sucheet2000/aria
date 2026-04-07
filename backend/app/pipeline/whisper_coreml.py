@@ -34,8 +34,7 @@ import structlog
 from app.pipeline.transcriber import BASE_DOMAIN_PROMPT
 
 if TYPE_CHECKING:
-    import coremltools as ct
-    import whisper as openai_whisper
+    pass
 
 logger = structlog.get_logger()
 
