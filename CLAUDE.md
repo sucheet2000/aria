@@ -72,6 +72,12 @@ See docs/ARIA_V4_VISION.md for long-term vision.
 - Never add --grpc or --coreml to default startup without benchmarking
 - Never use unpinned heavy deps (torch, chromadb, faster-whisper) — pip backtracking breaks CI
 - Never add code that fails ruff check . in backend/
+- Do not attempt to make mypy strict across the full codebase — this is v3 scope.
+  app.cognition.memory and app.observability.* use ignore_errors=true (chromadb
+  and metrics singleton patterns are not mypy-compatible without major refactoring).
+  vision_worker uses deferred imports inside try blocks — noqa: F821 is intentional.
+  coremltools and openai-whisper are macOS-only — use mock.patch.dict(sys.modules)
+  NOT sys.modules.setdefault() in tests.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
