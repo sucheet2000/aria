@@ -16,9 +16,9 @@ import numpy as np
 
 sys.path.insert(0, ".")
 
-from app.pipeline.vad import VADProcessor
-from app.pipeline.transcriber import Transcriber
 from app.pipeline.denoiser import Denoiser
+from app.pipeline.transcriber import Transcriber
+from app.pipeline.vad import VADProcessor
 
 CHUNK_SAMPLES = VADProcessor.CHUNK_SAMPLES
 SAMPLE_RATE = VADProcessor.SAMPLE_RATE

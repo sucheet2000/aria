@@ -22,7 +22,6 @@ from app.pipeline.gesture_classifier import (
     TwoHandGesture,
 )
 
-
 # ── landmark helpers ───────────────────────────────────────────────────────────
 
 def _base(wrist_x: float = 0.5, wrist_y: float = 0.9) -> list[list[float]]:

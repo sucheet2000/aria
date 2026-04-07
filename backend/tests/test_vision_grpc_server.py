@@ -14,6 +14,7 @@ pytest.importorskip("grpc", reason="grpcio not installed")
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend" / "gen" / "python"))
 
 from perception.v1 import perception_pb2  # noqa: E402
+
 from app.pipeline.vision_grpc_server import PerceptionServicer  # noqa: E402
 
 

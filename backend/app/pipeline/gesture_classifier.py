@@ -22,7 +22,7 @@ A finger is CURLED when its TIP y > its MCP y.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import NamedTuple
 
 # ── MediaPipe index constants ─────────────────────────────────────────────────

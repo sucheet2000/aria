@@ -4,6 +4,7 @@ import pathlib
 
 from app.models.schemas import PerceptionFrame
 from app.cognition.conflict import detect_conflict
+from app.models.schemas import VisionContext
 
 _OBSERVATION_TEMPLATE = """\
 Current observation:

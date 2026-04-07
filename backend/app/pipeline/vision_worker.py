@@ -170,11 +170,12 @@ def solve_head_pose(
     }
 
 
-def _start_nats_publisher(nats_url: str) -> "NatsPublisher | None":
+def _start_nats_publisher(nats_url: str) -> NatsPublisher | None:
     """Return an async NATS publisher wrapper, or None on import error."""
     try:
         import asyncio
         import threading
+
         import nats as nats_lib
 
         class NatsPublisher:
@@ -217,7 +218,7 @@ def _start_nats_publisher(nats_url: str) -> "NatsPublisher | None":
         return None
 
 
-def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None":
+def _start_cognition_client(session_id: str = "default") -> queue.Queue | None:
     """Start a background CognitionService gRPC client on port 50052.
 
     Returns the interrupt queue so the caller can enqueue CognitionRequests,
@@ -228,13 +229,11 @@ def _start_cognition_client(session_id: str = "default") -> "queue.Queue | None"
     import threading
 
     import grpc as _grpc
-
-    from perception.v1 import perception_pb2 as _pb2
     from perception.v1 import perception_pb2_grpc as _pb2_grpc
 
     interrupt_queue: _queue.Queue = _queue.Queue(maxsize=32)
 
-    def _request_gen(q: "_queue.Queue"):
+    def _request_gen(q: _queue.Queue):
         while True:
             req = q.get()
             if req is None:
@@ -279,8 +278,10 @@ def run_synthetic(args: argparse.Namespace) -> None:
 
     if args.grpc:
         import threading
-        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+
         from perception.v1 import perception_pb2
+
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
         _grpc_servicer = PerceptionServicer()
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
@@ -341,8 +342,10 @@ def run_camera(args: argparse.Namespace) -> None:
 
     if args.grpc:
         import threading
-        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
+
         from perception.v1 import perception_pb2
+
+        from app.pipeline.vision_grpc_server import PerceptionServicer, serve
         _grpc_servicer = PerceptionServicer()
         _grpc_server = serve(_grpc_servicer)
         threading.Thread(target=_grpc_server.wait_for_termination, daemon=True).start()
@@ -466,6 +469,7 @@ def run_camera(args: argparse.Namespace) -> None:
                 face_detected = bool(face_result.face_landmarks)
                 if face_exit_detector.update(face_detected, now):
                     import queue as _queue
+
                     from perception.v1 import perception_pb2 as _pb2
                     try:
                         _interrupt_queue.put_nowait(

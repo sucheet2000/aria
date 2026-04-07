@@ -1,4 +1,3 @@
-import pytest
 
 from app.models.schemas import GestureState
 from app.pipeline.gesture import GestureClassifier

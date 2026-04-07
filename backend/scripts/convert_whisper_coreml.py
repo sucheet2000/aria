@@ -16,14 +16,14 @@ ANE routing requires:
 from __future__ import annotations
 
 import pathlib
-import sys
 import time
+
+# Suppress non-fatal coremltools warnings emitted at import time.
+import warnings
 
 import numpy as np
 import torch
 
-# Suppress non-fatal coremltools warnings emitted at import time.
-import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="coremltools")
 
 import coremltools as ct
