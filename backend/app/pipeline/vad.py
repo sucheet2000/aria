@@ -46,7 +46,7 @@ class VADProcessor:
 
         pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()
         try:
-            is_speech = self._vad.is_speech(pcm, self.SAMPLE_RATE)
+            is_speech = self._vad is not None and self._vad.is_speech(pcm, self.SAMPLE_RATE)
         except Exception:
             is_speech = False
 

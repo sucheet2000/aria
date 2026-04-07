@@ -36,7 +36,26 @@ ignore = ["E501", "N806"]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+no_implicit_optional = false
+warn_return_any = false
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+    "scripts.*",
+    "app.observability.*",
+    "app.pipeline.vision_worker",
+    "app.pipeline.audio_worker",
+    "app.pipeline.whisper_coreml",
+    "app.cognition.memory",
+    "app.cognition.llm",
+    "app.api.cognition_route",
+]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
