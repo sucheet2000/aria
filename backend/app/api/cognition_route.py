@@ -114,7 +114,7 @@ async def get_episodic() -> dict:
     if not memory.loaded:
         return {"facts": [], "count": 0}
     try:
-        result = memory._episodic.get(limit=20)
+        result = memory._episodic.get(limit=20)  # type: ignore[attr-defined]
         return {"facts": result["documents"], "count": len(result["documents"])}
     except Exception:
         return {"facts": [], "count": 0}
