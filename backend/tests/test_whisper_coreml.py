@@ -72,12 +72,17 @@ def test_fallback_model_always_loaded(tmp_path) -> None:
 
     fake_ct = mock.MagicMock()
     fake_ct.models.MLModel.return_value = mock_encoder
+    fake_whisper = mock.MagicMock()
     sys.modules.setdefault("coremltools", fake_ct)
     sys.modules.setdefault("coremltools.models", fake_ct.models)
+    sys.modules.setdefault("whisper", fake_whisper)
 
     with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model), \
-         mock.patch.dict(sys.modules, {"coremltools": fake_ct, "coremltools.models": fake_ct.models}), \
-         mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
+         mock.patch.dict(sys.modules, {
+             "coremltools": fake_ct,
+             "coremltools.models": fake_ct.models,
+             "whisper": fake_whisper,
+         }), \
          mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
         w = WhisperCoreML(model_size="tiny")
         w.load()
@@ -106,12 +111,20 @@ def test_coreml_only_mode_raises_on_runtime_error(tmp_path) -> None:
 
     fake_ct = mock.MagicMock()
     fake_ct.models.MLModel.return_value = mock_encoder
+    fake_whisper = mock.MagicMock()
+    fake_whisper_decoding = mock.MagicMock()
     sys.modules.setdefault("coremltools", fake_ct)
     sys.modules.setdefault("coremltools.models", fake_ct.models)
+    sys.modules.setdefault("whisper", fake_whisper)
+    sys.modules.setdefault("whisper.decoding", fake_whisper_decoding)
 
     with mock.patch("faster_whisper.WhisperModel", side_effect=ImportError("no faster-whisper")), \
-         mock.patch.dict(sys.modules, {"coremltools": fake_ct, "coremltools.models": fake_ct.models}), \
-         mock.patch("whisper.load_model", return_value=mock.MagicMock()), \
+         mock.patch.dict(sys.modules, {
+             "coremltools": fake_ct,
+             "coremltools.models": fake_ct.models,
+             "whisper": fake_whisper,
+             "whisper.decoding": fake_whisper_decoding,
+         }), \
          mock.patch.object(__import__("pathlib").Path, "exists", return_value=True):
         w = WhisperCoreML(model_size="tiny")
         w.load()  # must succeed in CoreML-only mode
