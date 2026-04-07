@@ -10,6 +10,7 @@ from anthropic import AsyncAnthropic
 
 from app.cognition.prompt import build_system_prompt
 from app.models.schemas import (
+    ConversationTurn,
     SymbolicResponse,
     VisionContext,
     WorldModelTriple,
@@ -96,7 +97,7 @@ class LLMClient:
         self,
         message: str,
         vision: VisionContext,
-        conversation_history: list[dict],
+        conversation_history: list[ConversationTurn],
         working_memory: list[str],
         episodic_memory: list[str],
     ) -> SymbolicResponse:
@@ -138,14 +139,14 @@ class LLMClient:
         response = await self._client.messages.create(
             model=model,
             max_tokens=self.MAX_TOKENS,
-            system=system,
-            messages=messages,
+            system=system,  # type: ignore[arg-type]
+            messages=messages,  # type: ignore[arg-type]
             extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
         )
         elapsed_ms = int((time.time() - start) * 1000)
         logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
 
-        raw = response.content[0].text.strip()
+        raw = response.content[0].text.strip()  # type: ignore[union-attr]
         result = self._parse_response(raw)
         self._last_response = result.natural_language_response
         return result

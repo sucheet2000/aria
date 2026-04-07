@@ -115,7 +115,7 @@ def run_microphone(args: argparse.Namespace) -> None:
         from app.pipeline.whisper_coreml import WhisperCoreML
         transcriber = WhisperCoreML(model_size=args.model)
     else:
-        transcriber = Transcriber(model_size=args.model)
+        transcriber = Transcriber(model_size=args.model)  # type: ignore[assignment]
     denoiser = Denoiser()
 
     try:

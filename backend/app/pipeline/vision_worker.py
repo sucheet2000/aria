@@ -168,7 +168,7 @@ def solve_head_pose(
     }
 
 
-def _start_nats_publisher(nats_url: str) -> NatsPublisher | None:
+def _start_nats_publisher(nats_url: str) -> NatsPublisher | None:  # type: ignore[name-defined]  # noqa: F821
     """Return an async NATS publisher wrapper, or None on import error."""
     try:
         import asyncio
@@ -194,7 +194,7 @@ def _start_nats_publisher(nats_url: str) -> NatsPublisher | None:
                 backoff = 1.0
                 while True:
                     try:
-                        self._nc = await nats_lib.connect(nats_url)
+                        self._nc = await nats_lib.connect(nats_url)  # type: ignore[assignment]
                         print(f"NATS publisher connected to {nats_url}", file=sys.stderr, flush=True)
                         self._ready.set()
                         return
@@ -216,7 +216,7 @@ def _start_nats_publisher(nats_url: str) -> NatsPublisher | None:
         return None
 
 
-def _start_cognition_client(session_id: str = "default") -> queue.Queue | None:
+def _start_cognition_client(session_id: str = "default") -> queue.Queue | None:  # type: ignore[name-defined]  # noqa: F821
     """Start a background CognitionService gRPC client on port 50052.
 
     Returns the interrupt queue so the caller can enqueue CognitionRequests,

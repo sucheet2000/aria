@@ -22,8 +22,6 @@ ignore = ["E501", "N806"]
 [tool.ruff.lint.per-file-ignores]
 # gRPC generated stubs use PascalCase method names per proto convention
 "app/pipeline/vision_grpc_server.py" = ["N802"]
-# NatsPublisher and queue are defined/imported inside try blocks; type annotations reference them
-"app/pipeline/vision_worker.py" = ["F821"]
 # VAD state machine: silence_ms/in_speech reassignments inside branch are intentional reset guards
 "app/pipeline/audio_worker.py" = ["F841"]
 # Scripts use deferred imports after warnings suppression (intentional E402)
@@ -48,12 +46,7 @@ module = [
     "tests.*",
     "scripts.*",
     "app.observability.*",
-    "app.pipeline.vision_worker",
-    "app.pipeline.audio_worker",
-    "app.pipeline.whisper_coreml",
     "app.cognition.memory",
-    "app.cognition.llm",
-    "app.api.cognition_route",
 ]
 ignore_errors = true
 
