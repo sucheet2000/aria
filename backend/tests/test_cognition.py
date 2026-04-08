@@ -11,8 +11,8 @@ from app.cognition.prompt import (
     build_system_prompt,
 )
 from app.models.schemas import (
-    SymbolicResponse,
-    VisionContext,
+    CognitionResponse,
+    PerceptionFrame,
     WorldModelTriple,
     WorldModelUpdate,
 )
@@ -64,33 +64,33 @@ def test_detect_conflict_aligned_negative():
 # --- build_system_prompt ---
 
 def test_build_system_prompt_contains_aria():
-    vision = VisionContext(emotion="neutral", confidence=0.5)
+    vision = PerceptionFrame(emotion="neutral", confidence=0.5)
     prompt = build_system_prompt(vision, "hello", [], [])
     assert "ARIA" in prompt
 
 
 def test_build_system_prompt_contains_emotion():
-    vision = VisionContext(emotion="happy", confidence=0.9)
+    vision = PerceptionFrame(emotion="happy", confidence=0.9)
     prompt = build_system_prompt(vision, "hello", [], [])
     assert "happy" in prompt
 
 
 def test_build_system_prompt_conflict_instruction_when_conflict():
-    vision = VisionContext(emotion="fearful", confidence=0.8)
+    vision = PerceptionFrame(emotion="fearful", confidence=0.8)
     prompt = build_system_prompt(vision, "I am fine", [], [])
     assert CONFLICT_INSTRUCTION in prompt
 
 
 def test_build_system_prompt_no_conflict_instruction_when_aligned():
-    vision = VisionContext(emotion="angry", confidence=0.7)
+    vision = PerceptionFrame(emotion="angry", confidence=0.7)
     prompt = build_system_prompt(vision, "I am frustrated", [], [])
     assert NO_CONFLICT_INSTRUCTION in prompt
 
 
-# --- SymbolicResponse schema ---
+# --- CognitionResponse schema ---
 
 def test_symbolic_response_minimal():
-    sr = SymbolicResponse(
+    sr = CognitionResponse(
         symbolic_inference="user is focused",
         natural_language_response="Got it.",
     )
@@ -101,7 +101,7 @@ def test_symbolic_response_minimal():
 def test_symbolic_response_with_world_model_update():
     triple = WorldModelTriple(subject="user", predicate="prefers", object="dark mode")
     wmu = WorldModelUpdate(triple=triple, confidence=0.9, source="explicit_statement")
-    sr = SymbolicResponse(
+    sr = CognitionResponse(
         symbolic_inference="user stated a preference",
         world_model_update=wmu,
         natural_language_response="Noted.",
@@ -120,7 +120,7 @@ def _make_test_client() -> TestClient:
 def _stub_llm_client() -> MagicMock:
     stub = MagicMock()
     stub.complete = AsyncMock(
-        return_value=SymbolicResponse(
+        return_value=CognitionResponse(
             symbolic_inference="user is pointing",
             natural_language_response="I see you pointing.",
         )
@@ -147,7 +147,7 @@ def test_cognition_route_point_gesture_produces_spatial_event():
             "/api/cognition",
             json={
                 "message": "look at that",
-                "gesture": "point",
+                "hand_gesture": "point",
                 "pointing_vector": [0.1, -0.2, 0.9],
                 "session_id": "test-session-001",
             },
@@ -156,7 +156,7 @@ def test_cognition_route_point_gesture_produces_spatial_event():
     assert resp.status_code == 200
     data = resp.json()
     assert data["spatial_event"] is not None
-    assert data["spatial_event"]["type"] == "anchor_registered"
+    assert data["spatial_event"]["event_type"] == "anchor_registered"
 
 
 def test_cognition_route_no_gesture_spatial_event_is_none():

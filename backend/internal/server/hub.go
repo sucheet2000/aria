@@ -194,7 +194,7 @@ func (c *Client) readPump() {
 				}
 			// Note: single global active session is intentional for ARIA v1 (single-user).
 			// Per-connection session ownership is a v2 concern.
-			case "session_init":
+			case MsgTypeSessionInit:
 				if c.hub.vision != nil && msg.SessionID != "" {
 					c.hub.vision.SetActiveSession(msg.SessionID)
 				}

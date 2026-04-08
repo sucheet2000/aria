@@ -33,12 +33,15 @@ _MIDDLE_MCP, _MIDDLE_PIP, _MIDDLE_DIP, _MIDDLE_TIP = 9, 10, 11, 12
 _RING_MCP, _RING_PIP, _RING_DIP, _RING_TIP = 13, 14, 15, 16
 _PINKY_MCP, _PINKY_PIP, _PINKY_DIP, _PINKY_TIP = 17, 18, 19, 20
 
-# GestureType enum values — match perception.proto GestureType
-GESTURE_TYPE_UNSPECIFIED = 0
-GESTURE_TYPE_STOP        = 1
-GESTURE_TYPE_POINT       = 2
-GESTURE_TYPE_CONFIRM     = 3
-GESTURE_TYPE_CANCEL      = 4
+# HandGestureType enum values — match perception.proto HandGestureType exactly.
+# The int values here mirror the proto enum so they can be forwarded without
+# translation to any layer that consumes the proto-generated stubs.
+HAND_GESTURE_UNSPECIFIED = 0
+HAND_GESTURE_NONE        = 1
+HAND_GESTURE_THUMB_UP    = 2
+HAND_GESTURE_OPEN_PALM   = 3
+HAND_GESTURE_PINCH       = 4
+HAND_GESTURE_POINT       = 5
 
 
 @dataclass
@@ -48,8 +51,18 @@ class Point3D:
     z: float
 
 
-class GestureResult(NamedTuple):
-    gesture_type: int    # GestureType enum int
+class HandGesture(NamedTuple):
+    """Result of single-hand gesture classification.
+
+    gesture_type maps to the HandGestureType enum in perception.proto:
+      HAND_GESTURE_UNSPECIFIED = 0
+      HAND_GESTURE_NONE        = 1
+      HAND_GESTURE_THUMB_UP    = 2
+      HAND_GESTURE_OPEN_PALM   = 3
+      HAND_GESTURE_PINCH       = 4
+      HAND_GESTURE_POINT       = 5
+    """
+    gesture_type: int    # HandGestureType enum int
     confidence: float    # 0.0–1.0
     pointing_vector: tuple[float, float, float] | None  # only for POINT
 
@@ -66,7 +79,7 @@ _THROW_VELOCITY_THRESHOLD = 0.0005  # normalized units per ms
 
 @dataclass
 class TwoHandGesture:
-    gesture_type: str  # "HOLD", "EXPAND", "THROW", "BOND", "NONE"
+    hand_gesture_type: str  # "HOLD", "EXPAND", "THROW", "BOND", "NONE"
     confidence: float
     velocity_vector: tuple[float, float, float] | None = None
     distance: float | None = None  # for BOND — distance between hands
@@ -187,39 +200,39 @@ class GestureClassifier:
     Rule-based gesture classifier.
 
     Input: 21 Point3D landmarks as list[list[float]] with [x, y, z] per point.
-    Output: GestureResult(gesture_type, confidence, pointing_vector)
+    Output: HandGesture(gesture_type, confidence, pointing_vector)
     """
 
     def __init__(self) -> None:
         self._prev_left: list[list[float]] | None = None
         self._prev_right: list[list[float]] | None = None
 
-    def classify(self, landmarks: list[list[float]]) -> GestureResult:
+    def classify(self, landmarks: list[list[float]]) -> HandGesture:
         if len(landmarks) != 21:
-            return GestureResult(GESTURE_TYPE_UNSPECIFIED, 0.0, None)
+            return HandGesture(HAND_GESTURE_UNSPECIFIED, 0.0, None)
 
         # Evaluate each gesture and pick the one with highest confidence
         candidates: list[tuple[int, float]] = [
-            (GESTURE_TYPE_CONFIRM, _thumb_up(landmarks)),
-            (GESTURE_TYPE_STOP,    _open_palm(landmarks)),
-            (GESTURE_TYPE_POINT,   _point_gesture(landmarks)),
-            (GESTURE_TYPE_CANCEL,  _fist(landmarks)),
+            (HAND_GESTURE_THUMB_UP,  _thumb_up(landmarks)),
+            (HAND_GESTURE_OPEN_PALM, _open_palm(landmarks)),
+            (HAND_GESTURE_POINT,     _point_gesture(landmarks)),
+            (HAND_GESTURE_PINCH,     _fist(landmarks)),
         ]
 
-        best_type, best_conf = GESTURE_TYPE_UNSPECIFIED, 0.0
+        best_type, best_conf = HAND_GESTURE_UNSPECIFIED, 0.0
         for g_type, conf in candidates:
             if conf > best_conf:
                 best_conf = conf
                 best_type = g_type
 
         pointing_vector: tuple[float, float, float] | None = None
-        if best_type == GESTURE_TYPE_POINT and best_conf > 0:
+        if best_type == HAND_GESTURE_POINT and best_conf > 0:
             pointing_vector = _compute_pointing_vector(landmarks)
 
         if best_conf < 0.5:
-            return GestureResult(GESTURE_TYPE_UNSPECIFIED, 0.0, None)
+            return HandGesture(HAND_GESTURE_UNSPECIFIED, 0.0, None)
 
-        return GestureResult(
+        return HandGesture(
             gesture_type=best_type,
             confidence=round(best_conf, 3),
             pointing_vector=pointing_vector,

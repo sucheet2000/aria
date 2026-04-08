@@ -12,7 +12,7 @@ import { useAriaStore } from "@/store/ariaStore";
 import type { SpatialAnchor } from "./useWorldModel";
 
 interface AnchorRegisteredPayload {
-  id: string;
+  anchor_id: string;
   label: string;
   x?: number;
   y?: number;
@@ -30,9 +30,9 @@ export function SpatialCanvas() {
   useEffect(() => {
     function handleAnchorRegistered(e: Event) {
       const payload = (e as CustomEvent<AnchorRegisteredPayload>).detail;
-      if (!payload?.id || payload.label === undefined) return;
+      if (!payload?.anchor_id || payload.label === undefined) return;
       const anchor: SpatialAnchor = {
-        id: payload.id,
+        anchor_id: payload.anchor_id,
         label: payload.label,
         x: payload.x ?? 0,
         y: payload.y ?? 0,
@@ -66,7 +66,7 @@ export function SpatialCanvas() {
       <pointLight position={[10, 10, 10]} intensity={0.8} />
       <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade />
       {Array.from(anchors.values()).map((anchor) => (
-        <AnchorMarker key={anchor.id} anchor={anchor} />
+        <AnchorMarker key={anchor.anchor_id} anchor={anchor} />
       ))}
       {pointingVector && <PointingCursor vector={pointingVector} />}
       <OrbitControls enablePan={false} enableZoom={false} />

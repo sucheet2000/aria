@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export interface SpatialAnchor {
-  id: string;
+  anchor_id: string;
   label: string;
   x: number;
   y: number;
@@ -26,7 +26,7 @@ export const useWorldModel = create<WorldModelState>((set) => ({
   addAnchor: (anchor) =>
     set((state) => {
       const next = new Map(state.anchors);
-      next.set(anchor.id, anchor);
+      next.set(anchor.anchor_id, anchor);
       return { anchors: next };
     }),
 

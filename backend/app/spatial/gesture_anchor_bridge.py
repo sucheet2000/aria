@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 
+from app.models.schemas import SpatialEvent
 from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
 
@@ -32,7 +33,7 @@ class GestureAnchorBridge:
         two_hand_gesture: str,
         pointing_vector: list[float] | None,
         session_id: str,
-    ) -> dict | None:
+    ) -> SpatialEvent | None:
         """Translate a gesture event into a spatial action dict.
 
         Args:
@@ -55,38 +56,31 @@ class GestureAnchorBridge:
                 pointing_vector[0], pointing_vector[1], pointing_vector[2]
             )
             anchor_id = self._registry.register_anchor(vec, "object")
-            anchor = self._registry.get_anchor(anchor_id)
-            payload: dict = {}
-            if anchor is not None:
-                payload = {
-                    "anchor_id": anchor.anchor_id,
-                    "label": anchor.label,
-                    "x": anchor.x,
-                    "y": anchor.y,
-                    "z": anchor.z,
-                }
-            return {
-                "type": "anchor_registered",
-                "anchor_id": anchor_id,
-                "payload": payload,
-            }
+            return SpatialEvent(
+                event_type="anchor_registered",
+                anchor_id=anchor_id,
+                label="object",
+                x=vec[0],
+                y=vec[1],
+                z=vec[2],
+            )
 
         # ── two-hand gestures ─────────────────────────────────────────────────
         if two_hand_gesture == "BOND":
             ids = self._two_nearest_anchor_ids()
             if ids is None:
                 return None
-            return {"type": "anchors_bonded", "anchor_ids": ids}
+            return SpatialEvent(event_type="anchors_bonded", anchor_ids=ids)
 
         if two_hand_gesture == "THROW":
             throw_target = self._nearest_anchor_id(pointing_vector)
             if throw_target is None:
                 return None
             velocity = list(pointing_vector) if pointing_vector is not None else [0.0, 0.0, -1.0]
-            return {"type": "anchor_thrown", "anchor_id": throw_target, "velocity": velocity}
+            return SpatialEvent(event_type="anchor_thrown", anchor_id=throw_target, velocity=velocity)
 
         if two_hand_gesture == "EXPAND":
-            return {"type": "world_expand", "factor": 1.5}
+            return SpatialEvent(event_type="world_expand", factor=1.5)
 
         return None
 

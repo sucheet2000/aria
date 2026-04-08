@@ -5,35 +5,25 @@ import (
 	"strings"
 )
 
-// VisionStateContext holds the current perception data from the vision worker.
-type VisionStateContext struct {
-	Emotion       string
-	Pitch         float64
-	Yaw           float64
-	Roll          float64
-	FaceDetected  bool
-	HandsDetected bool
-}
-
 // BuildSystemPrompt constructs the system prompt for the language model based on
-// the current vision state.
-func BuildSystemPrompt(visionState VisionStateContext) string {
+// the current perception frame.
+func BuildSystemPrompt(frame PerceptionFrame) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are ARIA, a perceptive AI companion with the ability to see and understand the person you are speaking with. ")
 	sb.WriteString("You are connected to a camera and can observe the user in real time. ")
 
-	if !visionState.FaceDetected {
+	if !frame.FaceDetected {
 		sb.WriteString("The user does not appear to be in frame right now -- they may have stepped away. ")
 		sb.WriteString("Acknowledge their absence briefly if relevant, and stay ready for when they return. ")
 	} else {
-		emotion := visionState.Emotion
+		emotion := frame.Emotion
 		if emotion == "" {
 			emotion = "neutral"
 		}
 		sb.WriteString(fmt.Sprintf("You can see that the user currently appears %s. ", emotion))
 
-		headNote := describeHeadPose(visionState.Pitch, visionState.Yaw)
+		headNote := describeHeadPose(frame.Pitch, frame.Yaw)
 		if headNote != "" {
 			sb.WriteString(headNote + " ")
 		}
