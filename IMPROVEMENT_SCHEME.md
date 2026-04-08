@@ -43,6 +43,46 @@
 ## Week 9 — Spatial Anchoring
 *Details coming soon.*
 
+## Week 10 — NATS Reliability + Anchor Lifecycle (COMPLETE)
+- NATS subscriber reconnect path: DisconnectErrHandler + ReconnectHandler with embedded nats-server Go test
+- Anchor registry: delete and update API endpoints
+- Stale anchor pruning on session expiry
+
+## Week 11 — Spatial Canvas
+- Render spatial anchors as 3D objects in the Three.js frontend
+- Each anchor maps to a low-poly mesh positioned at (x, y, z) from the anchor registry
+- Object selection: ray-cast from pointer position, highlight on hover
+- Basic manipulation: translate selected object via drag, persist new coords back to registry
+- Goal: anchors are first-class 3D citizens, not just data records
+
+## Week 12 — Multi-Display Broadcast
+- Extend WebSocket hub to broadcast spatial state across multiple browser windows/tabs
+- SharedWorker or BroadcastChannel for same-origin sync without a round-trip to Go server
+- Conflict resolution: last-write-wins on anchor position, sequence-numbered on gesture events
+- Goal: two monitors can show the same spatial canvas, updated in real time
+
+## Week 13 — Two-Hand Physics
+- BOND/THROW/EXPAND gesture events drive real 3D object physics in Three.js
+- BOND: constrain two anchors with a spring joint
+- THROW: apply velocity vector from pointing_vector to anchor rigid body
+- EXPAND: scale the world-space unit by gesture factor, re-project all anchors
+- Physics engine: cannon-es (lightweight, tree-shakeable, no WASM)
+- Goal: hands are the physics controller, not just an event source
+
+## Week 14 — Visual Event Pipeline
+- TouchDesigner-style node graph for spatial event routing in the frontend
+- Nodes: sources (gesture stream, anchor registry), transforms (filter, map, delay), sinks (3D canvas, TTS, memory)
+- Edges are live WebSocket subscriptions; nodes hot-reload without page refresh
+- Built with React Flow; node state persisted to localStorage
+- Goal: non-code users can wire up spatial behaviours visually
+
+## Week 15 — Spatial Persistence
+- Anchors survive sessions: write anchor state to SQLite on every mutation
+- On Go server startup: load anchors from SQLite, publish to NATS, hydrate frontend on first WebSocket connect
+- Schema: anchor_id, label, x, y, z, session_id, created_at, updated_at
+- Migrations managed with golang-migrate (same pattern as Week 2 session state)
+- Goal: the spatial world persists across restarts — ARIA remembers where things are
+
 ## Security Architecture (Ongoing)
 
 ### Completed (Codex-found, fixed in v1.5.0–v1.6.0)
@@ -52,12 +92,23 @@
 - Pending cancel map: bounded at 32 entries, 10s TTL eviction
 - vision_grpc_server.py: loopback only
 
+### v3 Vision — Spatial Computing Environment
+Weeks 10-15 complete ARIA's transformation from a voice companion into a
+spatial computing environment. By Week 15, the system maintains a persistent
+3D world model: anchors are physical objects with mass and velocity, hands
+are physics controllers, and multiple displays share a live view of the same
+scene. The visual event pipeline (Week 14) makes the spatial wiring
+inspectable and reconfigurable without code changes. Persistence (Week 15)
+means the environment survives restarts — ARIA's memory of space becomes as
+durable as her episodic memory of conversation.
+
 ### v3 Security Requirements
 - mTLS on gRPC services when ARIA exposes to local network
 - WebSocket rate limiting: max N connections per IP
 - Session token expiry: UUID sessions expire after 30 min idle
 - Audit log: all cognition requests logged with session_id + timestamp
 - Input validation: sanitize all WebSocket message payloads before routing
+- SQLite anchor store: parameterized queries only, no string interpolation
 
 ### v4 Security Requirements (Agent Trust Boundaries)
 - Segregation of duties enforced via gitagent DUTIES.md
