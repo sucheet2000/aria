@@ -77,7 +77,7 @@ class GestureAnchorBridge:
             if throw_target is None:
                 return None
             velocity = list(pointing_vector) if pointing_vector is not None else [0.0, 0.0, -1.0]
-            return SpatialEvent(event_type="anchor_thrown", anchor_id=anchor_id, velocity=velocity)
+            return SpatialEvent(event_type="anchor_thrown", anchor_id=throw_target, velocity=velocity)
 
         if two_hand_gesture == "EXPAND":
             return SpatialEvent(event_type="world_expand", factor=1.5)
