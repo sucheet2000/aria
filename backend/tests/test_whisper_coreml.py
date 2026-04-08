@@ -73,9 +73,6 @@ def test_fallback_model_always_loaded(tmp_path) -> None:
     fake_ct = mock.MagicMock()
     fake_ct.models.MLModel.return_value = mock_encoder
     fake_whisper = mock.MagicMock()
-    sys.modules.setdefault("coremltools", fake_ct)
-    sys.modules.setdefault("coremltools.models", fake_ct.models)
-    sys.modules.setdefault("whisper", fake_whisper)
 
     with mock.patch("faster_whisper.WhisperModel", return_value=mock_fw_model), \
          mock.patch.dict(sys.modules, {
@@ -113,10 +110,6 @@ def test_coreml_only_mode_raises_on_runtime_error(tmp_path) -> None:
     fake_ct.models.MLModel.return_value = mock_encoder
     fake_whisper = mock.MagicMock()
     fake_whisper_decoding = mock.MagicMock()
-    sys.modules.setdefault("coremltools", fake_ct)
-    sys.modules.setdefault("coremltools.models", fake_ct.models)
-    sys.modules.setdefault("whisper", fake_whisper)
-    sys.modules.setdefault("whisper.decoding", fake_whisper_decoding)
 
     with mock.patch("faster_whisper.WhisperModel", side_effect=ImportError("no faster-whisper")), \
          mock.patch.dict(sys.modules, {
@@ -133,11 +126,16 @@ def test_coreml_only_mode_raises_on_runtime_error(tmp_path) -> None:
     assert w._fallback_model is None
     assert w._state == "ready"
 
-    # Inject a CoreML runtime failure — must raise, not silently return empty
+    # Inject a CoreML runtime failure — must raise, not silently return empty.
+    # Stub whisper imports so _transcribe_coreml reaches predict() before failing.
     w._coreml_encoder = mock.MagicMock()
     w._coreml_encoder.predict.side_effect = RuntimeError("CoreML failed")
-    with pytest.raises(RuntimeError):
-        w.transcribe(_make_audio())
+    with mock.patch.dict(sys.modules, {
+        "whisper": fake_whisper,
+        "whisper.decoding": fake_whisper_decoding,
+    }):
+        with pytest.raises(RuntimeError):
+            w.transcribe(_make_audio())
 
 
 # ---------------------------------------------------------------------------
@@ -195,25 +193,34 @@ def test_runtime_demotion_on_coreml_failure(tmp_path) -> None:
         w._encoder_path = tmp_path / "missing.mlpackage"
         w.load()
 
-    # Force the class to believe CoreML is active, then inject a broken encoder
-    w._use_coreml = True
-    w._coreml_encoder = mock.MagicMock()
-    w._coreml_encoder.predict.side_effect = RuntimeError("CoreML runtime error")
+    fake_whisper = mock.MagicMock()
+    fake_whisper_decoding = mock.MagicMock()
 
-    # First call: CoreML raises → demotes, returns fallback result
-    text1, _ = w.transcribe(_make_audio())
-    assert text1 == "fallback text", f"expected fallback text, got {text1!r}"
-    assert w._use_coreml is False, "_use_coreml should be False after demotion"
+    # Stub whisper imports so _transcribe_coreml reaches predict() before raising,
+    # giving us a deterministic call_count assertion after demotion.
+    with mock.patch.dict(sys.modules, {
+        "whisper": fake_whisper,
+        "whisper.decoding": fake_whisper_decoding,
+    }):
+        # Force the class to believe CoreML is active, then inject a broken encoder
+        w._use_coreml = True
+        w._coreml_encoder = mock.MagicMock()
+        w._coreml_encoder.predict.side_effect = RuntimeError("CoreML runtime error")
 
-    # Reset the mock generator for second call
-    mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+        # First call: CoreML raises → demotes, returns fallback result
+        text1, _ = w.transcribe(_make_audio())
+        assert text1 == "fallback text", f"expected fallback text, got {text1!r}"
+        assert w._use_coreml is False, "_use_coreml should be False after demotion"
 
-    # Second call: should go straight to fallback, CoreML never called again
-    text2, _ = w.transcribe(_make_audio())
-    assert text2 == "fallback text"
-    # predict.call_count is not asserted here because _transcribe_coreml imports
-    # torch/whisper before calling predict; on CI without openai-whisper installed
-    # the import fails and predict is never reached (demotion still occurs correctly).
+        # Reset the mock generator for second call
+        mock_fw_model.transcribe.return_value = (iter([mock_segment]), mock.MagicMock())
+
+        # Second call: should go straight to fallback, CoreML never called again
+        text2, _ = w.transcribe(_make_audio())
+        assert text2 == "fallback text"
+        assert w._coreml_encoder.predict.call_count == 1, (
+            "CoreML encoder should have been called exactly once before demotion"
+        )
 
 
 # ---------------------------------------------------------------------------

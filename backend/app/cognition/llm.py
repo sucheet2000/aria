@@ -8,9 +8,9 @@ from typing import Literal
 import structlog
 from anthropic import AsyncAnthropic
 
-from app.models.schemas import CognitionResponse, PerceptionFrame, WorldModelTriple, WorldModelUpdate
 from app.cognition.prompt import build_system_prompt
 from app.models.schemas import (
+    ConversationTurn,
     SymbolicResponse,
     VisionContext,
     WorldModelTriple,
@@ -96,18 +96,18 @@ class LLMClient:
     async def complete(
         self,
         message: str,
-        vision: PerceptionFrame,
-        conversation_history: list[dict],
+        vision: VisionContext,
+        conversation_history: list[ConversationTurn],
         working_memory: list[str],
         episodic_memory: list[str],
-    ) -> CognitionResponse:
+    ) -> SymbolicResponse:
         tier: Tier = classify_tier(message)
         logger.debug("llm tier routing", tier=tier, message=message[:80])
 
         # ── Tier 0: local handler, no API call ─────────────────────────────
         if tier == 0:
             local_reply = _handle_local(message, self._last_response)
-            return CognitionResponse(
+            return SymbolicResponse(
                 symbolic_inference="local_handler",
                 world_model_update=None,
                 natural_language_response=local_reply,
@@ -139,23 +139,23 @@ class LLMClient:
         response = await self._client.messages.create(
             model=model,
             max_tokens=self.MAX_TOKENS,
-            system=system,
-            messages=messages,
+            system=system,  # type: ignore[arg-type]
+            messages=messages,  # type: ignore[arg-type]
             extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
         )
         elapsed_ms = int((time.time() - start) * 1000)
         logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
 
-        raw = response.content[0].text.strip()
+        raw = response.content[0].text.strip()  # type: ignore[union-attr]
         result = self._parse_response(raw)
         self._last_response = result.natural_language_response
         return result
 
-    def _parse_response(self, raw: str) -> CognitionResponse:
+    def _parse_response(self, raw: str) -> SymbolicResponse:
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
             logger.warning("llm response not JSON, falling back", raw=raw[:100])
-            return CognitionResponse(
+            return SymbolicResponse(
                 symbolic_inference="state unclear",
                 world_model_update=None,
                 natural_language_response=raw,
@@ -176,14 +176,14 @@ class LLMClient:
                     confidence=float(raw_wmu.get("confidence", 0.5)),
                     source=raw_wmu.get("source", "behavioral_inference"),
                 )
-            return CognitionResponse(
+            return SymbolicResponse(
                 symbolic_inference=data.get("symbolic_inference", ""),
                 world_model_update=wmu,
                 natural_language_response=data.get("natural_language_response", ""),
             )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("failed to parse llm json", error=str(e))
-            return CognitionResponse(
+            return SymbolicResponse(
                 symbolic_inference="parse error",
                 world_model_update=None,
                 natural_language_response=raw,

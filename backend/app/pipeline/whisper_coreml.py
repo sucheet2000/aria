@@ -242,7 +242,7 @@ class WhisperCoreML:
         mel = openai_whisper.log_mel_spectrogram(audio_padded)  # (80, 3000)
 
         mel_np = mel.numpy().astype(np.float32)[np.newaxis]  # (1, 80, 3000)
-        enc_out_np = self._coreml_encoder.predict({"mel": mel_np})["encoder_output"]
+        enc_out_np = self._coreml_encoder.predict({"mel": mel_np})["encoder_output"]  # type: ignore[attr-defined]
         encoder_output = torch.from_numpy(enc_out_np)
 
         # Match Transcriber decoding settings: beam_size=5, domain prompt.
