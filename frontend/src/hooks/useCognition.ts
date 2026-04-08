@@ -33,20 +33,6 @@ interface CognitionResponse {
   spatial_event: SpatialEvent | null;
 }
 
-function isWorldModelUpdate(obj: unknown): obj is WorldModelUpdate {
-  if (!obj || typeof obj !== "object") return false;
-  const o = obj as Record<string, unknown>;
-  const triple = o.triple as Record<string, unknown> | undefined;
-  return (
-    typeof triple === "object" &&
-    triple !== null &&
-    typeof triple.subject === "string" &&
-    typeof triple.predicate === "string" &&
-    typeof triple.object === "string" &&
-    typeof o.confidence === "number" &&
-    typeof o.source === "string"
-  );
-}
 
 function handleSpatialEvent(event: SpatialEvent | null | undefined): void {
   if (!event) return;
