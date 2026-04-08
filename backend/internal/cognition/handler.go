@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+
 // VisionStateInput holds perception data from the vision worker.
 type VisionStateInput struct {
 	Emotion       string  `json:"emotion"`
@@ -31,6 +32,10 @@ type CognitionRequest struct {
 	VisionState         VisionStateInput   `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
 	SessionID           string             `json:"session_id,omitempty"`
+	// Gesture fields forwarded verbatim to the Python spatial pipeline.
+	Gesture        string    `json:"gesture"`
+	TwoHandGesture string    `json:"two_hand_gesture"`
+	PointingVector []float64 `json:"pointing_vector"`
 }
 
 // WorldModelTriple is a subject/predicate/object fact triple.
@@ -55,6 +60,9 @@ type CognitionResponse struct {
 	AvatarEmotion           string            `json:"avatar_emotion"`
 	ProcessingMs            int64             `json:"processing_ms"`
 	EpisodicMemory          []string          `json:"episodic_memory,omitempty"`
+	// SpatialEvent is passed through from Python unchanged. json.RawMessage keeps
+	// Go schema-agnostic; the frontend's handleSpatialEvent() owns deserialization.
+	SpatialEvent json.RawMessage `json:"spatial_event,omitempty"`
 }
 
 type errorResponse struct {

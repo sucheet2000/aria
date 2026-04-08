@@ -6,6 +6,9 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { useWorldModel } from "./useWorldModel";
 import { AnchorMarker } from "./AnchorMarker";
 import { useSpatialSync, broadcastAnchorAdded } from "./useSpatialSync";
+import { useAnchorHydration } from "./useAnchorHydration";
+import { PointingCursor } from "./PointingCursor";
+import { useAriaStore } from "@/store/ariaStore";
 import type { SpatialAnchor } from "./useWorldModel";
 
 interface AnchorRegisteredPayload {
@@ -19,8 +22,10 @@ interface AnchorRegisteredPayload {
 export function SpatialCanvas() {
   const anchors = useWorldModel((s) => s.anchors);
   const addAnchor = useWorldModel((s) => s.addAnchor);
+  const visionState = useAriaStore((s) => s.visionState);
 
   useSpatialSync();
+  useAnchorHydration();
 
   useEffect(() => {
     function handleAnchorRegistered(e: Event) {
@@ -48,6 +53,13 @@ export function SpatialCanvas() {
     []
   );
 
+  const pointingVector =
+    visionState?.gesture_name === "point" &&
+    Array.isArray(visionState?.pointing_vector) &&
+    visionState.pointing_vector.length >= 3
+      ? (visionState.pointing_vector as [number, number, number])
+      : null;
+
   return (
     <Canvas camera={cameraConfig}>
       <ambientLight intensity={0.3} />
@@ -56,6 +68,7 @@ export function SpatialCanvas() {
       {Array.from(anchors.values()).map((anchor) => (
         <AnchorMarker key={anchor.id} anchor={anchor} />
       ))}
+      {pointingVector && <PointingCursor vector={pointingVector} />}
       <OrbitControls enablePan={false} enableZoom={false} />
     </Canvas>
   );
