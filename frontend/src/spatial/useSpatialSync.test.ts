@@ -42,7 +42,7 @@ describe("broadcastAnchorAdded", () => {
   });
 
   it("posts anchor_added message and closes channel", () => {
-    const anchor: SpatialAnchor = { id: "b1", label: "person", x: 1, y: 2, z: 3 };
+    const anchor: SpatialAnchor = { anchor_id: "b1", label: "person", x: 1, y: 2, z: 3 };
     broadcastAnchorAdded(anchor);
     expect(mockPostMessage).toHaveBeenCalledWith({ type: "anchor_added", anchor });
     expect(mockClose).toHaveBeenCalled();
@@ -64,7 +64,7 @@ describe("broadcastAnchorRemoved", () => {
   });
 
   it("channel is opened with correct name", () => {
-    broadcastAnchorAdded({ id: "x1", label: "test", x: 0, y: 0, z: 0 });
+    broadcastAnchorAdded({ anchor_id: "x1", label: "test", x: 0, y: 0, z: 0 });
     expect(MockBroadcastChannel.lastInstance?.name).toBe("aria-spatial-world");
   });
 });
@@ -81,7 +81,7 @@ describe("useSpatialSync incoming messages", () => {
     const { unmount } = renderHook(() => useSpatialSync());
     const instance = MockBroadcastChannel.lastInstance!;
 
-    const anchor: SpatialAnchor = { id: "c1", label: "place", x: 0, y: 1, z: 2 };
+    const anchor: SpatialAnchor = { anchor_id: "c1", label: "place", x: 0, y: 1, z: 2 };
     act(() => {
       instance.onmessage?.({ data: { type: "anchor_added", anchor } });
     });
@@ -91,7 +91,7 @@ describe("useSpatialSync incoming messages", () => {
   });
 
   it("anchor_removed message removes anchor from the store", () => {
-    useWorldModel.getState().addAnchor({ id: "c2", label: "object", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().addAnchor({ anchor_id: "c2", label: "object", x: 0, y: 0, z: 0 });
 
     const { unmount } = renderHook(() => useSpatialSync());
     const instance = MockBroadcastChannel.lastInstance!;

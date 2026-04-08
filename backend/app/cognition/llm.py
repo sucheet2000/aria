@@ -10,9 +10,9 @@ from anthropic import AsyncAnthropic
 
 from app.cognition.prompt import build_system_prompt
 from app.models.schemas import (
+    CognitionResponse,
     ConversationTurn,
-    SymbolicResponse,
-    VisionContext,
+    PerceptionFrame,
     WorldModelTriple,
     WorldModelUpdate,
 )
@@ -96,18 +96,18 @@ class LLMClient:
     async def complete(
         self,
         message: str,
-        vision: VisionContext,
+        vision: PerceptionFrame,
         conversation_history: list[ConversationTurn],
         working_memory: list[str],
         episodic_memory: list[str],
-    ) -> SymbolicResponse:
+    ) -> CognitionResponse:
         tier: Tier = classify_tier(message)
         logger.debug("llm tier routing", tier=tier, message=message[:80])
 
         # ── Tier 0: local handler, no API call ─────────────────────────────
         if tier == 0:
             local_reply = _handle_local(message, self._last_response)
-            return SymbolicResponse(
+            return CognitionResponse(
                 symbolic_inference="local_handler",
                 world_model_update=None,
                 natural_language_response=local_reply,
@@ -151,11 +151,11 @@ class LLMClient:
         self._last_response = result.natural_language_response
         return result
 
-    def _parse_response(self, raw: str) -> SymbolicResponse:
+    def _parse_response(self, raw: str) -> CognitionResponse:
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
             logger.warning("llm response not JSON, falling back", raw=raw[:100])
-            return SymbolicResponse(
+            return CognitionResponse(
                 symbolic_inference="state unclear",
                 world_model_update=None,
                 natural_language_response=raw,
@@ -176,14 +176,14 @@ class LLMClient:
                     confidence=float(raw_wmu.get("confidence", 0.5)),
                     source=raw_wmu.get("source", "behavioral_inference"),
                 )
-            return SymbolicResponse(
+            return CognitionResponse(
                 symbolic_inference=data.get("symbolic_inference", ""),
                 world_model_update=wmu,
                 natural_language_response=data.get("natural_language_response", ""),
             )
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("failed to parse llm json", error=str(e))
-            return SymbolicResponse(
+            return CognitionResponse(
                 symbolic_inference="parse error",
                 world_model_update=None,
                 natural_language_response=raw,

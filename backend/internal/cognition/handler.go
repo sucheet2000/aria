@@ -8,8 +8,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// VisionStateInput holds perception data from the vision worker.
-type VisionStateInput struct {
+// PerceptionFrame holds per-frame perception data from the vision worker.
+// Aligns with the Python PerceptionFrame Pydantic model and the proto PerceptionFrame
+// message. Used both as the JSON-binding type in CognitionRequest and as the
+// argument to BuildSystemPrompt.
+type PerceptionFrame struct {
 	Emotion       string  `json:"emotion"`
 	Confidence    float64 `json:"confidence"`
 	Pitch         float64 `json:"pitch"`
@@ -27,8 +30,8 @@ type ConversationTurn struct {
 
 // CognitionRequest is the body the browser (or Go→Python proxy) sends.
 type CognitionRequest struct {
-	Message             string             `json:"message"`
-	VisionState         VisionStateInput   `json:"vision_state"`
+	Message             string           `json:"message"`
+	VisionState         PerceptionFrame  `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
 	SessionID           string             `json:"session_id,omitempty"`
 }

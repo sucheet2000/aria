@@ -130,6 +130,128 @@ func (GestureType) EnumDescriptor() ([]byte, []int) {
 	return file_perception_proto_rawDescGZIP(), []int{1}
 }
 
+// HandGestureType classifies the physical hand pose detected by the gesture
+// classifier. Distinct from GestureType, which encodes semantic intent.
+// This enum is the canonical type for physical single-hand poses.
+type HandGestureType int32
+
+const (
+	HandGestureType_HAND_GESTURE_TYPE_UNSPECIFIED HandGestureType = 0
+	HandGestureType_HAND_GESTURE_TYPE_NONE        HandGestureType = 1
+	HandGestureType_HAND_GESTURE_TYPE_THUMB_UP    HandGestureType = 2
+	HandGestureType_HAND_GESTURE_TYPE_OPEN_PALM   HandGestureType = 3
+	HandGestureType_HAND_GESTURE_TYPE_PINCH       HandGestureType = 4
+	HandGestureType_HAND_GESTURE_TYPE_POINT       HandGestureType = 5
+)
+
+// Enum value maps for HandGestureType.
+var (
+	HandGestureType_name = map[int32]string{
+		0: "HAND_GESTURE_TYPE_UNSPECIFIED",
+		1: "HAND_GESTURE_TYPE_NONE",
+		2: "HAND_GESTURE_TYPE_THUMB_UP",
+		3: "HAND_GESTURE_TYPE_OPEN_PALM",
+		4: "HAND_GESTURE_TYPE_PINCH",
+		5: "HAND_GESTURE_TYPE_POINT",
+	}
+	HandGestureType_value = map[string]int32{
+		"HAND_GESTURE_TYPE_UNSPECIFIED": 0,
+		"HAND_GESTURE_TYPE_NONE":        1,
+		"HAND_GESTURE_TYPE_THUMB_UP":    2,
+		"HAND_GESTURE_TYPE_OPEN_PALM":   3,
+		"HAND_GESTURE_TYPE_PINCH":       4,
+		"HAND_GESTURE_TYPE_POINT":       5,
+	}
+)
+
+func (x HandGestureType) Enum() *HandGestureType {
+	p := new(HandGestureType)
+	*p = x
+	return p
+}
+
+func (x HandGestureType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (HandGestureType) Descriptor() protoreflect.EnumDescriptor {
+	return file_perception_proto_enumTypes[2].Descriptor()
+}
+
+func (HandGestureType) Type() protoreflect.EnumType {
+	return &file_perception_proto_enumTypes[2]
+}
+
+func (x HandGestureType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use HandGestureType.Descriptor instead.
+func (HandGestureType) EnumDescriptor() ([]byte, []int) {
+	return file_perception_proto_rawDescGZIP(), []int{2}
+}
+
+// TwoHandGestureType classifies gestures that require both hands simultaneously.
+// Absent from GestureType/HandGestureType intentionally — two-hand gestures are
+// a distinct semantic layer with their own spatial semantics (bond, throw, expand).
+type TwoHandGestureType int32
+
+const (
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_UNSPECIFIED TwoHandGestureType = 0
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_NONE        TwoHandGestureType = 1
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_HOLD        TwoHandGestureType = 2
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_EXPAND      TwoHandGestureType = 3
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_THROW       TwoHandGestureType = 4
+	TwoHandGestureType_TWO_HAND_GESTURE_TYPE_BOND        TwoHandGestureType = 5
+)
+
+// Enum value maps for TwoHandGestureType.
+var (
+	TwoHandGestureType_name = map[int32]string{
+		0: "TWO_HAND_GESTURE_TYPE_UNSPECIFIED",
+		1: "TWO_HAND_GESTURE_TYPE_NONE",
+		2: "TWO_HAND_GESTURE_TYPE_HOLD",
+		3: "TWO_HAND_GESTURE_TYPE_EXPAND",
+		4: "TWO_HAND_GESTURE_TYPE_THROW",
+		5: "TWO_HAND_GESTURE_TYPE_BOND",
+	}
+	TwoHandGestureType_value = map[string]int32{
+		"TWO_HAND_GESTURE_TYPE_UNSPECIFIED": 0,
+		"TWO_HAND_GESTURE_TYPE_NONE":        1,
+		"TWO_HAND_GESTURE_TYPE_HOLD":        2,
+		"TWO_HAND_GESTURE_TYPE_EXPAND":      3,
+		"TWO_HAND_GESTURE_TYPE_THROW":       4,
+		"TWO_HAND_GESTURE_TYPE_BOND":        5,
+	}
+)
+
+func (x TwoHandGestureType) Enum() *TwoHandGestureType {
+	p := new(TwoHandGestureType)
+	*p = x
+	return p
+}
+
+func (x TwoHandGestureType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TwoHandGestureType) Descriptor() protoreflect.EnumDescriptor {
+	return file_perception_proto_enumTypes[3].Descriptor()
+}
+
+func (TwoHandGestureType) Type() protoreflect.EnumType {
+	return &file_perception_proto_enumTypes[3]
+}
+
+func (x TwoHandGestureType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TwoHandGestureType.Descriptor instead.
+func (TwoHandGestureType) EnumDescriptor() ([]byte, []int) {
+	return file_perception_proto_rawDescGZIP(), []int{3}
+}
+
 // Point3D represents a single normalized landmark coordinate in 3D space.
 //
 // Tag budget:
@@ -510,6 +632,92 @@ func (x *SpatialAnchor) GetCreatedAtUs() int64 {
 	return 0
 }
 
+// SpatialEvent describes a discrete spatial action produced by the gesture-anchor
+// bridge in response to a single- or two-hand gesture. Returned in the HTTP
+// cognition API response under the "spatial_event" key.
+//
+// event_type values (canonical):
+//
+//	"anchor_registered" — anchor_id populated; a new anchor was registered
+//	"anchors_bonded"    — anchor_ids populated; two nearest anchors were bonded
+//	"anchor_thrown"     — anchor_id + velocity populated; anchor given momentum
+//	"world_expand"      — factor populated; scale the world model
+type SpatialEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventType     string                 `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"` // canonical event type string (see above)
+	AnchorId      string                 `protobuf:"bytes,2,opt,name=anchor_id,json=anchorId,proto3" json:"anchor_id,omitempty"`    // primary anchor (anchor_registered, anchor_thrown)
+	AnchorIds     []string               `protobuf:"bytes,3,rep,name=anchor_ids,json=anchorIds,proto3" json:"anchor_ids,omitempty"` // anchors involved in bond events
+	Velocity      []float32              `protobuf:"fixed32,4,rep,packed,name=velocity,proto3" json:"velocity,omitempty"`           // throw direction vector [x, y, z]
+	Factor        float32                `protobuf:"fixed32,5,opt,name=factor,proto3" json:"factor,omitempty"`                      // scale factor for world_expand events
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpatialEvent) Reset() {
+	*x = SpatialEvent{}
+	mi := &file_perception_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpatialEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpatialEvent) ProtoMessage() {}
+
+func (x *SpatialEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_perception_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpatialEvent.ProtoReflect.Descriptor instead.
+func (*SpatialEvent) Descriptor() ([]byte, []int) {
+	return file_perception_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SpatialEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *SpatialEvent) GetAnchorId() string {
+	if x != nil {
+		return x.AnchorId
+	}
+	return ""
+}
+
+func (x *SpatialEvent) GetAnchorIds() []string {
+	if x != nil {
+		return x.AnchorIds
+	}
+	return nil
+}
+
+func (x *SpatialEvent) GetVelocity() []float32 {
+	if x != nil {
+		return x.Velocity
+	}
+	return nil
+}
+
+func (x *SpatialEvent) GetFactor() float32 {
+	if x != nil {
+		return x.Factor
+	}
+	return 0
+}
+
 // CognitionRequest is the client→server message in the StreamCognition RPC.
 // The oneof payload ensures exactly one event type is encoded per message,
 // keeping the interrupt signal wire-size to a single varint field.
@@ -528,7 +736,7 @@ type CognitionRequest struct {
 
 func (x *CognitionRequest) Reset() {
 	*x = CognitionRequest{}
-	mi := &file_perception_proto_msgTypes[3]
+	mi := &file_perception_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -540,7 +748,7 @@ func (x *CognitionRequest) String() string {
 func (*CognitionRequest) ProtoMessage() {}
 
 func (x *CognitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[3]
+	mi := &file_perception_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -553,7 +761,7 @@ func (x *CognitionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CognitionRequest.ProtoReflect.Descriptor instead.
 func (*CognitionRequest) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{3}
+	return file_perception_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CognitionRequest) GetSessionId() string {
@@ -632,7 +840,7 @@ type CognitionResponse struct {
 
 func (x *CognitionResponse) Reset() {
 	*x = CognitionResponse{}
-	mi := &file_perception_proto_msgTypes[4]
+	mi := &file_perception_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -644,7 +852,7 @@ func (x *CognitionResponse) String() string {
 func (*CognitionResponse) ProtoMessage() {}
 
 func (x *CognitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[4]
+	mi := &file_perception_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -657,7 +865,7 @@ func (x *CognitionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CognitionResponse.ProtoReflect.Descriptor instead.
 func (*CognitionResponse) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{4}
+	return file_perception_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CognitionResponse) GetSessionId() string {
@@ -701,7 +909,7 @@ type HandData struct {
 
 func (x *HandData) Reset() {
 	*x = HandData{}
-	mi := &file_perception_proto_msgTypes[5]
+	mi := &file_perception_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -713,7 +921,7 @@ func (x *HandData) String() string {
 func (*HandData) ProtoMessage() {}
 
 func (x *HandData) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[5]
+	mi := &file_perception_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -726,7 +934,7 @@ func (x *HandData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandData.ProtoReflect.Descriptor instead.
 func (*HandData) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{5}
+	return file_perception_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HandData) GetHand() Handedness {
@@ -763,7 +971,7 @@ type PerceptionFrame struct {
 
 func (x *PerceptionFrame) Reset() {
 	*x = PerceptionFrame{}
-	mi := &file_perception_proto_msgTypes[6]
+	mi := &file_perception_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -775,7 +983,7 @@ func (x *PerceptionFrame) String() string {
 func (*PerceptionFrame) ProtoMessage() {}
 
 func (x *PerceptionFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[6]
+	mi := &file_perception_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -788,7 +996,7 @@ func (x *PerceptionFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PerceptionFrame.ProtoReflect.Descriptor instead.
 func (*PerceptionFrame) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{6}
+	return file_perception_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PerceptionFrame) GetHands() []*HandData {
@@ -822,7 +1030,7 @@ type StreamRequest struct {
 
 func (x *StreamRequest) Reset() {
 	*x = StreamRequest{}
-	mi := &file_perception_proto_msgTypes[7]
+	mi := &file_perception_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -834,7 +1042,7 @@ func (x *StreamRequest) String() string {
 func (*StreamRequest) ProtoMessage() {}
 
 func (x *StreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[7]
+	mi := &file_perception_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -847,7 +1055,7 @@ func (x *StreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
 func (*StreamRequest) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{7}
+	return file_perception_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *StreamRequest) GetSessionId() string {
@@ -896,7 +1104,15 @@ const file_perception_proto_rawDesc = "" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x127\n" +
 	"\bposition\x18\x03 \x01(\v2\x1b.aria.perception.v1.Point3DR\bposition\x12\x16\n" +
 	"\x06radius\x18\x04 \x01(\x02R\x06radius\x12\"\n" +
-	"\rcreated_at_us\x18\x05 \x01(\x03R\vcreatedAtUs\"\xd7\x01\n" +
+	"\rcreated_at_us\x18\x05 \x01(\x03R\vcreatedAtUs\"\x9d\x01\n" +
+	"\fSpatialEvent\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x01 \x01(\tR\teventType\x12\x1b\n" +
+	"\tanchor_id\x18\x02 \x01(\tR\banchorId\x12\x1d\n" +
+	"\n" +
+	"anchor_ids\x18\x03 \x03(\tR\tanchorIds\x12\x1a\n" +
+	"\bvelocity\x18\x04 \x03(\x02R\bvelocity\x12\x16\n" +
+	"\x06factor\x18\x05 \x01(\x02R\x06factor\"\xd7\x01\n" +
 	"\x10CognitionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12K\n" +
@@ -932,7 +1148,21 @@ const file_perception_proto_rawDesc = "" +
 	"\x11GESTURE_TYPE_STOP\x10\x01\x12\x16\n" +
 	"\x12GESTURE_TYPE_POINT\x10\x02\x12\x18\n" +
 	"\x14GESTURE_TYPE_CONFIRM\x10\x03\x12\x17\n" +
-	"\x13GESTURE_TYPE_CANCEL\x10\x042\xce\x01\n" +
+	"\x13GESTURE_TYPE_CANCEL\x10\x04*\xcb\x01\n" +
+	"\x0fHandGestureType\x12!\n" +
+	"\x1dHAND_GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16HAND_GESTURE_TYPE_NONE\x10\x01\x12\x1e\n" +
+	"\x1aHAND_GESTURE_TYPE_THUMB_UP\x10\x02\x12\x1f\n" +
+	"\x1bHAND_GESTURE_TYPE_OPEN_PALM\x10\x03\x12\x1b\n" +
+	"\x17HAND_GESTURE_TYPE_PINCH\x10\x04\x12\x1b\n" +
+	"\x17HAND_GESTURE_TYPE_POINT\x10\x05*\xde\x01\n" +
+	"\x12TwoHandGestureType\x12%\n" +
+	"!TWO_HAND_GESTURE_TYPE_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_NONE\x10\x01\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_HOLD\x10\x02\x12 \n" +
+	"\x1cTWO_HAND_GESTURE_TYPE_EXPAND\x10\x03\x12\x1f\n" +
+	"\x1bTWO_HAND_GESTURE_TYPE_THROW\x10\x04\x12\x1e\n" +
+	"\x1aTWO_HAND_GESTURE_TYPE_BOND\x10\x052\xce\x01\n" +
 	"\x10CognitionService\x12b\n" +
 	"\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x010\x01\x12V\n" +
 	"\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchor2m\n" +
@@ -951,36 +1181,39 @@ func file_perception_proto_rawDescGZIP() []byte {
 	return file_perception_proto_rawDescData
 }
 
-var file_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_perception_proto_goTypes = []any{
 	(Handedness)(0),           // 0: aria.perception.v1.Handedness
 	(GestureType)(0),          // 1: aria.perception.v1.GestureType
-	(*Point3D)(nil),           // 2: aria.perception.v1.Point3D
-	(*HandGestureEvent)(nil),  // 3: aria.perception.v1.HandGestureEvent
-	(*SpatialAnchor)(nil),     // 4: aria.perception.v1.SpatialAnchor
-	(*CognitionRequest)(nil),  // 5: aria.perception.v1.CognitionRequest
-	(*CognitionResponse)(nil), // 6: aria.perception.v1.CognitionResponse
-	(*HandData)(nil),          // 7: aria.perception.v1.HandData
-	(*PerceptionFrame)(nil),   // 8: aria.perception.v1.PerceptionFrame
-	(*StreamRequest)(nil),     // 9: aria.perception.v1.StreamRequest
+	(HandGestureType)(0),      // 2: aria.perception.v1.HandGestureType
+	(TwoHandGestureType)(0),   // 3: aria.perception.v1.TwoHandGestureType
+	(*Point3D)(nil),           // 4: aria.perception.v1.Point3D
+	(*HandGestureEvent)(nil),  // 5: aria.perception.v1.HandGestureEvent
+	(*SpatialAnchor)(nil),     // 6: aria.perception.v1.SpatialAnchor
+	(*SpatialEvent)(nil),      // 7: aria.perception.v1.SpatialEvent
+	(*CognitionRequest)(nil),  // 8: aria.perception.v1.CognitionRequest
+	(*CognitionResponse)(nil), // 9: aria.perception.v1.CognitionResponse
+	(*HandData)(nil),          // 10: aria.perception.v1.HandData
+	(*PerceptionFrame)(nil),   // 11: aria.perception.v1.PerceptionFrame
+	(*StreamRequest)(nil),     // 12: aria.perception.v1.StreamRequest
 }
 var file_perception_proto_depIdxs = []int32{
 	0,  // 0: aria.perception.v1.HandGestureEvent.hand:type_name -> aria.perception.v1.Handedness
-	2,  // 1: aria.perception.v1.HandGestureEvent.landmarks:type_name -> aria.perception.v1.Point3D
+	4,  // 1: aria.perception.v1.HandGestureEvent.landmarks:type_name -> aria.perception.v1.Point3D
 	1,  // 2: aria.perception.v1.HandGestureEvent.gesture:type_name -> aria.perception.v1.GestureType
-	2,  // 3: aria.perception.v1.HandGestureEvent.pointing_vector:type_name -> aria.perception.v1.Point3D
-	2,  // 4: aria.perception.v1.SpatialAnchor.position:type_name -> aria.perception.v1.Point3D
-	3,  // 5: aria.perception.v1.CognitionRequest.gesture_event:type_name -> aria.perception.v1.HandGestureEvent
+	4,  // 3: aria.perception.v1.HandGestureEvent.pointing_vector:type_name -> aria.perception.v1.Point3D
+	4,  // 4: aria.perception.v1.SpatialAnchor.position:type_name -> aria.perception.v1.Point3D
+	5,  // 5: aria.perception.v1.CognitionRequest.gesture_event:type_name -> aria.perception.v1.HandGestureEvent
 	0,  // 6: aria.perception.v1.HandData.hand:type_name -> aria.perception.v1.Handedness
-	2,  // 7: aria.perception.v1.HandData.landmarks:type_name -> aria.perception.v1.Point3D
-	7,  // 8: aria.perception.v1.PerceptionFrame.hands:type_name -> aria.perception.v1.HandData
-	5,  // 9: aria.perception.v1.CognitionService.StreamCognition:input_type -> aria.perception.v1.CognitionRequest
-	4,  // 10: aria.perception.v1.CognitionService.RegisterAnchor:input_type -> aria.perception.v1.SpatialAnchor
-	9,  // 11: aria.perception.v1.PerceptionService.StreamFrames:input_type -> aria.perception.v1.StreamRequest
-	6,  // 12: aria.perception.v1.CognitionService.StreamCognition:output_type -> aria.perception.v1.CognitionResponse
-	4,  // 13: aria.perception.v1.CognitionService.RegisterAnchor:output_type -> aria.perception.v1.SpatialAnchor
-	8,  // 14: aria.perception.v1.PerceptionService.StreamFrames:output_type -> aria.perception.v1.PerceptionFrame
+	4,  // 7: aria.perception.v1.HandData.landmarks:type_name -> aria.perception.v1.Point3D
+	10, // 8: aria.perception.v1.PerceptionFrame.hands:type_name -> aria.perception.v1.HandData
+	8,  // 9: aria.perception.v1.CognitionService.StreamCognition:input_type -> aria.perception.v1.CognitionRequest
+	6,  // 10: aria.perception.v1.CognitionService.RegisterAnchor:input_type -> aria.perception.v1.SpatialAnchor
+	12, // 11: aria.perception.v1.PerceptionService.StreamFrames:input_type -> aria.perception.v1.StreamRequest
+	9,  // 12: aria.perception.v1.CognitionService.StreamCognition:output_type -> aria.perception.v1.CognitionResponse
+	6,  // 13: aria.perception.v1.CognitionService.RegisterAnchor:output_type -> aria.perception.v1.SpatialAnchor
+	11, // 14: aria.perception.v1.PerceptionService.StreamFrames:output_type -> aria.perception.v1.PerceptionFrame
 	12, // [12:15] is the sub-list for method output_type
 	9,  // [9:12] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
@@ -993,7 +1226,7 @@ func file_perception_proto_init() {
 	if File_perception_proto != nil {
 		return
 	}
-	file_perception_proto_msgTypes[3].OneofWrappers = []any{
+	file_perception_proto_msgTypes[4].OneofWrappers = []any{
 		(*CognitionRequest_GestureEvent)(nil),
 		(*CognitionRequest_TextInput)(nil),
 		(*CognitionRequest_InterruptSignal)(nil),
@@ -1003,8 +1236,8 @@ func file_perception_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_perception_proto_rawDesc), len(file_perception_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   8,
+			NumEnums:      4,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

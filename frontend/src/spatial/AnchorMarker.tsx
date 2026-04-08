@@ -53,7 +53,7 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
     const mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
     if (mag < 0.001) {
       velocityRef.current = null;
-      setAnchorVelocity(anchor.id, [0, 0, 0]); // store write: once to clear
+      setAnchorVelocity(anchor.anchor_id, [0, 0, 0]); // store write: once to clear
       return;
     }
 

@@ -110,7 +110,7 @@ export function useWebSocket() {
             return;
           }
 
-          if (msg.type === "aria_anchor_registered") {
+          if (msg.type === "anchor_registered") {
             window.dispatchEvent(
               new CustomEvent("aria:anchor_registered", { detail: msg.payload ?? msg })
             );

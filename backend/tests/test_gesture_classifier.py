@@ -1,10 +1,10 @@
 """
 Week 8: Gesture classifier tests.
 
-- test_stop_gesture: open palm landmarks → GESTURE_TYPE_STOP
-- test_point_gesture: pointing landmarks → GESTURE_TYPE_POINT + vector computed
-- test_fist_gesture: fist landmarks → GESTURE_TYPE_CANCEL
-- test_confirm_gesture: thumbs-up landmarks → GESTURE_TYPE_CONFIRM
+- test_stop_gesture: open palm landmarks → HAND_GESTURE_OPEN_PALM
+- test_point_gesture: pointing landmarks → POINT + vector computed
+- test_fist_gesture: fist landmarks → HAND_GESTURE_PINCH
+- test_thumb_up_gesture: thumbs-up landmarks → HAND_GESTURE_THUMB_UP
 - test_classifier_confidence: each gesture returns 0.0–1.0 confidence
 """
 from __future__ import annotations
@@ -12,11 +12,11 @@ from __future__ import annotations
 import pytest
 
 from app.pipeline.gesture_classifier import (
-    GESTURE_TYPE_CANCEL,
-    GESTURE_TYPE_CONFIRM,
-    GESTURE_TYPE_POINT,
-    GESTURE_TYPE_STOP,
-    GESTURE_TYPE_UNSPECIFIED,
+    HAND_GESTURE_OPEN_PALM,
+    HAND_GESTURE_PINCH,
+    HAND_GESTURE_POINT,
+    HAND_GESTURE_THUMB_UP,
+    HAND_GESTURE_UNSPECIFIED,
     GestureClassifier,
 )
 
@@ -132,7 +132,7 @@ def classifier() -> GestureClassifier:
 class TestStopGesture:
     def test_open_palm_returns_stop(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_open_palm_landmarks())
-        assert result.gesture_type == GESTURE_TYPE_STOP
+        assert result.gesture_type == HAND_GESTURE_OPEN_PALM
 
     def test_confidence_in_range(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_open_palm_landmarks())
@@ -142,7 +142,7 @@ class TestStopGesture:
 class TestPointGesture:
     def test_point_returns_point(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_point_landmarks())
-        assert result.gesture_type == GESTURE_TYPE_POINT
+        assert result.gesture_type == HAND_GESTURE_POINT
 
     def test_point_has_pointing_vector(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_point_landmarks())
@@ -159,10 +159,10 @@ class TestPointGesture:
         assert 0.0 <= result.confidence <= 1.0
 
 
-class TestConfirmGesture:
-    def test_thumbs_up_returns_confirm(self, classifier: GestureClassifier) -> None:
+class TestThumbUpGesture:
+    def test_thumb_up_gesture(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_thumbs_up_landmarks())
-        assert result.gesture_type == GESTURE_TYPE_CONFIRM
+        assert result.gesture_type == HAND_GESTURE_THUMB_UP
 
     def test_confidence_in_range(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_thumbs_up_landmarks())
@@ -172,7 +172,7 @@ class TestConfirmGesture:
 class TestFistGesture:
     def test_fist_returns_cancel(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_fist_landmarks())
-        assert result.gesture_type == GESTURE_TYPE_CANCEL
+        assert result.gesture_type == HAND_GESTURE_PINCH
 
     def test_no_pointing_vector_for_fist(self, classifier: GestureClassifier) -> None:
         result = classifier.classify(_fist_landmarks())
@@ -204,11 +204,11 @@ class TestClassifierConfidence:
         self, classifier: GestureClassifier
     ) -> None:
         result = classifier.classify([[0.5, 0.5, 0.0]] * 10)  # wrong count
-        assert result.gesture_type == GESTURE_TYPE_UNSPECIFIED
+        assert result.gesture_type == HAND_GESTURE_UNSPECIFIED
         assert result.confidence == 0.0
 
     def test_empty_landmarks_returns_unspecified(
         self, classifier: GestureClassifier
     ) -> None:
         result = classifier.classify([])
-        assert result.gesture_type == GESTURE_TYPE_UNSPECIFIED
+        assert result.gesture_type == HAND_GESTURE_UNSPECIFIED

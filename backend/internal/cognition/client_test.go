@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildSystemPrompt_FaceDetected_HappyEmotion(t *testing.T) {
-	vs := VisionStateContext{
+	vs := PerceptionFrame{
 		Emotion:      "happy",
 		FaceDetected: true,
 	}
@@ -33,7 +33,7 @@ func TestBuildSystemPrompt_FaceDetected_HappyEmotion(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_NoFaceDetected(t *testing.T) {
-	vs := VisionStateContext{
+	vs := PerceptionFrame{
 		FaceDetected: false,
 	}
 	prompt := BuildSystemPrompt(vs)
