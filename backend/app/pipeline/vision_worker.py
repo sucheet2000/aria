@@ -21,13 +21,15 @@ from mediapipe.tasks.python import vision as mp_vision
 
 from app.pipeline.emotion import EmotionClassifier
 from app.pipeline.gesture_classifier import (
-    GestureClassifier as RuleGestureClassifier,
     HAND_GESTURE_NONE,
-    HAND_GESTURE_THUMB_UP,
     HAND_GESTURE_OPEN_PALM,
     HAND_GESTURE_PINCH,
     HAND_GESTURE_POINT,
+    HAND_GESTURE_THUMB_UP,
     HAND_GESTURE_UNSPECIFIED,
+)
+from app.pipeline.gesture_classifier import (
+    GestureClassifier as RuleGestureClassifier,
 )
 
 # 6-point 3D face model in mm (nose tip, chin, eye corners, mouth corners)

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pathlib
 
-from app.models.schemas import PerceptionFrame
 from app.cognition.conflict import detect_conflict
-from app.models.schemas import VisionContext
+from app.models.schemas import PerceptionFrame
 
 _OBSERVATION_TEMPLATE = """\
 Current observation:

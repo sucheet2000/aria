@@ -12,10 +12,10 @@ from __future__ import annotations
 import pytest
 
 from app.pipeline.gesture_classifier import (
-    HAND_GESTURE_PINCH,
-    HAND_GESTURE_THUMB_UP,
-    HAND_GESTURE_POINT,
     HAND_GESTURE_OPEN_PALM,
+    HAND_GESTURE_PINCH,
+    HAND_GESTURE_POINT,
+    HAND_GESTURE_THUMB_UP,
     HAND_GESTURE_UNSPECIFIED,
     GestureClassifier,
 )
