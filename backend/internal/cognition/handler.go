@@ -9,8 +9,8 @@ import (
 )
 
 
-// VisionStateInput holds perception data from the vision worker.
-type VisionStateInput struct {
+// PerceptionFrame holds perception data from the vision worker.
+type PerceptionFrame struct {
 	Emotion       string  `json:"emotion"`
 	Confidence    float64 `json:"confidence"`
 	Pitch         float64 `json:"pitch"`
