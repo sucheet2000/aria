@@ -8,10 +8,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// PerceptionFrame holds per-frame perception data from the vision worker.
-// Aligns with the Python PerceptionFrame Pydantic model and the proto PerceptionFrame
-// message. Used both as the JSON-binding type in CognitionRequest and as the
-// argument to BuildSystemPrompt.
+
+// PerceptionFrame holds perception data from the vision worker.
 type PerceptionFrame struct {
 	Emotion       string  `json:"emotion"`
 	Confidence    float64 `json:"confidence"`
@@ -34,6 +32,10 @@ type CognitionRequest struct {
 	VisionState         PerceptionFrame  `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
 	SessionID           string             `json:"session_id,omitempty"`
+	// Gesture fields forwarded verbatim to the Python spatial pipeline.
+	Gesture        string    `json:"gesture"`
+	TwoHandGesture string    `json:"two_hand_gesture"`
+	PointingVector []float64 `json:"pointing_vector"`
 }
 
 // WorldModelTriple is a subject/predicate/object fact triple.
@@ -58,6 +60,9 @@ type CognitionResponse struct {
 	AvatarEmotion           string            `json:"avatar_emotion"`
 	ProcessingMs            int64             `json:"processing_ms"`
 	EpisodicMemory          []string          `json:"episodic_memory,omitempty"`
+	// SpatialEvent is passed through from Python unchanged. json.RawMessage keeps
+	// Go schema-agnostic; the frontend's handleSpatialEvent() owns deserialization.
+	SpatialEvent json.RawMessage `json:"spatial_event,omitempty"`
 }
 
 type errorResponse struct {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
@@ -23,6 +24,8 @@ type Server struct {
 	workingMemory *memory.WorkingMemory
 	registry      *cognition.StreamRegistry
 	httpServer    *http.Server
+	httpClient    *http.Client
+	pythonURL     string
 }
 
 // New creates a new Server with the given configuration, hub, working memory, and stream registry.
@@ -33,6 +36,8 @@ func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cogni
 		cfg:           cfg,
 		workingMemory: wm,
 		registry:      registry,
+		httpClient:    &http.Client{Timeout: 10 * time.Second},
+		pythonURL:     "http://localhost:8000",
 	}
 	return s
 }
@@ -59,6 +64,8 @@ func (s *Server) Start(ctx context.Context) error {
 		r.Post("/tts", ttsHandler.ServeHTTP)
 		r.Get("/memory/working", s.handleWorkingMemory)
 		r.Get("/memory/profile", s.handleMemoryProfileProxy)
+		r.Get("/anchors", s.handleAnchorsProxy)
+		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
 	})
 
 	s.httpServer = &http.Server{
@@ -105,7 +112,7 @@ func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get("http://localhost:8000/api/memory/profile")
+	resp, err := s.httpClient.Get(s.pythonURL + "/api/memory/profile")
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
 		return
@@ -113,16 +120,38 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 	defer resp.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	var buf [4096]byte
-	for {
-		n, readErr := resp.Body.Read(buf[:])
-		if n > 0 {
-			w.Write(buf[:n])
-		}
-		if readErr != nil {
-			break
-		}
+	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.httpClient.Get(s.pythonURL + "/api/anchors")
+	if err != nil {
+		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
+		return
 	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request) {
+	anchorID := chi.URLParam(r, "anchor_id")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodDelete,
+		s.pythonURL+"/api/anchors/"+anchorID, nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
 // corsMiddleware adds permissive CORS headers for all /api/* routes so the
@@ -130,7 +159,7 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == http.MethodOptions {

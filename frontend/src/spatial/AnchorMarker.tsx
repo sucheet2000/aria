@@ -6,6 +6,7 @@ import { Text } from "@react-three/drei";
 import * as THREE from "three";
 import type { SpatialAnchor } from "./useWorldModel";
 import { useWorldModel } from "./useWorldModel";
+import { deleteAnchor } from "./deleteAnchorFn";
 
 const LABEL_COLOR_MAP: Array<[string, string]> = [
   ["person", "#00d4ff"],
@@ -33,6 +34,7 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
   const [hovered, setHovered] = useState(false);
   const color = getLabelColor(anchor.label);
   const setAnchorVelocity = useWorldModel((s) => s.setAnchorVelocity);
+  const activeGesture = useWorldModel((s) => s.activeGesture);
 
   // Local refs track animated position and velocity — no Zustand writes in the
   // render loop. Store is only written once when velocity decays to zero.
@@ -47,32 +49,43 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
     }
   }, [anchor.velocity, anchor.x, anchor.y, anchor.z]);
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const v = velocityRef.current;
-    if (!v) return;
-    const mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-    if (mag < 0.001) {
-      velocityRef.current = null;
-      setAnchorVelocity(anchor.anchor_id, [0, 0, 0]); // store write: once to clear
-      return;
+    if (v) {
+      const mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+      if (mag < 0.001) {
+        velocityRef.current = null;
+        setAnchorVelocity(anchor.id, [0, 0, 0]); // store write: once to clear
+      } else {
+        const next: [number, number, number] = [v[0] * 0.95, v[1] * 0.95, v[2] * 0.95];
+        positionRef.current = [
+          positionRef.current[0] + v[0],
+          positionRef.current[1] + v[1],
+          positionRef.current[2] + v[2],
+        ];
+        velocityRef.current = next;
+        if (groupRef.current) {
+          groupRef.current.position.set(
+            positionRef.current[0],
+            positionRef.current[1],
+            positionRef.current[2],
+          );
+        }
+      }
     }
 
-    const next: [number, number, number] = [v[0] * 0.95, v[1] * 0.95, v[2] * 0.95];
-    positionRef.current = [
-      positionRef.current[0] + v[0],
-      positionRef.current[1] + v[1],
-      positionRef.current[2] + v[2],
-    ];
-    velocityRef.current = next;
-
-    if (groupRef.current) {
-      groupRef.current.position.set(
-        positionRef.current[0],
-        positionRef.current[1],
-        positionRef.current[2],
-      );
+    // BOND/EXPAND pulse: animate scale on the mesh
+    if (meshRef.current && (activeGesture === "BOND" || activeGesture === "EXPAND")) {
+      const pulse = 1 + 0.25 * Math.abs(Math.sin(clock.elapsedTime * 12));
+      meshRef.current.scale.setScalar(pulse);
     }
   });
+
+  const emissiveIntensity = (() => {
+    if (activeGesture === "BOND" || activeGesture === "EXPAND") return 3.0;
+    if (hovered) return 1.5;
+    return 0.8;
+  })();
 
   return (
     <group ref={groupRef} position={[anchor.x, anchor.y, anchor.z]}>
@@ -89,23 +102,36 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={hovered ? 1.5 : 0.8}
+          emissiveIntensity={emissiveIntensity}
           transparent
           opacity={0.9}
         />
       </mesh>
       {hovered && (
-        <Text
-          position={[0, 0.22, 0]}
-          fontSize={0.08}
-          color={color}
-          anchorX="center"
-          anchorY="bottom"
-          outlineWidth={0.004}
-          outlineColor="#000000"
-        >
-          {anchor.label}
-        </Text>
+        <>
+          <Text
+            position={[0, 0.22, 0]}
+            fontSize={0.08}
+            color={color}
+            anchorX="center"
+            anchorY="bottom"
+            outlineWidth={0.004}
+            outlineColor="#000000"
+          >
+            {anchor.label}
+          </Text>
+          {/* Delete button: small red sphere above the label */}
+          <mesh
+            position={[0, 0.38, 0]}
+            onClick={(e: ThreeEvent<MouseEvent>) => {
+              e.stopPropagation();
+              deleteAnchor(anchor.id);
+            }}
+          >
+            <sphereGeometry args={[0.04, 8, 8]} />
+            <meshStandardMaterial color="#ff3333" emissive="#ff0000" emissiveIntensity={1.5} />
+          </mesh>
+        </>
       )}
     </group>
   );

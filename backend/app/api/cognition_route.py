@@ -1,7 +1,7 @@
 import dataclasses
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
@@ -43,6 +43,10 @@ def get_bridge() -> GestureAnchorBridge:
     if _bridge is None:
         _bridge = GestureAnchorBridge(AnchorRegistry())
     return _bridge
+
+
+def get_registry() -> AnchorRegistry:
+    return get_bridge()._registry
 
 
 @router.post("/api/cognition")
@@ -105,6 +109,31 @@ async def cognition(req: CognitionRequest) -> dict:
         "episodic_memory": episodic,
         "spatial_event": dataclasses.asdict(spatial_event) if spatial_event is not None else None,
     }
+
+
+@router.get("/api/anchors")
+async def list_anchors() -> dict:
+    anchors = get_registry().list_anchors()
+    return {
+        "anchors": [
+            {
+                "anchor_id": a.anchor_id,
+                "label": a.label,
+                "x": a.x,
+                "y": a.y,
+                "z": a.z,
+                "created_at_us": a.created_at_us,
+            }
+            for a in anchors
+        ]
+    }
+
+
+@router.delete("/api/anchors/{anchor_id}")
+async def delete_anchor(anchor_id: str) -> dict:
+    if not get_registry().delete_anchor(anchor_id):
+        raise HTTPException(status_code=404, detail="anchor not found")
+    return {"deleted": anchor_id}
 
 
 @router.get("/api/memory/profile")
