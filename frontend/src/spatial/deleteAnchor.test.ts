@@ -52,7 +52,7 @@ describe("deleteAnchor", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8080/api/anchors/a1",
-      { method: "DELETE" }
+      { method: "DELETE", headers: {} }
     );
   });
 

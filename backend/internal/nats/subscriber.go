@@ -14,18 +14,21 @@ import (
 const maxPendingMsgs = 100
 
 // Broadcaster is the interface the hub satisfies — same as in the vision package.
+// BroadcastScoped delivers a frame only to the owner that claims the local
+// perception stream, so vision landmarks do not leak across users.
 type Broadcaster interface {
 	Broadcast([]byte)
+	BroadcastScoped([]byte)
 }
 
 // Subscriber subscribes to NATS PerceptionFrames and broadcasts them to the hub.
 // Uses DiscardOld pending policy: when the pending queue is full (100 msgs), the
 // oldest message is dropped so the subscriber never blocks the publisher.
 type Subscriber struct {
-	nc   *nats.Conn
-	hub  Broadcaster
-	sub  *nats.Subscription
-	url  string
+	nc  *nats.Conn
+	hub Broadcaster
+	sub *nats.Subscription
+	url string
 }
 
 // NewSubscriber creates a Subscriber that broadcasts to hub.
@@ -99,7 +102,7 @@ func (s *Subscriber) broadcastFrame(frame *perceptionv1.PerceptionFrame) {
 	if err != nil {
 		return
 	}
-	s.hub.Broadcast(data)
+	s.hub.BroadcastScoped(data)
 }
 
 // Close unsubscribes and closes the NATS connection.

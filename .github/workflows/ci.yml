@@ -23,6 +23,12 @@ jobs:
       - name: Upgrade pip and build tools
         run: pip install --upgrade pip setuptools wheel
 
+      # CI has no GPU; the default torch wheel is 916 MB and drags in ~3 GB of
+      # unused CUDA/nvidia packages. Pre-install the 189 MB CPU build so the
+      # requirements.txt step finds torch already satisfied and skips all of it.
+      - name: Install PyTorch (CPU-only)
+        run: pip install torch==2.10.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt
@@ -51,6 +57,12 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Format check (gofmt)
+        working-directory: backend
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "gofmt needed on:"; echo "$unformatted"; exit 1; fi
+
       - name: Build
         working-directory: backend
         run: go build ./...
@@ -61,7 +73,7 @@ jobs:
 
       - name: Test
         working-directory: backend
-        run: go test ./...
+        run: go test -race ./...
 
   frontend:
     name: Frontend — lint, type-check, build
@@ -84,4 +96,7 @@ jobs:
         run: cd frontend && npm run type-check
 
       - name: Build
+        env:
+          # Publishable key is public (ships in the client bundle); needed at build time.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
         run: cd frontend && npm run build

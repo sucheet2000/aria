@@ -3,11 +3,15 @@ package cognition
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/rs/zerolog"
 )
 
+// maxRequestBodyBytes caps the /api/cognition request body to guard against
+// oversized payloads. Over-cap requests surface as 413.
+const maxRequestBodyBytes = 64 << 10
 
 // PerceptionFrame holds perception data from the vision worker.
 type PerceptionFrame struct {
@@ -28,8 +32,8 @@ type ConversationTurn struct {
 
 // CognitionRequest is the body the browser (or Go→Python proxy) sends.
 type CognitionRequest struct {
-	Message             string           `json:"message"`
-	VisionState         PerceptionFrame  `json:"vision_state"`
+	Message             string             `json:"message"`
+	VisionState         PerceptionFrame    `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
 	SessionID           string             `json:"session_id,omitempty"`
 	// Gesture fields forwarded verbatim to the Python spatial pipeline.
@@ -93,8 +97,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req CognitionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "request body too large"})
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}

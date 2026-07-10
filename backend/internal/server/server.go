@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
+	"github.com/sucheet2000/aria/backend/internal/auth"
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
@@ -47,21 +49,52 @@ func (s *Server) Start(ctx context.Context) error {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recoverer)
 
+	authEnabled := s.cfg.ClerkSecretKey != ""
+	var verifier auth.Verifier
+	if authEnabled {
+		verifier = auth.NewClerkVerifier(s.cfg.ClerkSecretKey, s.cfg.ClerkJWTIssuer)
+		log.Info().Msg("clerk auth enabled on /api and /ws")
+	} else {
+		if !isLoopback(s.cfg.Host) && os.Getenv("ALLOW_INSECURE_NO_AUTH") != "1" {
+			log.Fatal().Msgf(
+				"refusing to start: auth disabled on non-loopback bind %s; set CLERK_SECRET_KEY or ALLOW_INSECURE_NO_AUTH=1",
+				s.cfg.Host,
+			)
+		}
+		log.Warn().Msg("clerk auth disabled on /api and /ws (CLERK_SECRET_KEY not set)")
+	}
+
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ServeWs(s.hub, w, r)
+		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
 	})
 
 	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
+	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
 	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
+	ttsClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
 	ttsHandler := tts.NewHandler(ttsClient)
 
+	rl := newRateLimiter(
+		s.cfg.RateLimitRPS, s.cfg.RateLimitBurst,
+		s.cfg.RateLimitGlobalRPS, s.cfg.RateLimitGlobalBurst,
+	)
+	rl.start(ctx)
+
 	s.router.Route("/api", func(r chi.Router) {
-		r.Use(corsMiddleware)
-		r.Post("/cognition", cogHandler.ServeHTTP)
-		r.Post("/tts", ttsHandler.ServeHTTP)
+		r.Use(corsMiddleware(s.cfg.AllowedOrigins))
+		r.Use(auth.RequireAuth(verifier, authEnabled))
+
+		// Paid endpoints: rate-limited per authenticated caller (or IP) with a
+		// global ceiling. Auth runs first so OwnerFromContext keys the bucket.
+		r.Group(func(r chi.Router) {
+			r.Use(rl.Middleware)
+			r.Post("/cognition", cogHandler.ServeHTTP)
+			r.Post("/tts", ttsHandler.ServeHTTP)
+		})
+
 		r.Get("/memory/working", s.handleWorkingMemory)
 		r.Get("/memory/profile", s.handleMemoryProfileProxy)
 		r.Get("/anchors", s.handleAnchorsProxy)
@@ -106,13 +139,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
-	entries := s.workingMemory.All()
+	entries := s.workingMemory.All(auth.OwnerFromContext(r.Context()))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
 }
 
 func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.httpClient.Get(s.pythonURL + "/api/memory/profile")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/memory/profile", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
 		return
@@ -124,7 +164,14 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.httpClient.Get(s.pythonURL + "/api/anchors")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/anchors", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
 		return
@@ -143,6 +190,8 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return
 	}
+	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -154,19 +203,51 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
-// corsMiddleware adds permissive CORS headers for all /api/* routes so the
-// frontend origin can reach the API during development.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+// isLoopback reports whether host is a loopback (or unset) bind address, i.e. one
+// that is not reachable from other machines.
+func isLoopback(host string) bool {
+	switch host {
+	case "127.0.0.1", "localhost", "::1", "":
+		return true
+	default:
+		return false
+	}
+}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+// setOwnerHeader copies the authenticated owner from the inbound request context
+// onto the outbound request to the internal Python service.
+func setOwnerHeader(out, in *http.Request) {
+	if owner := auth.OwnerFromContext(in.Context()); owner != "" {
+		out.Header.Set(auth.OwnerHeader, owner)
+	}
+}
 
-		next.ServeHTTP(w, r)
-	})
+// corsMiddleware builds a CORS middleware for /api/* routes that reflects the
+// request Origin only when it is in the allowed set. Requests from other origins
+// receive no Access-Control-Allow-Origin header. The OPTIONS preflight is
+// short-circuited with 204.
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				if _, ok := allowed[origin]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Add("Vary", "Origin")
+				}
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

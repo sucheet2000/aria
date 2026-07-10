@@ -75,8 +75,13 @@ mcp-servers-repo/
 backend/data/anchors.db
 backend/data/*.db
 backend/data/*.db
-.claude/
+.claude/*
+!.claude/agents/
 .cursor/
 .mcp.json
+
+# clerk CLI agent-skill artifacts
+.agents/
+skills-lock.json
 backend/data/*.db
 backend/data/*.db

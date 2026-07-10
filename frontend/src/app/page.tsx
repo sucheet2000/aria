@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { SignedIn, SignedOut, SignIn, UserButton } from "@clerk/nextjs";
+import { clerkAppearance } from "@/lib/clerkAppearance";
 import Avatar3D from "@/components/Avatar3D";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
@@ -49,7 +51,7 @@ const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; icon: () => JSX.Element }> = [
   { id: "memory", icon: MemoryIcon },
 ];
 
-export default function Home() {
+function AriaApp() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
   const [showSpatial, setShowSpatial] = useState(false);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
@@ -132,10 +134,14 @@ export default function Home() {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: 16,
         padding: "0 24px",
         background: "linear-gradient(to bottom, rgba(14,14,18,0.8), transparent)",
       }}>
-        <StatusBar />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <StatusBar />
+        </div>
+        <UserButton appearance={clerkAppearance} />
       </header>
 
       {/* Left icon sidebar */}
@@ -218,5 +224,27 @@ export default function Home() {
         <VoiceDot />
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <>
+      <SignedOut>
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--void)",
+        }}>
+          <SignIn routing="hash" appearance={clerkAppearance} />
+        </div>
+      </SignedOut>
+      <SignedIn>
+        <AriaApp />
+      </SignedIn>
+    </>
   );
 }

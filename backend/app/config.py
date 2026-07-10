@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
     DEBUG: bool = False
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     AUDIO_ENABLED: bool = True
     WHISPER_MODEL: str = "base"
     KMP_DUPLICATE_LIB_OK: str = "TRUE"
+
+    # Identity of the data owner. Single-user default today; Phase 4 sources
+    # this from the authenticated identity so the data model is multi-user-ready.
+    DEFAULT_OWNER: str = "local"
+
+    # Shared secret for the Go<->Python internal trust boundary. Go sends it as
+    # X-Internal-Auth; when set, this service rejects API requests that do not
+    # match. Empty (default) disables enforcement so local dev works without Go.
+    INTERNAL_AUTH_SECRET: str = ""
 
 
 settings = Settings()

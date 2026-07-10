@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useWorldModel } from "./useWorldModel";
-
-const PYTHON_BASE = "http://localhost:8080";
+import { API_BASE } from "@/lib/config";
 
 interface AnchorPayload {
   anchor_id: string;
@@ -13,9 +13,18 @@ interface AnchorPayload {
 
 export function useAnchorHydration(): void {
   const addAnchor = useWorldModel((s) => s.addAnchor);
+  const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
 
   useEffect(() => {
-    fetch(`${PYTHON_BASE}/api/anchors`)
+    getTokenRef
+      .current()
+      .then((token) =>
+        fetch(`${API_BASE}/api/anchors`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+      )
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { anchors: AnchorPayload[] }) => {
         for (const a of data.anchors) {

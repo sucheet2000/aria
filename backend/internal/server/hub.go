@@ -29,30 +29,40 @@ type AudioController interface {
 	Mute(muted bool)
 }
 
+// broadcastMsg is a queued broadcast. When scoped is true the message is only
+// delivered to clients whose owner equals owner; otherwise it goes to all.
+type broadcastMsg struct {
+	data   []byte
+	owner  string
+	scoped bool
+}
+
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
-	vision     VisionController
-	audio      AudioController
-	ctx        context.Context
+	clients     map[*Client]bool
+	broadcast   chan broadcastMsg
+	register    chan *Client
+	unregister  chan *Client
+	mu          sync.RWMutex
+	vision      VisionController
+	audio       AudioController
+	activeOwner string
+	ctx         context.Context
 }
 
 // Client represents a single WebSocket connection.
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub   *Hub
+	conn  *websocket.Conn
+	send  chan []byte
+	owner string
 }
 
 // NewHub creates and returns a new Hub.
 func NewHub(v VisionController) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 2048),
+		broadcast:  make(chan broadcastMsg, 2048),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		vision:     v,
@@ -96,6 +106,11 @@ func (h *Hub) Run(ctx context.Context) {
 				delete(h.clients, client)
 				close(client.send)
 			}
+			// Release the active-owner claim if no remaining client owns it, so
+			// scoped frames are not withheld from the surviving clients.
+			if h.activeOwner != "" && !h.hasOwnerLocked(h.activeOwner) {
+				h.activeOwner = ""
+			}
 			nowEmpty := len(h.clients) == 0
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client disconnected")
@@ -111,11 +126,14 @@ func (h *Hub) Run(ctx context.Context) {
 				}()
 			}
 
-		case message := <-h.broadcast:
+		case bm := <-h.broadcast:
 			h.mu.RLock()
 			for client := range h.clients {
+				if bm.scoped && client.owner != bm.owner {
+					continue
+				}
 				select {
-				case client.send <- message:
+				case client.send <- bm.data:
 				default:
 					// Buffer full: skip this message for this client instead
 					// of dropping them. Prevents the 1s reconnect gap that
@@ -129,7 +147,46 @@ func (h *Hub) Run(ctx context.Context) {
 
 // Broadcast sends a message to all connected clients.
 func (h *Hub) Broadcast(msg []byte) {
-	h.broadcast <- msg
+	h.broadcast <- broadcastMsg{data: msg}
+}
+
+// BroadcastToOwner sends a message only to clients whose owner matches.
+func (h *Hub) BroadcastToOwner(owner string, msg []byte) {
+	h.broadcast <- broadcastMsg{data: msg, owner: owner, scoped: true}
+}
+
+// BroadcastScoped delivers a per-user perception frame (vision_state / transcript)
+// to the owner that currently claims the local camera/mic stream. When no owner
+// has claimed the stream (single-user default, or auth disabled where every
+// client shares the empty owner), it falls back to delivering to all clients so
+// behavior is unchanged.
+func (h *Hub) BroadcastScoped(msg []byte) {
+	h.mu.RLock()
+	owner := h.activeOwner
+	h.mu.RUnlock()
+	if owner == "" {
+		h.Broadcast(msg)
+		return
+	}
+	h.BroadcastToOwner(owner, msg)
+}
+
+// setActiveOwner records which owner currently claims the local perception stream.
+func (h *Hub) setActiveOwner(owner string) {
+	h.mu.Lock()
+	h.activeOwner = owner
+	h.mu.Unlock()
+}
+
+// hasOwnerLocked reports whether any connected client has the given owner.
+// Caller must hold h.mu.
+func (h *Hub) hasOwnerLocked(owner string) bool {
+	for client := range h.clients {
+		if client.owner == owner {
+			return true
+		}
+	}
+	return false
 }
 
 // writePump pumps messages from the hub to the WebSocket connection.
@@ -192,9 +249,10 @@ func (c *Client) readPump() {
 				if c.hub.audio != nil {
 					c.hub.audio.Mute(false)
 				}
-			// Note: single global active session is intentional for ARIA v1 (single-user).
-			// Per-connection session ownership is a v2 concern.
 			case MsgTypeSessionInit:
+				// The initializing client claims the local perception stream, so
+				// scoped vision_state / transcript frames go only to its owner.
+				c.hub.setActiveOwner(c.owner)
 				if c.hub.vision != nil && msg.SessionID != "" {
 					c.hub.vision.SetActiveSession(msg.SessionID)
 				}

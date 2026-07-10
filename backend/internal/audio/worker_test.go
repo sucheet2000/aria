@@ -4,7 +4,8 @@ import "testing"
 
 type mockHub struct{}
 
-func (m *mockHub) Broadcast(_ []byte) {}
+func (m *mockHub) Broadcast(_ []byte)       {}
+func (m *mockHub) BroadcastScoped(_ []byte) {}
 
 func TestNewWorkerFields(t *testing.T) {
 	hub := &mockHub{}

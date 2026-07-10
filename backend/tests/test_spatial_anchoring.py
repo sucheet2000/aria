@@ -213,3 +213,51 @@ class TestRegisterAnchorRPC:
         assert restored.spatial_anchor_id == "anchor-abc"
         assert restored.depth_confidence == pytest.approx(0.85, abs=1e-5)
         assert restored.registration_state == "registered"
+
+
+class TestAnchorOwnerScoping:
+    def test_owner_isolates_list(self, registry: AnchorRegistry) -> None:
+        registry.register_anchor((0.0, 0.0, -1.0), "a-obj", owner="a")
+        assert registry.list_anchors(owner="b") == []
+        listed = registry.list_anchors(owner="a")
+        assert len(listed) == 1
+        assert listed[0].label == "a-obj"
+
+    def test_owner_isolates_get_and_delete(self, registry: AnchorRegistry) -> None:
+        aid = registry.register_anchor((0.0, 0.0, -1.0), "x", owner="a")
+        assert registry.get_anchor(aid, owner="b") is None
+        assert registry.delete_anchor(aid, owner="b") is False
+        assert registry.get_anchor(aid, owner="a") is not None
+        assert registry.delete_anchor(aid, owner="a") is True
+
+    def test_owner_isolates_update(self, registry: AnchorRegistry) -> None:
+        aid = registry.register_anchor((0.0, 0.0, -1.0), "x", owner="a")
+        assert registry.update_anchor(aid, "renamed", owner="b") is None
+        assert registry.update_anchor(aid, "renamed", owner="a") is not None
+
+    def test_default_owner_is_local(self, registry: AnchorRegistry) -> None:
+        aid = registry.register_anchor((0.0, 0.0, -1.0), "d")  # no owner → default
+        assert registry.get_anchor(aid, owner="local") is not None
+
+
+class TestAnchorOwnerMigration:
+    def test_migration_backfills_legacy_db(self, tmp_path: Path) -> None:
+        import sqlite3
+
+        db = tmp_path / "anchors.db"
+        # Build a DB with the OLD schema (no owner column) and one row.
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "CREATE TABLE anchors (anchor_id TEXT PRIMARY KEY, label TEXT NOT NULL, "
+            "x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, created_at_us INTEGER NOT NULL)"
+        )
+        conn.execute("INSERT INTO anchors VALUES ('old1', 'legacy', 0.0, 0.0, -1.0, 123)")
+        conn.commit()
+        conn.close()
+
+        # Opening the registry runs the idempotent owner migration.
+        reg = AnchorRegistry(db_path=db)
+        listed = reg.list_anchors(owner="local")
+        assert len(listed) == 1
+        assert listed[0].anchor_id == "old1"
+        assert reg.list_anchors(owner="other") == []

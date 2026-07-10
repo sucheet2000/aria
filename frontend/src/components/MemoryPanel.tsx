@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { API_BASE } from "@/lib/config";
 
 interface MemoryPanelProps {
   assistantMessageCount: number;
 }
 
 export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps) {
+  const { getToken } = useAuth();
   const [profileFacts, setProfileFacts] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
@@ -14,7 +17,10 @@ export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps)
   async function fetchProfileFacts() {
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/memory/profile");
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/memory/profile`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) return;
       const data = await res.json();
       const facts: string[] = Array.isArray(data.facts) ? data.facts : [];

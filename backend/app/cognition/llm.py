@@ -91,7 +91,6 @@ class LLMClient:
 
     def __init__(self, api_key: str) -> None:
         self._client = AsyncAnthropic(api_key=api_key)
-        self._last_response: str = ""
 
     async def complete(
         self,
@@ -106,7 +105,11 @@ class LLMClient:
 
         # ── Tier 0: local handler, no API call ─────────────────────────────
         if tier == 0:
-            local_reply = _handle_local(message, self._last_response)
+            last_response = next(
+                (t.content for t in reversed(conversation_history) if t.role == "assistant"),
+                "",
+            )
+            local_reply = _handle_local(message, last_response)
             return CognitionResponse(
                 symbolic_inference="local_handler",
                 world_model_update=None,
@@ -148,7 +151,6 @@ class LLMClient:
 
         raw = response.content[0].text.strip()  # type: ignore[union-attr]
         result = self._parse_response(raw)
-        self._last_response = result.natural_language_response
         return result
 
     def _parse_response(self, raw: str) -> CognitionResponse:

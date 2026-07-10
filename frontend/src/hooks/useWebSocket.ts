@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
+import { WS_URL } from "@/lib/config";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
 
-const WS_URL = "ws://localhost:8080/ws";
 const INITIAL_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const BACKOFF_MULTIPLIER = 1.5;
@@ -18,6 +19,11 @@ export function useWebSocket() {
 
   const connected = useAriaStore((s) => s.wsConnected);
   const error = useAriaStore((s) => s.wsError);
+
+  // Latest Clerk token accessor, held in a ref so the connect effect stays [].
+  const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -37,7 +43,7 @@ export function useWebSocket() {
       }, delay);
     }
 
-    function connect() {
+    async function connect() {
       if (!mountedRef.current) return;
       if (
         wsRef.current?.readyState === WebSocket.OPEN ||
@@ -47,8 +53,14 @@ export function useWebSocket() {
         return;
       }
 
+      // Browsers can't set headers on a WS handshake, so the Clerk session token
+      // goes in the query param; the Go server verifies it before upgrading.
+      const token = await getTokenRef.current?.();
+      if (!mountedRef.current) return;
+      const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+
       console.log(`[useWebSocket] connecting to ${WS_URL}`);
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {

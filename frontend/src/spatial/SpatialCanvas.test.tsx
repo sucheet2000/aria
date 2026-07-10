@@ -3,6 +3,10 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useWorldModel } from "./useWorldModel";
 import { useAnchorHydration } from "./useAnchorHydration";
 
+vi.mock("@clerk/nextjs", () => ({
+  useAuth: () => ({ getToken: () => Promise.resolve("test-token") }),
+}));
+
 function resetStore() {
   useWorldModel.setState({ anchors: new Map(), activeGesture: null });
 }
