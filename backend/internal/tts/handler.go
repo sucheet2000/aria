@@ -2,6 +2,7 @@ package tts
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,6 +11,10 @@ import (
 )
 
 const maxTextLength = 500
+
+// maxRequestBodyBytes caps the /api/tts request body. Over-cap requests
+// surface as 413.
+const maxRequestBodyBytes = 64 << 10
 
 // TTSRequest is the JSON body for POST /api/tts.
 type TTSRequest struct {
@@ -38,8 +43,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req TTSRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			w.Write([]byte(`{"error":"request body too large"}`)) //nolint:errcheck
+			return
+		}
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}

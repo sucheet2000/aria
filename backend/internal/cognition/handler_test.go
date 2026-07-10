@@ -117,6 +117,22 @@ func TestCognitionResponse_SpatialEventPassthrough(t *testing.T) {
 	}
 }
 
+func TestHandler_OversizedBodyReturns413(t *testing.T) {
+	wm := memory.New(5)
+	client := NewWithLogger("http://127.0.0.1:1", wm, zerolog.Nop())
+	h := NewHandler(client, NewStreamRegistry(), zerolog.Nop())
+
+	big := strings.Repeat("a", (64<<10)+1)
+	body := `{"message":"` + big + `","session_id":"s1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/cognition", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
+	}
+}
+
 func TestCognitionResponse_SpatialEventNull(t *testing.T) {
 	fakePython := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

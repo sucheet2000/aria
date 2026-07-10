@@ -198,7 +198,7 @@ func TestProxyHandlers_SetOwnerHeader(t *testing.T) {
 }
 
 func TestCORSMiddleware_IncludesDelete(t *testing.T) {
-	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := corsMiddleware(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
