@@ -32,6 +32,81 @@ def test_vad_processor_init() -> None:
     assert VADProcessor.CHUNK_SAMPLES == 480
 
 
+def test_vad_silence_below_energy_gate_returns_no_speech() -> None:
+    from app.pipeline.vad import VADProcessor
+
+    vad = VADProcessor()
+    silence = np.zeros(VADProcessor.CHUNK_SAMPLES, dtype=np.float32)
+    is_speech, completed = vad.process_chunk(silence)
+    assert is_speech is False
+    assert completed is None
+    assert vad._in_speech is False
+
+
+def test_vad_muted_suppresses_speech() -> None:
+    from unittest import mock
+
+    from app.pipeline.vad import VADProcessor
+
+    vad = VADProcessor()
+    vad._vad = mock.Mock()
+    vad._vad.is_speech.return_value = True
+    vad.mute()
+
+    loud = np.full(VADProcessor.CHUNK_SAMPLES, 0.1, dtype=np.float32)
+    is_speech, completed = vad.process_chunk(loud)
+    assert is_speech is False
+    assert completed is None
+    vad._vad.is_speech.assert_not_called()
+
+
+def test_vad_detects_speech_chunk() -> None:
+    from unittest import mock
+
+    from app.pipeline.vad import VADProcessor
+
+    vad = VADProcessor()
+    vad._vad = mock.Mock()
+    vad._vad.is_speech.return_value = True
+
+    loud = np.full(VADProcessor.CHUNK_SAMPLES, 0.1, dtype=np.float32)
+    is_speech, completed = vad.process_chunk(loud)
+    assert is_speech is True
+    assert completed is None
+    assert vad._in_speech is True
+
+
+def test_vad_finalizes_utterance_after_trailing_silence() -> None:
+    from unittest import mock
+
+    from app.pipeline.vad import VADProcessor
+
+    vad = VADProcessor()
+    vad._vad = mock.Mock()
+
+    n_speech = 10
+    n_silence = (vad.MAX_SILENCE_MS // VADProcessor.CHUNK_MS) + 1
+    vad._vad.is_speech.side_effect = [True] * n_speech + [False] * n_silence
+
+    loud = np.full(VADProcessor.CHUNK_SAMPLES, 0.1, dtype=np.float32)
+    silence = np.zeros(VADProcessor.CHUNK_SAMPLES, dtype=np.float32)
+
+    for _ in range(n_speech):
+        is_speech, completed = vad.process_chunk(loud)
+        assert is_speech is True
+        assert completed is None
+
+    finalized = None
+    for _ in range(n_silence):
+        _, completed = vad.process_chunk(silence)
+        if completed is not None:
+            finalized = completed
+
+    assert finalized is not None
+    assert len(finalized) == n_speech + n_silence
+    assert vad._in_speech is False
+
+
 def test_transcriber_init() -> None:
     from app.pipeline.transcriber import Transcriber
 
