@@ -143,11 +143,11 @@ hatch. In production you set a real `CLERK_SECRET_KEY` instead.
 These are outside "deploy config" scope (they are Go/Python/frontend code) but
 **block a working cloud deploy**. Flagged here so they are not a surprise:
 
-1. **Frontend hardcodes `http://localhost:8080` / `ws://localhost:8080`.**
-   (`useWebSocket.ts`, `useCognition.ts`, `useTTS.ts`, `MemoryPanel.tsx`,
-   `deleteAnchorFn.ts`, `useAnchorHydration.ts`.) These must read
-   `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_WS_URL` or the deployed frontend will call
-   localhost and fail. **Frontend agent's task.**
+1. **✅ Resolved (Phase 5a).** The frontend previously hardcoded
+   `http://localhost:8080` / `ws://localhost:8080`. It now reads
+   `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_WS_URL` via `frontend/src/lib/config.ts`
+   (falls back to localhost for local dev). Just set those two env vars on Vercel
+   (section 3) and the deployed frontend targets the Railway backend.
 2. **Vision worker has a hardcoded macOS path.**
    `backend/internal/vision/worker.go` sets `cmd.Dir = "/Users/sucheetboppana/aria/backend"`.
    That path does not exist in the container, so the vision subprocess won't start.
@@ -160,9 +160,12 @@ These are outside "deploy config" scope (they are Go/Python/frontend code) but
    backend image is built from `backend/`, so it isn't copied. `prompt.py` falls
    back to an empty identity (no crash, but ARIA loses its persona). To ship SOUL,
    move/copy it into `backend/` or build from repo root with a repo-root Dockerfile.
-5. **`INTERNAL_AUTH_SECRET` is not yet enforced in code.** Today the protection is
-   invariant #1 (Python stays private). Set the secret now so the app is ready when
-   the `X-Internal-Auth` check lands.
+5. **✅ Resolved (Phase 5b).** `INTERNAL_AUTH_SECRET` is now enforced end-to-end:
+   Go sends `X-Internal-Auth` on every internal call and Python's
+   `require_internal_auth` returns 403 on a missing/wrong secret (constant-time
+   compare; pass-through only when the secret is unset for local dev). Set the same
+   secret on both the Railway backend and the Python service so the boundary is live.
+   This is defence-in-depth behind invariant #1 (Python stays private).
 
 ---
 
