@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -17,6 +18,10 @@ import (
 )
 
 const pythonTTSURL = "http://localhost:8000/api/tts"
+
+// maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
+// into the returned error, so a large error page cannot bloat the message.
+const maxErrorBodyBytes = 4 << 10
 
 // Client handles text-to-speech synthesis.
 type Client struct {
@@ -92,7 +97,8 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("python TTS returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return fmt.Errorf("tts upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	_, err = io.Copy(w, resp.Body)
