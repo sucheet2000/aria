@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useWorldModel } from "./useWorldModel";
-
-const PYTHON_BASE = "http://localhost:8080";
+import { API_BASE } from "@/lib/config";
 
 interface AnchorPayload {
   anchor_id: string;
@@ -22,7 +21,7 @@ export function useAnchorHydration(): void {
     getTokenRef
       .current()
       .then((token) =>
-        fetch(`${PYTHON_BASE}/api/anchors`, {
+        fetch(`${API_BASE}/api/anchors`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
       )

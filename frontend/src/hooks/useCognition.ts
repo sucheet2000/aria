@@ -7,6 +7,7 @@ import type { WorldModelUpdate } from "@/store/ariaStore";
 import { useWorldModel } from "@/spatial/useWorldModel";
 import type { SpatialAnchor } from "@/spatial/useWorldModel";
 import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
+import { API_BASE } from "@/lib/config";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
 // importing useCognition (which would create a circular dependency).
@@ -121,7 +122,7 @@ export function useCognition() {
 
     try {
       const token = await getToken();
-      const res = await fetch("http://localhost:8080/api/cognition", {
+      const res = await fetch(`${API_BASE}/api/cognition`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
