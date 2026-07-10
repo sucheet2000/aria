@@ -110,11 +110,7 @@ def test_symbolic_response_with_world_model_update():
     assert sr.world_model_update.triple.object == "dark mode"
 
 
-# --- cognition route: gesture → spatial_event ---
-
-def _make_test_client() -> TestClient:
-    from app.main import app
-    return TestClient(app)
+# --- cognition route: DI + gesture + owner scoping ---
 
 
 def _stub_llm_client() -> MagicMock:
@@ -136,14 +132,22 @@ def _stub_memory() -> MagicMock:
     return mem
 
 
-def test_cognition_route_point_gesture_produces_spatial_event():
-    """gesture='point' + pointing_vector → spatial_event is not None."""
-    client = _make_test_client()
-    with (
-        patch("app.api.cognition_route.get_client", return_value=_stub_llm_client()),
-        patch("app.api.cognition_route.get_memory", return_value=_stub_memory()),
-    ):
-        resp = client.post(
+def _tmp_bridge(tmp_path):
+    from app.spatial.anchor_registry import AnchorRegistry
+    from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
+    return GestureAnchorBridge(AnchorRegistry(db_path=tmp_path / "a.db"))
+
+
+def test_cognition_route_point_gesture_produces_spatial_event(tmp_path):
+    """gesture='point' + pointing_vector → spatial_event is not None (DI-injected)."""
+    from app.api.cognition_route import get_bridge, get_client, get_memory
+    from app.main import app
+
+    app.dependency_overrides[get_client] = lambda: _stub_llm_client()
+    app.dependency_overrides[get_memory] = lambda: _stub_memory()
+    app.dependency_overrides[get_bridge] = lambda: _tmp_bridge(tmp_path)
+    try:
+        resp = TestClient(app).post(
             "/api/cognition",
             json={
                 "message": "look at that",
@@ -152,24 +156,61 @@ def test_cognition_route_point_gesture_produces_spatial_event():
                 "session_id": "test-session-001",
             },
         )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["spatial_event"] is not None
+        assert data["spatial_event"]["event_type"] == "anchor_registered"
+    finally:
+        app.dependency_overrides.clear()
 
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["spatial_event"] is not None
-    assert data["spatial_event"]["event_type"] == "anchor_registered"
 
-
-def test_cognition_route_no_gesture_spatial_event_is_none():
+def test_cognition_route_no_gesture_spatial_event_is_none(tmp_path):
     """Default gesture fields → spatial_event is None."""
-    client = _make_test_client()
-    with (
-        patch("app.api.cognition_route.get_client", return_value=_stub_llm_client()),
-        patch("app.api.cognition_route.get_memory", return_value=_stub_memory()),
-    ):
-        resp = client.post(
-            "/api/cognition",
-            json={"message": "hello"},
-        )
+    from app.api.cognition_route import get_bridge, get_client, get_memory
+    from app.main import app
 
-    assert resp.status_code == 200
-    assert resp.json()["spatial_event"] is None
+    app.dependency_overrides[get_client] = lambda: _stub_llm_client()
+    app.dependency_overrides[get_memory] = lambda: _stub_memory()
+    app.dependency_overrides[get_bridge] = lambda: _tmp_bridge(tmp_path)
+    try:
+        resp = TestClient(app).post("/api/cognition", json={"message": "hello"})
+        assert resp.status_code == 200
+        assert resp.json()["spatial_event"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_anchor_endpoints_scope_by_owner(tmp_path):
+    """/api/anchors returns only the current owner's anchors."""
+    from app.api.cognition_route import get_current_owner, get_registry
+    from app.main import app
+    from app.spatial.anchor_registry import AnchorRegistry
+
+    reg = AnchorRegistry(db_path=tmp_path / "a.db")
+    reg.register_anchor((0.0, 0.0, -1.0), "obj", owner="alice")
+    app.dependency_overrides[get_registry] = lambda: reg
+    try:
+        client = TestClient(app)
+        app.dependency_overrides[get_current_owner] = lambda: "alice"
+        assert len(client.get("/api/anchors").json()["anchors"]) == 1
+        app.dependency_overrides[get_current_owner] = lambda: "bob"
+        assert client.get("/api/anchors").json()["anchors"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_lifespan_populates_app_state():
+    """The lifespan constructs the services once onto app.state."""
+    from app.main import app
+
+    with (
+        patch("app.main.MemoryStore", return_value=MagicMock()),
+        patch("app.main.LLMClient", return_value=MagicMock()),
+        patch("app.main.AnchorRegistry", return_value=MagicMock()),
+        patch("app.main.GestureAnchorBridge", return_value=MagicMock()),
+    ):
+        with TestClient(app):
+            assert hasattr(app.state, "llm")
+            assert hasattr(app.state, "memory")
+            assert hasattr(app.state, "registry")
+            assert hasattr(app.state, "bridge")
