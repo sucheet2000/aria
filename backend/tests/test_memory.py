@@ -76,6 +76,28 @@ async def test_two_owners_isolated(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_store_triple_offloads_to_threadpool(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition import memory as mem_mod
+    store = mem_mod.MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    called: dict[str, str] = {}
+    orig = mem_mod.run_in_threadpool
+
+    async def spy(fn, *args, **kwargs):
+        called["fn"] = fn.__name__
+        return await orig(fn, *args, **kwargs)
+
+    monkeypatch.setattr(mem_mod, "run_in_threadpool", spy)
+    await store.store_triple("s", "p", "o", 0.9, "explicit_statement", owner="x")
+
+    # the blocking ChromaDB work ran off the event loop, not inline
+    assert called["fn"] == "_store_triple_sync"
+
+
+@pytest.mark.asyncio
 async def test_backfill_assigns_local_owner(tmp_path) -> None:
     pytest.importorskip("chromadb")
 

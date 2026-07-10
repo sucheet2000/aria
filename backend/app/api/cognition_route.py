@@ -2,6 +2,7 @@ import dataclasses
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_owner
 from app.cognition.llm import LLMClient
@@ -83,12 +84,13 @@ async def cognition(
 
     spatial_event: SpatialEvent | None = None
     if req.hand_gesture != "none" or req.two_hand_gesture != "NONE":
-        spatial_event = bridge.on_gesture_event(
-            gesture=req.hand_gesture,
-            two_hand_gesture=req.two_hand_gesture,
-            pointing_vector=req.pointing_vector,
-            session_id=req.session_id,
-            owner=owner,
+        spatial_event = await run_in_threadpool(
+            bridge.on_gesture_event,
+            req.hand_gesture,
+            req.two_hand_gesture,
+            req.pointing_vector,
+            req.session_id,
+            owner,
         )
         if spatial_event is not None:
             MetricsCollector().record_anchor_created()
@@ -108,7 +110,7 @@ async def list_anchors(
     registry: AnchorRegistry = Depends(get_registry),
     owner: str = Depends(get_current_owner),
 ) -> dict:
-    anchors = registry.list_anchors(owner=owner)
+    anchors = await run_in_threadpool(registry.list_anchors, owner)
     return {
         "anchors": [
             {
@@ -130,7 +132,8 @@ async def delete_anchor(
     registry: AnchorRegistry = Depends(get_registry),
     owner: str = Depends(get_current_owner),
 ) -> dict:
-    if not registry.delete_anchor(anchor_id, owner=owner):
+    deleted = await run_in_threadpool(registry.delete_anchor, anchor_id, owner)
+    if not deleted:
         raise HTTPException(status_code=404, detail="anchor not found")
     return {"deleted": anchor_id}
 

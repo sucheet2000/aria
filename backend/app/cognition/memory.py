@@ -4,6 +4,7 @@ import hashlib
 import time
 
 import structlog
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 
@@ -29,6 +30,9 @@ class MemoryStore:
     on it, so data written by one owner is never returned to another. Legacy
     documents (written before owners existed) are backfilled to DEFAULT_OWNER
     on load.
+
+    The public methods are async but the blocking ChromaDB work runs via
+    ``run_in_threadpool`` so it never blocks the FastAPI event loop.
     """
 
     def __init__(self, persist_dir: str = "./memory") -> None:
@@ -115,7 +119,19 @@ class MemoryStore:
         if not self.loaded:
             return
         owner = owner or settings.DEFAULT_OWNER
+        await run_in_threadpool(
+            self._store_triple_sync, subject, predicate, obj, confidence, source, owner
+        )
 
+    def _store_triple_sync(
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
+        confidence: float,
+        source: str,
+        owner: str,
+    ) -> None:
         doc_id = self._triple_id(owner, subject, predicate, obj)
         text = self._triple_text(subject, predicate, obj)
         metadata = {
@@ -127,7 +143,6 @@ class MemoryStore:
             "source": source,
             "timestamp": time.time(),
         }
-
         try:
             if source == "explicit_statement":
                 collection = self._profile
@@ -144,7 +159,6 @@ class MemoryStore:
             else:
                 collection.add(ids=[doc_id], documents=[text], metadatas=[metadata])
                 logger.debug("memory stored", id=doc_id, text=text)
-
         except Exception as e:
             logger.error("store_triple failed", error=str(e))
 
@@ -157,10 +171,11 @@ class MemoryStore:
         if not self.loaded:
             return []
         owner = owner or settings.DEFAULT_OWNER
+        return await run_in_threadpool(self._query_relevant_sync, context, owner, n_results)
 
+    def _query_relevant_sync(self, context: str, owner: str, n_results: int) -> list[str]:
         results = []
         now = time.time()
-
         try:
             for collection in [self._profile, self._episodic]:
                 count = collection.count()
@@ -180,26 +195,33 @@ class MemoryStore:
                     if expires and expires < now:
                         continue
                     results.append(doc)
-
         except Exception as e:
             logger.error("query_relevant failed", error=str(e))
-
         return results[:n_results]
 
     async def clear_working(self, owner: str | None = None) -> None:
         owner = owner or settings.DEFAULT_OWNER
-        if self._working:
-            try:
-                ids = self._working.get(where={"owner": owner})["ids"]
-                if ids:
-                    self._working.delete(ids=ids)
-                logger.info("working memory cleared", owner=owner)
-            except Exception as e:
-                logger.error("clear_working failed", error=str(e))
+        if not self._working:
+            return
+        await run_in_threadpool(self._clear_working_sync, owner)
+
+    def _clear_working_sync(self, owner: str) -> None:
+        try:
+            ids = self._working.get(where={"owner": owner})["ids"]
+            if ids:
+                self._working.delete(ids=ids)
+            logger.info("working memory cleared", owner=owner)
+        except Exception as e:
+            logger.error("clear_working failed", error=str(e))
 
     async def get_profile_facts(self, owner: str | None = None, n: int = 10) -> list[str]:
+        if not self.loaded:
+            return []
         owner = owner or settings.DEFAULT_OWNER
-        if not self.loaded or not self._profile.count():
+        return await run_in_threadpool(self._get_profile_facts_sync, owner, n)
+
+    def _get_profile_facts_sync(self, owner: str, n: int) -> list[str]:
+        if not self._profile.count():
             return []
         try:
             result = self._profile.get(where={"owner": owner}, limit=n)
