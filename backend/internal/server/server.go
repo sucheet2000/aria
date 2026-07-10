@@ -49,22 +49,11 @@ func (s *Server) Start(ctx context.Context) error {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recoverer)
 
-	s.router.Get("/health", s.handleHealth)
-	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ServeWs(s.hub, w, r)
-	})
-
-	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
-	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
-
-	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
-	ttsHandler := tts.NewHandler(ttsClient)
-
 	authEnabled := s.cfg.ClerkSecretKey != ""
 	var verifier auth.Verifier
 	if authEnabled {
 		verifier = auth.NewClerkVerifier(s.cfg.ClerkSecretKey, s.cfg.ClerkJWTIssuer)
-		log.Info().Msg("clerk auth enabled on /api")
+		log.Info().Msg("clerk auth enabled on /api and /ws")
 	} else {
 		if !isLoopback(s.cfg.Host) && os.Getenv("ALLOW_INSECURE_NO_AUTH") != "1" {
 			log.Fatal().Msgf(
@@ -72,8 +61,19 @@ func (s *Server) Start(ctx context.Context) error {
 				s.cfg.Host,
 			)
 		}
-		log.Warn().Msg("clerk auth disabled on /api (CLERK_SECRET_KEY not set)")
+		log.Warn().Msg("clerk auth disabled on /api and /ws (CLERK_SECRET_KEY not set)")
 	}
+
+	s.router.Get("/health", s.handleHealth)
+	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
+		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
+	})
+
+	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
+	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
+
+	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
+	ttsHandler := tts.NewHandler(ttsClient)
 
 	s.router.Route("/api", func(r chi.Router) {
 		r.Use(corsMiddleware)

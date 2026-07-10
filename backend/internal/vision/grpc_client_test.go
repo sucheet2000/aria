@@ -15,6 +15,10 @@ func (m *mockBroadcaster) Broadcast(data []byte) {
 	m.received = append(m.received, data)
 }
 
+func (m *mockBroadcaster) BroadcastScoped(data []byte) {
+	m.received = append(m.received, data)
+}
+
 func TestBroadcastFrame_ProducesVisionStateJSON(t *testing.T) {
 	hub := &mockBroadcaster{}
 	client := NewGRPCClient(hub)

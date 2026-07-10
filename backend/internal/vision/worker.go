@@ -18,8 +18,11 @@ import (
 )
 
 // Broadcaster is satisfied by any type that can broadcast raw bytes to clients.
+// BroadcastScoped delivers a frame only to the owner that claims the local
+// perception stream, so vision landmarks do not leak across users.
 type Broadcaster interface {
 	Broadcast([]byte)
+	BroadcastScoped([]byte)
 }
 
 // Worker manages the Python vision subprocess.
@@ -154,7 +157,7 @@ func (w *Worker) run(ctx context.Context) error {
 			}
 			lastVisionBroadcast = now
 			wrapped := fmt.Sprintf(`{"type":"vision_state","payload":%s}`, line)
-			w.hub.Broadcast([]byte(wrapped))
+			w.hub.BroadcastScoped([]byte(wrapped))
 		}
 	}()
 

@@ -16,8 +16,11 @@ import (
 )
 
 // Broadcaster is satisfied by any type that can broadcast raw bytes to clients.
+// BroadcastScoped delivers a frame only to the owner that claims the local
+// perception stream, so transcripts do not leak across users.
 type Broadcaster interface {
 	Broadcast([]byte)
+	BroadcastScoped([]byte)
 }
 
 // transcriptEnvelope wraps an audio transcript line for WebSocket broadcast.
@@ -118,7 +121,7 @@ func (w *Worker) run(ctx context.Context) error {
 				w.log.Error().Err(err).Msg("failed to marshal transcript envelope")
 				continue
 			}
-			w.hub.Broadcast(data)
+			w.hub.BroadcastScoped(data)
 		}
 	}()
 

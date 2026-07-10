@@ -39,3 +39,35 @@ func TestLoad_ClerkSettingsDefaultEmpty(t *testing.T) {
 		t.Errorf("ClerkJWTIssuer = %q, want empty", cfg.ClerkJWTIssuer)
 	}
 }
+
+func TestLoad_AllowedOriginsDefault(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "")
+
+	cfg := Load()
+
+	want := []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+	if len(cfg.AllowedOrigins) != len(want) {
+		t.Fatalf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+	for i, w := range want {
+		if cfg.AllowedOrigins[i] != w {
+			t.Errorf("AllowedOrigins[%d] = %q, want %q", i, cfg.AllowedOrigins[i], w)
+		}
+	}
+}
+
+func TestLoad_AllowedOriginsEnvOverride(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "https://app.aria.ai , http://localhost:3000 ")
+
+	cfg := Load()
+
+	want := []string{"https://app.aria.ai", "http://localhost:3000"}
+	if len(cfg.AllowedOrigins) != len(want) {
+		t.Fatalf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+	for i, w := range want {
+		if cfg.AllowedOrigins[i] != w {
+			t.Errorf("AllowedOrigins[%d] = %q, want %q", i, cfg.AllowedOrigins[i], w)
+		}
+	}
+}
