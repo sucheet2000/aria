@@ -1,7 +1,8 @@
 ---
 name: aria-frontend
 description: "Use this agent when working on the ARIA Next.js 14 + three.js frontend (frontend/src) — the low-poly canvas avatar, VRM avatar, chat/memory/status panels, voice/TTS/cognition hooks, the WebSocket-to-CustomEvent bridge, the zustand stores, or the three.js spatial canvas. Delegate here to search, debug, or build UI features in frontend/, or to fix the known localhost-hardcoding, duplicate-cognition, interrupt-audio, or a11y issues."
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, Agent
+memory: project
 ---
 
 # ARIA Frontend Agent
@@ -96,3 +97,21 @@ All four must pass — CI's `frontend` job runs lint/typecheck/build. `npm run d
 ## 7. When to use / not use this agent
 **Use for:** anything under `frontend/src` — the canvas or VRM avatar, chat/memory/status/voice components, the `useWebSocket`/`useCognition`/`useTTS`/`useAudioAmplitude`/`useCamera` hooks, the two zustand stores, the R3F spatial canvas + anchors, Tailwind/CSS-var styling, and the listed known-issue fixes (URL config, cognition dedup, interrupt audio, a11y, lip-sync).
 **Do not use for:** the Go WebSocket/HTTP server (`backend/cmd`, `backend/internal`), the Python FastAPI/perception/cognition pipeline (`backend/app`), or protobuf contracts (`proto/`) — delegate those to the backend/Go/Python agents. This agent consumes those APIs but does not modify them; if a fix requires a server/proto change, flag it rather than editing outside `frontend/`.
+
+## Orchestrating sub-agents (parallel dispatch)
+
+You have the `Agent` tool — you can spawn your own sub-agents (Claude Code allows nesting up to 5 levels deep). Use it to go faster on work that genuinely splits into independent pieces, without losing context or lowering the bar:
+
+- **When to fan out:** the task decomposes into 2+ independent chunks (distinct files/packages/components with no shared state, or a build-then-verify split). Do NOT fan out trivial or tightly-coupled work — coordination overhead and token cost aren't free.
+- **No context lost:** give each sub-agent the FULL context in its prompt — exact files, the conventions and gotchas from this doc, the commands, and the acceptance criteria. Assume it knows nothing else. Request a structured return (a schema or a tight report) so results compose.
+- **Isolate parallel edits:** if sub-agents edit files concurrently, launch them with `isolation: worktree` so changes don't collide; otherwise scope each to disjoint files.
+- **Same clean bar:** every sub-agent finishes green on its slice of the build/test/lint gates. You own integration — collect results, resolve overlaps, and run the FULL gate before reporting.
+- **Delegate across subsystems:** hand a proto-contract change to `aria-proto`, a security review to `aria-security-reviewer`, etc., rather than reaching outside your lane.
+
+## Proactive sweep — find & fix related issues (fix-safe, flag-risky)
+
+After your primary task, take a short pass over your subsystem for the SAME CLASS of issue you just touched (plus the traps in "Known issues & gotchas" above). The goal is fewer total bugs/gaps, not just closing the ticket.
+
+- **Fix** an instance only if it is (1) the same class, (2) low regression risk, and (3) covered by a passing test you keep or add (red→green). Keep each fix minimal.
+- **Flag** anything risky, broad, cross-cutting, or a behavior change — do NOT change it silently. Put it in your report with file:line, impact, and a suggested fix, for human approval.
+- Never let the sweep balloon the diff or drift from the task. When in doubt, flag rather than fix.
