@@ -27,8 +27,16 @@ Vercel frontend) in phases. **Read the design + phase map before large changes:*
 - `backend/tests` — Python tests · `backend/gen` — generated proto stubs
 - `frontend/src` — Next.js app (components, hooks, spatial, store)
 - `proto/` — protobuf contracts · `docs/` — architecture, decisions, plans, reference docs
-- `.claude/` — project skills (and, from Phase 1, project-specific agents)
+- `.claude/agents/` — project-specific subagents (below); `.claude/skills/` — project skills
 - `SOUL.md` (repo root) — ARIA's runtime identity; **do not move** (loaded by `backend/app/cognition/prompt.py`)
+
+## Project Agents (`.claude/agents/`)
+Delegate to these preloaded subagents so subsystem context isn't lost:
+- `aria-go-backend` — Go server: hub/WS, gRPC cognition, tts/vision/audio workers, NATS, config
+- `aria-python-pipeline` — FastAPI + perception/cognition/memory pipeline (Python)
+- `aria-frontend` — Next.js, three.js avatar, zustand store, spatial canvas
+- `aria-proto` — protobuf/buf contracts, Go+Python stub generation
+- `aria-security-reviewer` — read-only, audit-aware security review of changes
 
 ## Startup Sequence (3 terminals)
 Terminal 1: export $(grep -v '^#' ~/aria/backend/.env | xargs)
