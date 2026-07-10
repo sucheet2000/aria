@@ -16,6 +16,10 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/memory"
 )
 
+// maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
+// into the returned error, so a large error page cannot bloat the message.
+const maxErrorBodyBytes = 4 << 10
+
 // Client forwards cognition requests to the Python FastAPI service and enriches
 // them with working memory.
 type Client struct {
@@ -94,11 +98,11 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(httpResp.Body)
+		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, maxErrorBodyBytes))
 		return CognitionResponse{}, fmt.Errorf(
-			"cognition service returned %d: %s",
+			"cognition upstream returned %d: %s",
 			httpResp.StatusCode,
-			string(body),
+			strings.TrimSpace(string(body)),
 		)
 	}
 
@@ -142,6 +146,12 @@ func suggestAvatarEmotion(inference string) string {
 		return "frustrated"
 	case containsAnyKeyword(lower, "distressed", "stressed", "worried"):
 		return "fearful"
+	case containsAnyKeyword(lower, "sad", "unhappy", "disappointed"):
+		return "sad"
+	case containsAnyKeyword(lower, "angry", "furious", "annoyed"):
+		return "angry"
+	case containsAnyKeyword(lower, "disgusted", "gross", "repulsed"):
+		return "disgusted"
 	case containsAnyKeyword(lower, "focused", "working", "building"):
 		return "neutral"
 	case containsAnyKeyword(lower, "happy", "excited", "progress"):
