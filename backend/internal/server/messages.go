@@ -3,15 +3,15 @@ package server
 import "encoding/json"
 
 const (
-	MsgTypeVisionState       = "vision_state"
-	MsgTypeTranscript        = "transcript"
-	MsgTypeARIAResponse      = "aria_response"
-	MsgTypeError             = "error"
-	MsgTypeSessionInit       = "session_init"
-	MsgTypeAnchorRegistered  = "anchor_registered"
-	MsgTypeAnchorsBonded     = "anchors_bonded"
-	MsgTypeAnchorThrown      = "anchor_thrown"
-	MsgTypeWorldExpand       = "world_expand"
+	MsgTypeVisionState      = "vision_state"
+	MsgTypeTranscript       = "transcript"
+	MsgTypeARIAResponse     = "aria_response"
+	MsgTypeError            = "error"
+	MsgTypeSessionInit      = "session_init"
+	MsgTypeAnchorRegistered = "anchor_registered"
+	MsgTypeAnchorsBonded    = "anchors_bonded"
+	MsgTypeAnchorThrown     = "anchor_thrown"
+	MsgTypeWorldExpand      = "world_expand"
 )
 
 // SpatialEvent is the WebSocket envelope for spatial anchor events produced

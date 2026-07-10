@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-
 // PerceptionFrame holds perception data from the vision worker.
 type PerceptionFrame struct {
 	Emotion       string  `json:"emotion"`
@@ -28,8 +27,8 @@ type ConversationTurn struct {
 
 // CognitionRequest is the body the browser (or Go→Python proxy) sends.
 type CognitionRequest struct {
-	Message             string           `json:"message"`
-	VisionState         PerceptionFrame  `json:"vision_state"`
+	Message             string             `json:"message"`
+	VisionState         PerceptionFrame    `json:"vision_state"`
 	ConversationHistory []ConversationTurn `json:"conversation_history"`
 	SessionID           string             `json:"session_id,omitempty"`
 	// Gesture fields forwarded verbatim to the Python spatial pipeline.
