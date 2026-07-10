@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { API_BASE } from "@/lib/config";
 
 interface MemoryPanelProps {
   assistantMessageCount: number;
@@ -17,7 +18,7 @@ export default function MemoryPanel({ assistantMessageCount }: MemoryPanelProps)
     setIsLoading(true);
     try {
       const token = await getToken();
-      const res = await fetch("http://localhost:8080/api/memory/profile", {
+      const res = await fetch(`${API_BASE}/api/memory/profile`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) return;

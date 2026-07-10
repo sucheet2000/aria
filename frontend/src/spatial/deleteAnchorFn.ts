@@ -1,7 +1,6 @@
 import { useWorldModel } from "./useWorldModel";
 import { broadcastAnchorRemoved } from "./useSpatialSync";
-
-const PYTHON_BASE = "http://localhost:8080";
+import { API_BASE } from "@/lib/config";
 
 // Non-React module: read the Clerk JWT off the global instance rather than a hook.
 async function getClerkToken(): Promise<string | null> {
@@ -22,7 +21,7 @@ export async function deleteAnchor(id: string): Promise<void> {
   broadcastAnchorRemoved(id);
   try {
     const token = await getClerkToken();
-    await fetch(`${PYTHON_BASE}/api/anchors/${id}`, {
+    await fetch(`${API_BASE}/api/anchors/${id}`, {
       method: "DELETE",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

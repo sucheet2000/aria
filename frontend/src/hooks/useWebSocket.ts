@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
+import { WS_URL } from "@/lib/config";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
 
-const WS_URL = "ws://localhost:8080/ws";
 const INITIAL_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const BACKOFF_MULTIPLIER = 1.5;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { wsSendRef } from "./useWebSocket";
+import { API_BASE } from "@/lib/config";
 
 export const ttsAudioRef: { current: HTMLAudioElement | null } = {
   current: null,
@@ -43,7 +44,7 @@ export function useTTS() {
 
     try {
       const token = await getToken();
-      const response = await fetch("http://localhost:8080/api/tts", {
+      const response = await fetch(`${API_BASE}/api/tts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
