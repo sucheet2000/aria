@@ -299,7 +299,7 @@ Each cognition turn:
 - Structured observability: MetricsCollector, /metrics endpoint
 - THROW animation with velocity decay using refs (60fps safe)
 - 2 HIGH + 1 MEDIUM hardening fixes before tag
-- KNOWN_ISSUES.md documents remaining low-severity items
+- docs/KNOWN_ISSUES.md documents remaining low-severity items
 
 </details>
 
