@@ -1,19 +1,31 @@
-version: "3.9"
-
 services:
+  # Single backend image: Go server (public) + Python FastAPI (internal) + the
+  # Python vision/audio workers, all launched by start.sh. Only the Go port is
+  # published — the Python service on 127.0.0.1:8000 is never exposed.
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8080:8080" # Go server only. Python :8000 stays inside the container.
     environment:
+      - HOST=0.0.0.0
+      - PORT=8080
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+      # Clerk auth: set these for a real auth gate. Left blank here for local dev,
+      # which requires ALLOW_INSECURE_NO_AUTH=1 because the Go bind is 0.0.0.0.
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      - CLERK_JWT_ISSUER=${CLERK_JWT_ISSUER:-}
+      - INTERNAL_AUTH_SECRET=${INTERNAL_AUTH_SECRET:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+      # Local dev only — never set this in production. Production sets a real
+      # CLERK_SECRET_KEY instead so the server does not run unauthenticated.
+      - ALLOW_INSECURE_NO_AUTH=${ALLOW_INSECURE_NO_AUTH:-1}
+      # No microphone in a container; the server-local audio worker is disabled.
+      - AUDIO_ENABLED=false
       - DEBUG=true
-    volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
-  # Add additional services here (e.g. Redis, vector DB) as needed
+  # Add additional services here (e.g. Redis, vector DB) as needed.
