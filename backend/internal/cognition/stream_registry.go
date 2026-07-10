@@ -55,7 +55,7 @@ func (r *StreamRegistry) evictStalePending() {
 }
 
 // Note: single cancel func per session is intentional for ARIA v1 (single-user).
-// Multi-session concurrent request tracking is a v2 concern tracked in IMPROVEMENT_SCHEME.md.
+// Multi-session concurrent request tracking is a v2 concern tracked in docs/IMPROVEMENT_SCHEME.md.
 
 // Register stores cancel for the given session. If an interrupt arrived before
 // this call (pending entry), cancel is called immediately.
