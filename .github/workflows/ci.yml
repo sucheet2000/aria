@@ -96,4 +96,7 @@ jobs:
         run: cd frontend && npm run type-check
 
       - name: Build
+        env:
+          # Publishable key is public (ships in the client bundle); needed at build time.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
         run: cd frontend && npm run build

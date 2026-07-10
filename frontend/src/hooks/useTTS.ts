@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { wsSendRef } from "./useWebSocket";
 
@@ -28,6 +29,7 @@ function speakWithBrowser(text: string): void {
 }
 
 export function useTTS() {
+  const { getToken } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,9 +42,13 @@ export function useTTS() {
     setError(null);
 
     try {
+      const token = await getToken();
       const response = await fetch("http://localhost:8080/api/tts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ text }),
         signal: AbortSignal.timeout(15000),
       });

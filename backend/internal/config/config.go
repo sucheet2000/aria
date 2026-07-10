@@ -24,6 +24,8 @@ type Config struct {
 	WhisperModel      string
 	CognitionGRPCAddr string
 	NatsURL           string
+	ClerkSecretKey    string
+	ClerkJWTIssuer    string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -44,7 +46,7 @@ func Load() *Config {
 
 	host := os.Getenv("HOST")
 	if host == "" {
-		host = "0.0.0.0"
+		host = "127.0.0.1"
 	}
 
 	pythonBin := os.Getenv("PYTHON_BIN")
@@ -107,6 +109,8 @@ func Load() *Config {
 		WhisperModel:      whisperModel,
 		CognitionGRPCAddr: cognitionGRPCAddr,
 		NatsURL:           natsURL,
+		ClerkSecretKey:    os.Getenv("CLERK_SECRET_KEY"),
+		ClerkJWTIssuer:    os.Getenv("CLERK_JWT_ISSUER"),
 	}
 }
 

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
     DEBUG: bool = False
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]

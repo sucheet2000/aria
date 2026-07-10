@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/sucheet2000/aria/backend/internal/auth"
 	"github.com/sucheet2000/aria/backend/internal/memory"
 )
 
@@ -72,6 +73,9 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 		return CognitionResponse{}, fmt.Errorf("build http request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if owner := auth.OwnerFromContext(ctx); owner != "" {
+		httpReq.Header.Set(auth.OwnerHeader, owner)
+	}
 
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {

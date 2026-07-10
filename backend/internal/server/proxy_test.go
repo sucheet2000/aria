@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +10,18 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/sucheet2000/aria/backend/internal/auth"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
 )
+
+type stubVerifier struct {
+	owner string
+}
+
+func (s stubVerifier) Verify(_ context.Context, _ string) (string, error) {
+	return s.owner, nil
+}
 
 func newTestServer(pythonURL string) *Server {
 	cfg := &config.Config{Port: 0}
@@ -124,6 +134,66 @@ func TestAnchorDeleteProxy_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestProxyHandlers_SetOwnerHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		mount  func(r chi.Router, s *Server)
+	}{
+		{
+			name:   "anchors get",
+			method: http.MethodGet,
+			path:   "/api/anchors",
+			mount:  func(r chi.Router, s *Server) { r.Get("/anchors", s.handleAnchorsProxy) },
+		},
+		{
+			name:   "memory profile get",
+			method: http.MethodGet,
+			path:   "/api/memory/profile",
+			mount:  func(r chi.Router, s *Server) { r.Get("/memory/profile", s.handleMemoryProfileProxy) },
+		},
+		{
+			name:   "anchor delete",
+			method: http.MethodDelete,
+			path:   "/api/anchors/abc-123",
+			mount:  func(r chi.Router, s *Server) { r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy) },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotOwner string
+			fakePython := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotOwner = r.Header.Get("X-Aria-Owner")
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{}`))
+			}))
+			defer fakePython.Close()
+
+			s := newTestServer(fakePython.URL)
+
+			router := chi.NewRouter()
+			router.Route("/api", func(r chi.Router) {
+				r.Use(auth.RequireAuth(stubVerifier{owner: "owner_9"}, true))
+				tt.mount(r, s)
+			})
+
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer tok")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+			}
+			if gotOwner != "owner_9" {
+				t.Errorf("X-Aria-Owner = %q, want owner_9", gotOwner)
+			}
+		})
 	}
 }
 

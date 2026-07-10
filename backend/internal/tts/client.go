@@ -13,6 +13,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/sucheet2000/aria/backend/internal/auth"
 )
 
 const pythonTTSURL = "http://localhost:8000/api/tts"
@@ -21,6 +22,7 @@ const pythonTTSURL = "http://localhost:8000/api/tts"
 type Client struct {
 	apiKey     string
 	voiceID    string
+	pythonURL  string
 	httpClient *http.Client
 	log        zerolog.Logger
 }
@@ -28,8 +30,9 @@ type Client struct {
 // New creates a new TTS client with the given API key and voice ID.
 func New(apiKey, voiceID string) *Client {
 	return &Client{
-		apiKey:  apiKey,
-		voiceID: voiceID,
+		apiKey:    apiKey,
+		voiceID:   voiceID,
+		pythonURL: pythonTTSURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -64,12 +67,15 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pythonTTSURL, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.pythonURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if owner := auth.OwnerFromContext(ctx); owner != "" {
+		req.Header.Set(auth.OwnerHeader, owner)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
