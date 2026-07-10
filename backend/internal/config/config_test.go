@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestLoad_ClerkSettings(t *testing.T) {
 	t.Setenv("CLERK_SECRET_KEY", "sk_test_123")
@@ -37,5 +40,79 @@ func TestLoad_ClerkSettingsDefaultEmpty(t *testing.T) {
 	}
 	if cfg.ClerkJWTIssuer != "" {
 		t.Errorf("ClerkJWTIssuer = %q, want empty", cfg.ClerkJWTIssuer)
+	}
+}
+
+func TestLoad_AllowedOriginsDefault(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "")
+	cfg := Load()
+	want := []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+	if !reflect.DeepEqual(cfg.AllowedOrigins, want) {
+		t.Errorf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+}
+
+func TestLoad_AllowedOriginsEnvOverride(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "https://app.aria.ai , http://localhost:3000 ")
+
+	cfg := Load()
+
+	want := []string{"https://app.aria.ai", "http://localhost:3000"}
+	if len(cfg.AllowedOrigins) != len(want) {
+		t.Fatalf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+	for i, w := range want {
+		if cfg.AllowedOrigins[i] != w {
+			t.Errorf("AllowedOrigins[%d] = %q, want %q", i, cfg.AllowedOrigins[i], w)
+		}
+	}
+}
+
+func TestLoad_AllowedOriginsFromEnv(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "https://a.com, https://b.com ,https://c.com")
+	cfg := Load()
+	want := []string{"https://a.com", "https://b.com", "https://c.com"}
+	if !reflect.DeepEqual(cfg.AllowedOrigins, want) {
+		t.Errorf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+}
+
+func TestLoad_RateLimitDefaults(t *testing.T) {
+	t.Setenv("RATE_LIMIT_RPS", "")
+	t.Setenv("RATE_LIMIT_BURST", "")
+	t.Setenv("RATE_LIMIT_GLOBAL_RPS", "")
+	t.Setenv("RATE_LIMIT_GLOBAL_BURST", "")
+	cfg := Load()
+	if cfg.RateLimitRPS != 5 {
+		t.Errorf("RateLimitRPS = %v, want 5", cfg.RateLimitRPS)
+	}
+	if cfg.RateLimitBurst != 10 {
+		t.Errorf("RateLimitBurst = %v, want 10", cfg.RateLimitBurst)
+	}
+	if cfg.RateLimitGlobalRPS != 50 {
+		t.Errorf("RateLimitGlobalRPS = %v, want 50", cfg.RateLimitGlobalRPS)
+	}
+	if cfg.RateLimitGlobalBurst != 100 {
+		t.Errorf("RateLimitGlobalBurst = %v, want 100", cfg.RateLimitGlobalBurst)
+	}
+}
+
+func TestLoad_RateLimitFromEnv(t *testing.T) {
+	t.Setenv("RATE_LIMIT_RPS", "2.5")
+	t.Setenv("RATE_LIMIT_BURST", "7")
+	t.Setenv("RATE_LIMIT_GLOBAL_RPS", "40")
+	t.Setenv("RATE_LIMIT_GLOBAL_BURST", "80")
+	cfg := Load()
+	if cfg.RateLimitRPS != 2.5 {
+		t.Errorf("RateLimitRPS = %v, want 2.5", cfg.RateLimitRPS)
+	}
+	if cfg.RateLimitBurst != 7 {
+		t.Errorf("RateLimitBurst = %v, want 7", cfg.RateLimitBurst)
+	}
+	if cfg.RateLimitGlobalRPS != 40 {
+		t.Errorf("RateLimitGlobalRPS = %v, want 40", cfg.RateLimitGlobalRPS)
+	}
+	if cfg.RateLimitGlobalBurst != 80 {
+		t.Errorf("RateLimitGlobalBurst = %v, want 80", cfg.RateLimitGlobalBurst)
 	}
 }

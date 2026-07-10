@@ -19,6 +19,14 @@ type testBroadcaster struct {
 }
 
 func (b *testBroadcaster) Broadcast(data []byte) {
+	b.record(data)
+}
+
+func (b *testBroadcaster) BroadcastScoped(data []byte) {
+	b.record(data)
+}
+
+func (b *testBroadcaster) record(data []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	cp := make([]byte, len(data))
