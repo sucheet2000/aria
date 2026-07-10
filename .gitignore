@@ -75,7 +75,8 @@ mcp-servers-repo/
 backend/data/anchors.db
 backend/data/*.db
 backend/data/*.db
-.claude/
+.claude/*
+!.claude/agents/
 .cursor/
 .mcp.json
 backend/data/*.db
