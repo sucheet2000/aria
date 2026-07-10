@@ -13,6 +13,22 @@ import (
 // service to identify the authenticated Clerk user.
 const OwnerHeader = "X-Aria-Owner"
 
+// InternalAuthHeader is the shared-secret header Go sets on every outgoing
+// request to the internal Python service. Python rejects requests whose value
+// does not match the configured secret, forming a defense-in-depth trust
+// boundary between the two services.
+const InternalAuthHeader = "X-Internal-Auth"
+
+// SetInternalAuth sets the internal trust-boundary header on an outgoing request
+// to the Python service. When secret is empty (local dev with no boundary
+// configured) it is a no-op, so Python's matching pass-through check keeps local
+// development working without the header.
+func SetInternalAuth(req *http.Request, secret string) {
+	if secret != "" {
+		req.Header.Set(InternalAuthHeader, secret)
+	}
+}
+
 // Verifier validates a session token and returns the owner (Clerk user id).
 type Verifier interface {
 	Verify(ctx context.Context, token string) (owner string, err error)

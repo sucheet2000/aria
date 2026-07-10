@@ -197,6 +197,80 @@ func TestProxyHandlers_SetOwnerHeader(t *testing.T) {
 	}
 }
 
+func TestProxyHandlers_SetInternalAuthHeader(t *testing.T) {
+	var gotSecret string
+	fakePython := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSecret = r.Header.Get("X-Internal-Auth")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer fakePython.Close()
+
+	s := newTestServer(fakePython.URL)
+	s.cfg.InternalAuthSecret = "boundary-secret"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/anchors", nil)
+	rec := httptest.NewRecorder()
+	s.handleAnchorsProxy(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if gotSecret != "boundary-secret" {
+		t.Errorf("X-Internal-Auth = %q, want boundary-secret", gotSecret)
+	}
+}
+
+func TestProxyHandlers_NoInternalAuthHeaderWhenSecretEmpty(t *testing.T) {
+	var hadHeader bool
+	fakePython := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, hadHeader = r.Header["X-Internal-Auth"]
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer fakePython.Close()
+
+	s := newTestServer(fakePython.URL) // InternalAuthSecret defaults to ""
+
+	req := httptest.NewRequest(http.MethodGet, "/api/anchors", nil)
+	rec := httptest.NewRecorder()
+	s.handleAnchorsProxy(rec, req)
+
+	if hadHeader {
+		t.Error("X-Internal-Auth should not be set when secret is empty")
+	}
+}
+
+func TestWorkingMemory_OwnerScoped(t *testing.T) {
+	s := newTestServer("")
+	s.workingMemory.Push("owner_a", "a-thought")
+	s.workingMemory.Push("owner_b", "b-thought")
+
+	get := func(owner string) []string {
+		req := httptest.NewRequest(http.MethodGet, "/api/memory/working", nil).
+			WithContext(auth.WithOwner(context.Background(), owner))
+		rec := httptest.NewRecorder()
+		s.handleWorkingMemory(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("owner %s status = %d, want 200", owner, rec.Code)
+		}
+		var entries []string
+		if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return entries
+	}
+
+	gotA := get("owner_a")
+	if len(gotA) != 1 || gotA[0] != "a-thought" {
+		t.Errorf("owner_a working memory = %v, want [a-thought]", gotA)
+	}
+	gotB := get("owner_b")
+	if len(gotB) != 1 || gotB[0] != "b-thought" {
+		t.Errorf("owner_b working memory = %v, want [b-thought]", gotB)
+	}
+}
+
 func TestCORSMiddleware_IncludesDelete(t *testing.T) {
 	handler := corsMiddleware(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -30,6 +30,9 @@ type Config struct {
 	NatsURL           string
 	ClerkSecretKey    string
 	ClerkJWTIssuer    string
+	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
+	// Python requires. Empty disables the boundary for local dev.
+	InternalAuthSecret string
 	// AllowedOrigins is the CORS allow-list for /api/* responses and the /ws origin check.
 	AllowedOrigins []string
 	// Rate-limit params for the paid endpoints (per-caller bucket + global ceiling).
@@ -152,6 +155,7 @@ func Load() *Config {
 		NatsURL:              natsURL,
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
+		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),
 		AllowedOrigins:       allowedOrigins,
 		RateLimitRPS:         rateLimitRPS,
 		RateLimitBurst:       rateLimitBurst,

@@ -29,5 +29,10 @@ class Settings(BaseSettings):
     # this from the authenticated identity so the data model is multi-user-ready.
     DEFAULT_OWNER: str = "local"
 
+    # Shared secret for the Go<->Python internal trust boundary. Go sends it as
+    # X-Internal-Auth; when set, this service rejects API requests that do not
+    # match. Empty (default) disables enforcement so local dev works without Go.
+    INTERNAL_AUTH_SECRET: str = ""
+
 
 settings = Settings()
