@@ -32,7 +32,7 @@ describe("deleteAnchor", () => {
   });
 
   it("removes the anchor from the store immediately (optimistic)", async () => {
-    useWorldModel.getState().addAnchor({ id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().addAnchor({ anchor_id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ deleted: "a1" }) })
@@ -44,7 +44,7 @@ describe("deleteAnchor", () => {
   });
 
   it("calls DELETE /api/anchors/{id}", async () => {
-    useWorldModel.getState().addAnchor({ id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().addAnchor({ anchor_id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -57,7 +57,7 @@ describe("deleteAnchor", () => {
   });
 
   it("broadcasts anchor_removed via BroadcastChannel", async () => {
-    useWorldModel.getState().addAnchor({ id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().addAnchor({ anchor_id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
     await deleteAnchor("a1");
@@ -66,7 +66,7 @@ describe("deleteAnchor", () => {
   });
 
   it("does not re-add the anchor if fetch fails", async () => {
-    useWorldModel.getState().addAnchor({ id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
+    useWorldModel.getState().addAnchor({ anchor_id: "a1", label: "lamp", x: 0, y: 0, z: 0 });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network error")));
 
     await deleteAnchor("a1");

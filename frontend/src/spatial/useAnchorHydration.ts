@@ -19,7 +19,7 @@ export function useAnchorHydration(): void {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data: { anchors: AnchorPayload[] }) => {
         for (const a of data.anchors) {
-          addAnchor({ id: a.anchor_id, label: a.label, x: a.x, y: a.y, z: a.z });
+          addAnchor({ anchor_id: a.anchor_id, label: a.label, x: a.x, y: a.y, z: a.z });
         }
       })
       .catch(() => {

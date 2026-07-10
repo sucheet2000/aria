@@ -39,7 +39,7 @@ describe("useAnchorHydration", () => {
     });
 
     const a1 = useWorldModel.getState().anchors.get("a1");
-    expect(a1).toEqual({ id: "a1", label: "lamp", x: 0.1, y: 0.2, z: 0.3 });
+    expect(a1).toEqual({ anchor_id: "a1", label: "lamp", x: 0.1, y: 0.2, z: 0.3 });
 
     const a2 = useWorldModel.getState().anchors.get("a2");
     expect(a2?.label).toBe("chair");
