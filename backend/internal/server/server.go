@@ -75,11 +75,24 @@ func (s *Server) Start(ctx context.Context) error {
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
 	ttsHandler := tts.NewHandler(ttsClient)
 
+	rl := newRateLimiter(
+		s.cfg.RateLimitRPS, s.cfg.RateLimitBurst,
+		s.cfg.RateLimitGlobalRPS, s.cfg.RateLimitGlobalBurst,
+	)
+	rl.start(ctx)
+
 	s.router.Route("/api", func(r chi.Router) {
-		r.Use(corsMiddleware)
+		r.Use(corsMiddleware(s.cfg.AllowedOrigins))
 		r.Use(auth.RequireAuth(verifier, authEnabled))
-		r.Post("/cognition", cogHandler.ServeHTTP)
-		r.Post("/tts", ttsHandler.ServeHTTP)
+
+		// Paid endpoints: rate-limited per authenticated caller (or IP) with a
+		// global ceiling. Auth runs first so OwnerFromContext keys the bucket.
+		r.Group(func(r chi.Router) {
+			r.Use(rl.Middleware)
+			r.Post("/cognition", cogHandler.ServeHTTP)
+			r.Post("/tts", ttsHandler.ServeHTTP)
+		})
+
 		r.Get("/memory/working", s.handleWorkingMemory)
 		r.Get("/memory/profile", s.handleMemoryProfileProxy)
 		r.Get("/anchors", s.handleAnchorsProxy)
@@ -204,19 +217,32 @@ func setOwnerHeader(out, in *http.Request) {
 	}
 }
 
-// corsMiddleware adds permissive CORS headers for all /api/* routes so the
-// frontend origin can reach the API during development.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+// corsMiddleware builds a CORS middleware for /api/* routes that reflects the
+// request Origin only when it is in the allowed set. Requests from other origins
+// receive no Access-Control-Allow-Origin header. The OPTIONS preflight is
+// short-circuited with 204.
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				if _, ok := allowed[origin]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Add("Vary", "Origin")
+				}
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
