@@ -19,12 +19,13 @@ import (
 // Client forwards cognition requests to the Python FastAPI service and enriches
 // them with working memory.
 type Client struct {
-	pythonServiceURL string
-	httpClient       *http.Client
-	workingMemory    *memory.WorkingMemory
-	log              zerolog.Logger
-	episodicMemory   []string
-	episodicMu       sync.RWMutex
+	pythonServiceURL   string
+	httpClient         *http.Client
+	workingMemory      *memory.WorkingMemory
+	log                zerolog.Logger
+	internalAuthSecret string
+	episodicMemory     map[string][]string
+	episodicMu         sync.RWMutex
 }
 
 // New creates a Client that proxies to the given Python service URL.
@@ -34,6 +35,7 @@ func New(pythonServiceURL string, wm *memory.WorkingMemory) *Client {
 		httpClient:       &http.Client{Timeout: 30 * time.Second},
 		workingMemory:    wm,
 		log:              zerolog.Nop(),
+		episodicMemory:   make(map[string][]string),
 	}
 }
 
@@ -42,6 +44,12 @@ func NewWithLogger(pythonServiceURL string, wm *memory.WorkingMemory, log zerolo
 	c := New(pythonServiceURL, wm)
 	c.log = log
 	return c
+}
+
+// SetInternalAuthSecret sets the shared secret sent as X-Internal-Auth on
+// requests to the Python service. Empty leaves the header unset (local dev).
+func (c *Client) SetInternalAuthSecret(secret string) {
+	c.internalAuthSecret = secret
 }
 
 // enrichedRequest extends CognitionRequest with memory fields forwarded to Python.
@@ -56,11 +64,12 @@ type enrichedRequest struct {
 // avatar emotion.
 func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionResponse, error) {
 	start := time.Now()
+	owner := auth.OwnerFromContext(ctx)
 
 	enriched := enrichedRequest{
 		CognitionRequest: req,
-		WorkingMemory:    c.workingMemory.Last(5),
-		EpisodicMemory:   c.getEpisodicMemory(),
+		WorkingMemory:    c.workingMemory.Last(owner, 5),
+		EpisodicMemory:   c.getEpisodicMemory(owner),
 	}
 
 	body, err := json.Marshal(enriched)
@@ -73,9 +82,10 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 		return CognitionResponse{}, fmt.Errorf("build http request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if owner := auth.OwnerFromContext(ctx); owner != "" {
+	if owner != "" {
 		httpReq.Header.Set(auth.OwnerHeader, owner)
 	}
+	auth.SetInternalAuth(httpReq, c.internalAuthSecret)
 
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -98,12 +108,12 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	}
 
 	if resp.SymbolicInference != "" {
-		c.workingMemory.Push(resp.SymbolicInference)
+		c.workingMemory.Push(owner, resp.SymbolicInference)
 	}
 
 	if len(resp.EpisodicMemory) > 0 {
 		c.episodicMu.Lock()
-		c.episodicMemory = resp.EpisodicMemory
+		c.episodicMemory[owner] = resp.EpisodicMemory
 		c.episodicMu.Unlock()
 	}
 
@@ -112,12 +122,13 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	return resp, nil
 }
 
-// getEpisodicMemory returns a copy of the cached episodic memory slice.
-func (c *Client) getEpisodicMemory() []string {
+// getEpisodicMemory returns a copy of the cached episodic memory slice for owner.
+func (c *Client) getEpisodicMemory(owner string) []string {
 	c.episodicMu.RLock()
 	defer c.episodicMu.RUnlock()
-	result := make([]string, len(c.episodicMemory))
-	copy(result, c.episodicMemory)
+	cached := c.episodicMemory[owner]
+	result := make([]string, len(cached))
+	copy(result, cached)
 	return result
 }
 

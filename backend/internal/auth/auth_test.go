@@ -156,3 +156,19 @@ func TestRequireAuth_NilVerifierWhenDisabled(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 }
+
+func TestSetInternalAuth_SetsHeaderWhenSecretPresent(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	SetInternalAuth(req, "s3cr3t")
+	if got := req.Header.Get(InternalAuthHeader); got != "s3cr3t" {
+		t.Errorf("%s = %q, want s3cr3t", InternalAuthHeader, got)
+	}
+}
+
+func TestSetInternalAuth_NoHeaderWhenSecretEmpty(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	SetInternalAuth(req, "")
+	if _, ok := req.Header[InternalAuthHeader]; ok {
+		t.Errorf("%s should not be set when secret is empty", InternalAuthHeader)
+	}
+}

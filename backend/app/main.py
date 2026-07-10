@@ -2,10 +2,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.cognition_route import router as cognition_router
+from app.api.deps import require_internal_auth
 from app.api.metrics_route import router as metrics_router
 from app.api.routes import router
 from app.api.tts_route import router as tts_router
@@ -42,8 +43,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(cognition_router)
+# The Go server is the only legitimate caller of the paid/data API routes, so
+# they sit behind the internal trust boundary. /health and /metrics stay open
+# for liveness probes and scraping.
+app.include_router(cognition_router, dependencies=[Depends(require_internal_auth)])
 app.include_router(metrics_router)
 app.include_router(router)
-app.include_router(tts_router)
+app.include_router(tts_router, dependencies=[Depends(require_internal_auth)])
 app.include_router(ws_router)

@@ -20,11 +20,12 @@ const pythonTTSURL = "http://localhost:8000/api/tts"
 
 // Client handles text-to-speech synthesis.
 type Client struct {
-	apiKey     string
-	voiceID    string
-	pythonURL  string
-	httpClient *http.Client
-	log        zerolog.Logger
+	apiKey             string
+	voiceID            string
+	pythonURL          string
+	internalAuthSecret string
+	httpClient         *http.Client
+	log                zerolog.Logger
 }
 
 // New creates a new TTS client with the given API key and voice ID.
@@ -38,6 +39,12 @@ func New(apiKey, voiceID string) *Client {
 		},
 		log: log.With().Str("component", "tts-client").Logger(),
 	}
+}
+
+// SetInternalAuthSecret sets the shared secret sent as X-Internal-Auth on
+// requests to the Python service. Empty leaves the header unset (local dev).
+func (c *Client) SetInternalAuthSecret(secret string) {
+	c.internalAuthSecret = secret
 }
 
 type proxyRequest struct {
@@ -76,6 +83,7 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 	if owner := auth.OwnerFromContext(ctx); owner != "" {
 		req.Header.Set(auth.OwnerHeader, owner)
 	}
+	auth.SetInternalAuth(req, c.internalAuthSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

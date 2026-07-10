@@ -70,9 +70,11 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
+	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
 	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
+	ttsClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
 	ttsHandler := tts.NewHandler(ttsClient)
 
 	rl := newRateLimiter(
@@ -137,7 +139,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
-	entries := s.workingMemory.All()
+	entries := s.workingMemory.All(auth.OwnerFromContext(r.Context()))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
 }
@@ -149,6 +151,7 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 		return
 	}
 	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -167,6 +170,7 @@ func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -187,6 +191,7 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
