@@ -25,6 +25,21 @@ def bridge(registry: AnchorRegistry) -> GestureAnchorBridge:
     return GestureAnchorBridge(registry)
 
 
+class TestOwnerScoping:
+    def test_point_registers_under_owner(
+        self, bridge: GestureAnchorBridge, registry: AnchorRegistry
+    ) -> None:
+        bridge.on_gesture_event(
+            gesture="point",
+            two_hand_gesture="NONE",
+            pointing_vector=[0.0, -1.0, 0.0],
+            session_id="s1",
+            owner="a",
+        )
+        assert len(registry.list_anchors(owner="a")) == 1
+        assert registry.list_anchors(owner="b") == []
+
+
 # ── POINT → anchor_registered ─────────────────────────────────────────────────
 
 class TestPointGesture:

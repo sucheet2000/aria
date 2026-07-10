@@ -10,7 +10,11 @@ from app.api.metrics_route import router as metrics_router
 from app.api.routes import router
 from app.api.tts_route import router as tts_router
 from app.api.websocket import ws_router
+from app.cognition.llm import LLMClient
+from app.cognition.memory import MemoryStore
 from app.config import settings
+from app.spatial.anchor_registry import AnchorRegistry
+from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
 logger = structlog.get_logger()
 
@@ -18,6 +22,12 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("ARIA backend starting up", host=settings.HOST, port=settings.PORT)
+    # Construct the expensive services once; handlers receive them via Depends.
+    app.state.llm = LLMClient(api_key=settings.ANTHROPIC_API_KEY)
+    app.state.memory = MemoryStore(persist_dir="./memory")
+    app.state.memory.load()
+    app.state.registry = AnchorRegistry()
+    app.state.bridge = GestureAnchorBridge(app.state.registry)
     yield
     logger.info("ARIA backend shutting down")
 

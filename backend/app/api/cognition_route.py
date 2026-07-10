@@ -1,11 +1,12 @@
 import dataclasses
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
+from app.api.deps import get_current_owner
 from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
-from app.config import settings
 from app.models.schemas import (
     CognitionRequest,
     CognitionResponse,
@@ -18,40 +19,33 @@ from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
 router = APIRouter()
 
-_client: LLMClient | None = None
-_memory: MemoryStore | None = None
-_bridge: GestureAnchorBridge | None = None
+
+# ── dependency providers (services are created once in the app lifespan) ──────
+
+def get_client(request: Request) -> LLMClient:
+    return request.app.state.llm
 
 
-def get_client() -> LLMClient:
-    global _client
-    if _client is None:
-        _client = LLMClient(api_key=settings.ANTHROPIC_API_KEY)
-    return _client
+def get_memory(request: Request) -> MemoryStore:
+    return request.app.state.memory
 
 
-def get_memory() -> MemoryStore:
-    global _memory
-    if _memory is None:
-        _memory = MemoryStore(persist_dir="./memory")
-        _memory.load()
-    return _memory
+def get_bridge(request: Request) -> GestureAnchorBridge:
+    return request.app.state.bridge
 
 
-def get_bridge() -> GestureAnchorBridge:
-    global _bridge
-    if _bridge is None:
-        _bridge = GestureAnchorBridge(AnchorRegistry())
-    return _bridge
-
-
-def get_registry() -> AnchorRegistry:
-    return get_bridge()._registry
+def get_registry(request: Request) -> AnchorRegistry:
+    return request.app.state.registry
 
 
 @router.post("/api/cognition")
-async def cognition(req: CognitionRequest) -> dict:
-    client = get_client()
+async def cognition(
+    req: CognitionRequest,
+    client: LLMClient = Depends(get_client),
+    memory: MemoryStore = Depends(get_memory),
+    bridge: GestureAnchorBridge = Depends(get_bridge),
+    owner: str = Depends(get_current_owner),
+) -> dict:
     start = time.time()
 
     vision = PerceptionFrame(
@@ -75,8 +69,6 @@ async def cognition(req: CognitionRequest) -> dict:
     processing_ms = int((time.time() - start) * 1000)
     MetricsCollector().record_cognition_latency(processing_ms)
 
-    memory = get_memory()
-
     if result.world_model_update:
         wmu = result.world_model_update
         await memory.store_triple(
@@ -85,18 +77,20 @@ async def cognition(req: CognitionRequest) -> dict:
             obj=wmu.triple.object,
             confidence=wmu.confidence,
             source=wmu.source,
+            owner=owner,
         )
 
-    episodic = await memory.query_relevant(req.message, n_results=5)
+    episodic = await memory.query_relevant(req.message, owner=owner, n_results=5)
 
     spatial_event: SpatialEvent | None = None
     if req.hand_gesture != "none" or req.two_hand_gesture != "NONE":
-        bridge = get_bridge()
-        spatial_event = bridge.on_gesture_event(
-            gesture=req.hand_gesture,
-            two_hand_gesture=req.two_hand_gesture,
-            pointing_vector=req.pointing_vector,
-            session_id=req.session_id,
+        spatial_event = await run_in_threadpool(
+            bridge.on_gesture_event,
+            req.hand_gesture,
+            req.two_hand_gesture,
+            req.pointing_vector,
+            req.session_id,
+            owner,
         )
         if spatial_event is not None:
             MetricsCollector().record_anchor_created()
@@ -112,8 +106,11 @@ async def cognition(req: CognitionRequest) -> dict:
 
 
 @router.get("/api/anchors")
-async def list_anchors() -> dict:
-    anchors = get_registry().list_anchors()
+async def list_anchors(
+    registry: AnchorRegistry = Depends(get_registry),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    anchors = await run_in_threadpool(registry.list_anchors, owner)
     return {
         "anchors": [
             {
@@ -130,33 +127,44 @@ async def list_anchors() -> dict:
 
 
 @router.delete("/api/anchors/{anchor_id}")
-async def delete_anchor(anchor_id: str) -> dict:
-    if not get_registry().delete_anchor(anchor_id):
+async def delete_anchor(
+    anchor_id: str,
+    registry: AnchorRegistry = Depends(get_registry),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    deleted = await run_in_threadpool(registry.delete_anchor, anchor_id, owner)
+    if not deleted:
         raise HTTPException(status_code=404, detail="anchor not found")
     return {"deleted": anchor_id}
 
 
 @router.get("/api/memory/profile")
-async def get_profile() -> dict:
-    memory = get_memory()
-    facts = await memory.get_profile_facts(n=20)
+async def get_profile(
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    facts = await memory.get_profile_facts(owner=owner, n=20)
     return {"facts": facts, "count": len(facts)}
 
 
 @router.get("/api/memory/episodic")
-async def get_episodic() -> dict:
-    memory = get_memory()
+async def get_episodic(
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
     if not memory.loaded:
         return {"facts": [], "count": 0}
     try:
-        result = memory._episodic.get(limit=20)  # type: ignore[attr-defined]
+        result = memory._episodic.get(where={"owner": owner}, limit=20)  # type: ignore[attr-defined]
         return {"facts": result["documents"], "count": len(result["documents"])}
     except Exception:
         return {"facts": [], "count": 0}
 
 
 @router.delete("/api/memory/working")
-async def clear_working() -> dict:
-    memory = get_memory()
-    await memory.clear_working()
+async def clear_working(
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    await memory.clear_working(owner=owner)
     return {"status": "cleared"}

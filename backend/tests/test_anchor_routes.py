@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,8 +16,10 @@ def registry(tmp_path: pathlib.Path) -> AnchorRegistry:
 
 @pytest.fixture()
 def client(registry: AnchorRegistry) -> TestClient:
-    with patch("app.api.cognition_route.get_registry", return_value=registry):
-        yield TestClient(app)
+    from app.api.cognition_route import get_registry
+    app.dependency_overrides[get_registry] = lambda: registry
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 # --- GET /api/anchors ---

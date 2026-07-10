@@ -4,10 +4,14 @@ Week 9: Spatial anchor registry.
 Persists 3D spatial anchors (created from pointing-vector registration) to SQLite.
 Each anchor captures a physical location in normalized 3D space.
 
+Anchors are scoped by ``owner`` (defaults to settings.DEFAULT_OWNER). Every read
+filters on it, so one owner never sees another's anchors. Legacy databases are
+migrated to add the ``owner`` column (existing rows backfill to 'local').
+
 Interface:
-    register_anchor(pointing_vector, label) → anchor_id (str)
-    get_anchor(anchor_id) → SpatialAnchor | None
-    list_anchors() → list[SpatialAnchor]
+    register_anchor(pointing_vector, label, owner=None) → anchor_id (str)
+    get_anchor(anchor_id, owner=None) → SpatialAnchor | None
+    list_anchors(owner=None) → list[SpatialAnchor]
 """
 from __future__ import annotations
 
@@ -18,7 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
+from app.config import settings
+
 _DEFAULT_DB = Path(__file__).parent.parent.parent / "data" / "anchors.db"
+
+_SELECT_COLS = "anchor_id, label, x, y, z, created_at_us"
 
 
 @dataclass
@@ -29,6 +37,12 @@ class SpatialAnchor:
     y: float
     z: float
     created_at_us: int
+
+
+def _row_to_anchor(row: tuple) -> SpatialAnchor:
+    return SpatialAnchor(
+        anchor_id=row[0], label=row[1], x=row[2], y=row[3], z=row[4], created_at_us=row[5]
+    )
 
 
 class AnchorRegistry:
@@ -51,11 +65,13 @@ class AnchorRegistry:
         self,
         pointing_vector: tuple[float, float, float],
         label: str,
+        owner: str | None = None,
     ) -> str:
         """Create and persist a new SpatialAnchor from a pointing vector.
 
         Returns the new anchor_id (UUID string).
         """
+        owner = owner or settings.DEFAULT_OWNER
         anchor_id = str(uuid.uuid4())
         x, y, z = pointing_vector
         now_us = int(time.time() * 1_000_000)
@@ -63,79 +79,71 @@ class AnchorRegistry:
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute(
                     """
-                    INSERT INTO anchors (anchor_id, label, x, y, z, created_at_us)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO anchors (anchor_id, label, x, y, z, created_at_us, owner)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (anchor_id, label, x, y, z, now_us),
+                    (anchor_id, label, x, y, z, now_us, owner),
                 )
                 conn.commit()
         return anchor_id
 
-    def get_anchor(self, anchor_id: str) -> SpatialAnchor | None:
+    def get_anchor(self, anchor_id: str, owner: str | None = None) -> SpatialAnchor | None:
+        owner = owner or settings.DEFAULT_OWNER
         with self._lock:
             with sqlite3.connect(self._db_path) as conn:
                 row = conn.execute(
-                    "SELECT anchor_id, label, x, y, z, created_at_us FROM anchors WHERE anchor_id = ?",
-                    (anchor_id,),
+                    f"SELECT {_SELECT_COLS} FROM anchors WHERE anchor_id = ? AND owner = ?",
+                    (anchor_id, owner),
                 ).fetchone()
-        if row is None:
-            return None
-        return SpatialAnchor(
-            anchor_id=row[0], label=row[1], x=row[2], y=row[3], z=row[4],
-            created_at_us=row[5],
-        )
+        return _row_to_anchor(row) if row is not None else None
 
-    def delete_anchor(self, anchor_id: str) -> bool:
-        """Delete the anchor with the given ID.
+    def delete_anchor(self, anchor_id: str, owner: str | None = None) -> bool:
+        """Delete the anchor with the given ID for the given owner.
 
         Returns True if a row was deleted, False if no such anchor existed.
         """
+        owner = owner or settings.DEFAULT_OWNER
         with self._lock:
             with sqlite3.connect(self._db_path) as conn:
                 cursor = conn.execute(
-                    "DELETE FROM anchors WHERE anchor_id = ?",
-                    (anchor_id,),
+                    "DELETE FROM anchors WHERE anchor_id = ? AND owner = ?",
+                    (anchor_id, owner),
                 )
                 conn.commit()
         return cursor.rowcount > 0
 
-    def update_anchor(self, anchor_id: str, label: str) -> SpatialAnchor | None:
-        """Update the label of an existing anchor.
+    def update_anchor(
+        self, anchor_id: str, label: str, owner: str | None = None
+    ) -> SpatialAnchor | None:
+        """Update the label of an existing anchor owned by ``owner``.
 
         Returns the updated SpatialAnchor, or None if no such anchor exists.
         """
+        owner = owner or settings.DEFAULT_OWNER
         with self._lock:
             with sqlite3.connect(self._db_path) as conn:
                 cursor = conn.execute(
-                    "UPDATE anchors SET label = ? WHERE anchor_id = ?",
-                    (label, anchor_id),
+                    "UPDATE anchors SET label = ? WHERE anchor_id = ? AND owner = ?",
+                    (label, anchor_id, owner),
                 )
                 conn.commit()
                 if cursor.rowcount == 0:
                     return None
                 row = conn.execute(
-                    "SELECT anchor_id, label, x, y, z, created_at_us FROM anchors WHERE anchor_id = ?",
-                    (anchor_id,),
+                    f"SELECT {_SELECT_COLS} FROM anchors WHERE anchor_id = ? AND owner = ?",
+                    (anchor_id, owner),
                 ).fetchone()
-        if row is None:
-            return None
-        return SpatialAnchor(
-            anchor_id=row[0], label=row[1], x=row[2], y=row[3], z=row[4],
-            created_at_us=row[5],
-        )
+        return _row_to_anchor(row) if row is not None else None
 
-    def list_anchors(self) -> list[SpatialAnchor]:
+    def list_anchors(self, owner: str | None = None) -> list[SpatialAnchor]:
+        owner = owner or settings.DEFAULT_OWNER
         with self._lock:
             with sqlite3.connect(self._db_path) as conn:
                 rows = conn.execute(
-                    "SELECT anchor_id, label, x, y, z, created_at_us FROM anchors ORDER BY created_at_us"
+                    f"SELECT {_SELECT_COLS} FROM anchors WHERE owner = ? ORDER BY created_at_us",
+                    (owner,),
                 ).fetchall()
-        return [
-            SpatialAnchor(
-                anchor_id=r[0], label=r[1], x=r[2], y=r[3], z=r[4], created_at_us=r[5]
-            )
-            for r in rows
-        ]
+        return [_row_to_anchor(r) for r in rows]
 
     # ── internal ─────────────────────────────────────────────────────────────
 
@@ -148,7 +156,14 @@ class AnchorRegistry:
                     x             REAL NOT NULL,
                     y             REAL NOT NULL,
                     z             REAL NOT NULL,
-                    created_at_us INTEGER NOT NULL
+                    created_at_us INTEGER NOT NULL,
+                    owner         TEXT NOT NULL DEFAULT 'local'
                 )
             """)
+            # Migrate legacy DBs that predate the owner column (backfills to 'local').
+            columns = [r[1] for r in conn.execute("PRAGMA table_info(anchors)").fetchall()]
+            if "owner" not in columns:
+                conn.execute(
+                    "ALTER TABLE anchors ADD COLUMN owner TEXT NOT NULL DEFAULT 'local'"
+                )
             conn.commit()

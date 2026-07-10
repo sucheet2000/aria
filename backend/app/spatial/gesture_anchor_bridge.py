@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 
+from app.config import settings
 from app.models.schemas import SpatialEvent
 from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
@@ -33,6 +34,7 @@ class GestureAnchorBridge:
         two_hand_gesture: str,
         pointing_vector: list[float] | None,
         session_id: str,
+        owner: str | None = None,
     ) -> SpatialEvent | None:
         """Translate a gesture event into a spatial action dict.
 
@@ -48,6 +50,7 @@ class GestureAnchorBridge:
         Returns:
             A dict describing the spatial event, or None when no action applies.
         """
+        owner = owner or settings.DEFAULT_OWNER
         MetricsCollector().record_gesture_event(two_hand_gesture if two_hand_gesture != "NONE" else gesture)
 
         # ── single-hand: POINT registers a new anchor ─────────────────────────
@@ -55,7 +58,7 @@ class GestureAnchorBridge:
             vec: tuple[float, float, float] = (
                 pointing_vector[0], pointing_vector[1], pointing_vector[2]
             )
-            anchor_id = self._registry.register_anchor(vec, "object")
+            anchor_id = self._registry.register_anchor(vec, "object", owner)
             return SpatialEvent(
                 event_type="anchor_registered",
                 anchor_id=anchor_id,
@@ -67,13 +70,13 @@ class GestureAnchorBridge:
 
         # ── two-hand gestures ─────────────────────────────────────────────────
         if two_hand_gesture == "BOND":
-            ids = self._two_nearest_anchor_ids()
+            ids = self._two_nearest_anchor_ids(owner)
             if ids is None:
                 return None
             return SpatialEvent(event_type="anchors_bonded", anchor_ids=ids)
 
         if two_hand_gesture == "THROW":
-            throw_target = self._nearest_anchor_id(pointing_vector)
+            throw_target = self._nearest_anchor_id(pointing_vector, owner)
             if throw_target is None:
                 return None
             velocity = list(pointing_vector) if pointing_vector is not None else [0.0, 0.0, -1.0]
@@ -86,12 +89,12 @@ class GestureAnchorBridge:
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    def _two_nearest_anchor_ids(self) -> list[str] | None:
+    def _two_nearest_anchor_ids(self, owner: str) -> list[str] | None:
         """Return the IDs of the two anchors closest to each other.
 
         Returns None when fewer than two anchors exist.
         """
-        anchors = self._registry.list_anchors()
+        anchors = self._registry.list_anchors(owner)
         if len(anchors) < 2:
             return None
         min_dist = float("inf")
@@ -107,13 +110,13 @@ class GestureAnchorBridge:
                     best = (a.anchor_id, b.anchor_id)
         return list(best)
 
-    def _nearest_anchor_id(self, pointing_vector: list[float] | None) -> str | None:
+    def _nearest_anchor_id(self, pointing_vector: list[float] | None, owner: str) -> str | None:
         """Return the ID of the anchor most aligned with the pointing direction.
 
         Falls back to the most recently registered anchor when pointing_vector
         is None or the registry is empty.
         """
-        anchors = self._registry.list_anchors()
+        anchors = self._registry.list_anchors(owner)
         if not anchors:
             return None
         if pointing_vector is None or len(pointing_vector) < 3:

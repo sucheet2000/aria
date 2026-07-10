@@ -80,21 +80,13 @@ class TestLocalHandlers:
 
         mock_create = AsyncMock()
         client._client.messages.create = mock_create
-        client._last_response = "prior answer"
 
-        from app.models.schemas import PerceptionFrame
-        vision = PerceptionFrame(
-            emotion="neutral",
-            confidence=0.9,
-            pitch=0.0,
-            yaw=0.0,
-            roll=0.0,
-            hands_detected=False,
-        )
+        from app.models.schemas import ConversationTurn, PerceptionFrame
+        vision = PerceptionFrame(emotion="neutral", confidence=0.9, hands_detected=False)
         result = await client.complete(
             message="repeat that",
             vision=vision,
-            conversation_history=[],
+            conversation_history=[ConversationTurn(role="assistant", content="prior answer")],
             working_memory=[],
             episodic_memory=[],
         )
@@ -102,6 +94,25 @@ class TestLocalHandlers:
         mock_create.assert_not_called()
         assert result.natural_language_response == "prior answer"
         assert result.symbolic_inference == "local_handler"
+
+    @pytest.mark.asyncio
+    async def test_replay_reads_history_not_shared_state(self) -> None:
+        """Replay comes from conversation_history, not shared instance state (no cross-session leak)."""
+        from app.models.schemas import ConversationTurn, PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        client._client.messages.create = AsyncMock()
+
+        async def replay(history: list[ConversationTurn]) -> str:
+            r = await client.complete("repeat that", PerceptionFrame(), history, [], [])
+            return r.natural_language_response
+
+        assert await replay([ConversationTurn(role="assistant", content="A reply")]) == "A reply"
+        # a different "session" must not leak the previous reply
+        assert await replay([ConversationTurn(role="assistant", content="B reply")]) == "B reply"
+        # no assistant history → default, never a leaked prior reply
+        assert await replay([]) == "I haven't said anything yet."
+        assert not hasattr(client, "_last_response")
 
 
 # ── soul cache ────────────────────────────────────────────────────────────────

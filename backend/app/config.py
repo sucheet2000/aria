@@ -25,5 +25,9 @@ class Settings(BaseSettings):
     WHISPER_MODEL: str = "base"
     KMP_DUPLICATE_LIB_OK: str = "TRUE"
 
+    # Identity of the data owner. Single-user default today; Phase 4 sources
+    # this from the authenticated identity so the data model is multi-user-ready.
+    DEFAULT_OWNER: str = "local"
+
 
 settings = Settings()
