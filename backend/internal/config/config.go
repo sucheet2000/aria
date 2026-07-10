@@ -10,20 +10,20 @@ import (
 
 // Config holds all runtime configuration for the server.
 type Config struct {
-	Host               string
-	Port               int
-	PythonBin          string
-	VisionScript       string
-	AnthropicKey       string
-	ElevenLabsKey      string
-	Debug              bool
-	AudioScript        string
-	AudioEnabled       bool
-	TTSProvider        string
-	ElevenLabsVoiceID  string
-	WhisperModel       string
-	CognitionGRPCAddr  string
-	NatsURL            string
+	Host              string
+	Port              int
+	PythonBin         string
+	VisionScript      string
+	AnthropicKey      string
+	ElevenLabsKey     string
+	Debug             bool
+	AudioScript       string
+	AudioEnabled      bool
+	TTSProvider       string
+	ElevenLabsVoiceID string
+	WhisperModel      string
+	CognitionGRPCAddr string
+	NatsURL           string
 }
 
 // Load reads configuration from environment variables with sensible defaults.

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"github.com/rs/zerolog/log"
+	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

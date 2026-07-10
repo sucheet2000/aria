@@ -22,10 +22,10 @@ type Broadcaster interface {
 // Uses DiscardOld pending policy: when the pending queue is full (100 msgs), the
 // oldest message is dropped so the subscriber never blocks the publisher.
 type Subscriber struct {
-	nc   *nats.Conn
-	hub  Broadcaster
-	sub  *nats.Subscription
-	url  string
+	nc  *nats.Conn
+	hub Broadcaster
+	sub *nats.Subscription
+	url string
 }
 
 // NewSubscriber creates a Subscriber that broadcasts to hub.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	natsgo "github.com/nats-io/nats.go"
 	natss "github.com/nats-io/nats-server/v2/server"
+	natsgo "github.com/nats-io/nats.go"
 	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -38,8 +38,8 @@ func (b *testBroadcaster) count() int {
 func startEmbeddedNATSServer(t *testing.T, port int) *natss.Server {
 	t.Helper()
 	opts := &natss.Options{
-		Port:  port,
-		NoLog: true,
+		Port:   port,
+		NoLog:  true,
 		NoSigs: true,
 	}
 	ns, err := natss.NewServer(opts)

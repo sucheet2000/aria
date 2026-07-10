@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"github.com/rs/zerolog"
+	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"google.golang.org/grpc/metadata"
 )
 
