@@ -55,7 +55,7 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
       const mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
       if (mag < 0.001) {
         velocityRef.current = null;
-        setAnchorVelocity(anchor.id, [0, 0, 0]); // store write: once to clear
+        setAnchorVelocity(anchor.anchor_id, [0, 0, 0]); // store write: once to clear
       } else {
         const next: [number, number, number] = [v[0] * 0.95, v[1] * 0.95, v[2] * 0.95];
         positionRef.current = [
@@ -125,7 +125,7 @@ export function AnchorMarker({ anchor }: AnchorMarkerProps) {
             position={[0, 0.38, 0]}
             onClick={(e: ThreeEvent<MouseEvent>) => {
               e.stopPropagation();
-              deleteAnchor(anchor.id);
+              deleteAnchor(anchor.anchor_id);
             }}
           >
             <sphereGeometry args={[0.04, 8, 8]} />
