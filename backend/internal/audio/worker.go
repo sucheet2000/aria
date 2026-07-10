@@ -150,8 +150,11 @@ func (w *Worker) run(ctx context.Context) error {
 		}
 	}()
 
-	err = cmd.Wait()
+	// Drain the scanner goroutines to EOF before reaping. cmd.Wait closes the
+	// stdout/stderr pipes on process exit, so reaping first can truncate an
+	// in-flight read and drop the run's output.
 	wg.Wait()
+	err = cmd.Wait()
 	w.setStdinPipe(nil)
 	if ctx.Err() != nil {
 		return nil
