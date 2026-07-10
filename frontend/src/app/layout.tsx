@@ -1,3 +1,4 @@
+import {ClerkProvider} from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Manrope, DM_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
@@ -38,7 +39,11 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#0e0e12" />
       </head>
-      <body style={{ minHeight: "100vh" }}>{children}</body>
+      <body style={{ minHeight: "100vh" }}>
+        <ClerkProvider>
+          {children}
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

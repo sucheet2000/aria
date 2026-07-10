@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
+	"github.com/sucheet2000/aria/backend/internal/auth"
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
@@ -58,8 +60,24 @@ func (s *Server) Start(ctx context.Context) error {
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
 	ttsHandler := tts.NewHandler(ttsClient)
 
+	authEnabled := s.cfg.ClerkSecretKey != ""
+	var verifier auth.Verifier
+	if authEnabled {
+		verifier = auth.NewClerkVerifier(s.cfg.ClerkSecretKey, s.cfg.ClerkJWTIssuer)
+		log.Info().Msg("clerk auth enabled on /api")
+	} else {
+		if !isLoopback(s.cfg.Host) && os.Getenv("ALLOW_INSECURE_NO_AUTH") != "1" {
+			log.Fatal().Msgf(
+				"refusing to start: auth disabled on non-loopback bind %s; set CLERK_SECRET_KEY or ALLOW_INSECURE_NO_AUTH=1",
+				s.cfg.Host,
+			)
+		}
+		log.Warn().Msg("clerk auth disabled on /api (CLERK_SECRET_KEY not set)")
+	}
+
 	s.router.Route("/api", func(r chi.Router) {
 		r.Use(corsMiddleware)
+		r.Use(auth.RequireAuth(verifier, authEnabled))
 		r.Post("/cognition", cogHandler.ServeHTTP)
 		r.Post("/tts", ttsHandler.ServeHTTP)
 		r.Get("/memory/working", s.handleWorkingMemory)
@@ -112,7 +130,13 @@ func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.httpClient.Get(s.pythonURL + "/api/memory/profile")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/memory/profile", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
 		return
@@ -124,7 +148,13 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.httpClient.Get(s.pythonURL + "/api/anchors")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/anchors", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
 		return
@@ -143,6 +173,7 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return
 	}
+	setOwnerHeader(req, r)
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -152,6 +183,25 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+// isLoopback reports whether host is a loopback (or unset) bind address, i.e. one
+// that is not reachable from other machines.
+func isLoopback(host string) bool {
+	switch host {
+	case "127.0.0.1", "localhost", "::1", "":
+		return true
+	default:
+		return false
+	}
+}
+
+// setOwnerHeader copies the authenticated owner from the inbound request context
+// onto the outbound request to the internal Python service.
+func setOwnerHeader(out, in *http.Request) {
+	if owner := auth.OwnerFromContext(in.Context()); owner != "" {
+		out.Header.Set(auth.OwnerHeader, owner)
+	}
 }
 
 // corsMiddleware adds permissive CORS headers for all /api/* routes so the

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import type { WorldModelUpdate } from "@/store/ariaStore";
 import { useWorldModel } from "@/spatial/useWorldModel";
@@ -81,6 +82,7 @@ function isWorldModelUpdate(obj: unknown): obj is Omit<WorldModelUpdate, "timest
 }
 
 export function useCognition() {
+  const { getToken } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const interruptedRef = useRef(false);
@@ -118,9 +120,13 @@ export function useCognition() {
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
+      const token = await getToken();
       const res = await fetch("http://localhost:8080/api/cognition", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         signal: controller.signal,
         body: JSON.stringify({
           message: text.trim(),
