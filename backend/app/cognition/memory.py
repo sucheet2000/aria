@@ -110,10 +110,11 @@ class MemoryStore:
         obj: str,
         confidence: float,
         source: str,
-        owner: str,
+        owner: str | None = None,
     ) -> None:
         if not self.loaded:
             return
+        owner = owner or settings.DEFAULT_OWNER
 
         doc_id = self._triple_id(owner, subject, predicate, obj)
         text = self._triple_text(subject, predicate, obj)
@@ -150,11 +151,12 @@ class MemoryStore:
     async def query_relevant(
         self,
         context: str,
-        owner: str,
+        owner: str | None = None,
         n_results: int = 5,
     ) -> list[str]:
         if not self.loaded:
             return []
+        owner = owner or settings.DEFAULT_OWNER
 
         results = []
         now = time.time()
@@ -184,7 +186,8 @@ class MemoryStore:
 
         return results[:n_results]
 
-    async def clear_working(self, owner: str) -> None:
+    async def clear_working(self, owner: str | None = None) -> None:
+        owner = owner or settings.DEFAULT_OWNER
         if self._working:
             try:
                 ids = self._working.get(where={"owner": owner})["ids"]
@@ -194,7 +197,8 @@ class MemoryStore:
             except Exception as e:
                 logger.error("clear_working failed", error=str(e))
 
-    async def get_profile_facts(self, owner: str, n: int = 10) -> list[str]:
+    async def get_profile_facts(self, owner: str | None = None, n: int = 10) -> list[str]:
+        owner = owner or settings.DEFAULT_OWNER
         if not self.loaded or not self._profile.count():
             return []
         try:
