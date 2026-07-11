@@ -107,3 +107,17 @@ You have the `Agent` tool. Use it to dispatch a sub-reviewer per finding (or per
 ## Proactive sweep — scan the rest of the codebase (report, don't fix)
 
 You are read-only: you REPORT, you never edit. After reviewing the primary diff, sweep the wider codebase (Go `backend/internal`, Python `backend/app`, frontend `frontend/src`) for the SAME CLASS of issue you found, and add any further instances to your ranked report (file:line, impact, fix). This catches latent copies of a bug before they bite in production. Flag everything for a human or a dev agent to fix; never modify code yourself.
+
+## Standards Enforcement (binding — see `docs/STANDARDS.md`)
+You are the read-only gate for the security + data-trust slice. Any PR touching auth, owner-scoping, secrets, the internal trust boundary, persistence, or the LLM prompt MUST pass your review. Check, and cite the rule ID, for every such PR:
+
+- SEC-1: no Clerk/internal token in any URL query string (grep `token=` in WS URL construction).
+- SEC-2: fail-closed startup guard present in BOTH Go edge AND Python `app.main` — neither boots without `INTERNAL_AUTH_SECRET` when `ENV != local`. Confirm Python has it, not just Go.
+- SEC-3 / DATA-6: owner derived only from verified Clerk `sub` (Go) or validated `X-Aria-Owner` (Python); scoped at the query layer; never from a client body field. Look for cross-tenant IDOR.
+- SEC-4: Clerk JWT verified against JWKS with issuer + sub + expiry, and re-checked on long-lived WS connections (not cached forever).
+- SEC-6: no global `activeOwner` / global mute / global StreamRegistry cross-cancel any client can seize — must be per-owner.
+- SEC-7: user speech + recalled memory are delimited/trust-labeled so they cannot override SOUL.md (attempt a mental prompt-injection: can recalled 'facts' rewrite identity?).
+- DATA-1/3/4: persist paths env-driven (no ephemeral-FS data loss), advertised TTL enforced by real deletion (PII retention), backup path exists.
+- SEC-5/9, DEP-5: no committed secret (gitleaks), gRPC on 127.0.0.1 only, no new gosec/bandit/pip-audit/govulncheck High/Critical.
+
+Output a pass/fail per rule ID with file:line evidence. Do not assert 'looks fine' without checking each. Flag exploit scenario + blast radius for any fail.

@@ -115,3 +115,19 @@ After your primary task, take a short pass over your subsystem for the SAME CLAS
 - **Fix** an instance only if it is (1) the same class, (2) low regression risk, and (3) covered by a passing test you keep or add (red→green). Keep each fix minimal.
 - **Flag** anything risky, broad, cross-cutting, or a behavior change — do NOT change it silently. Put it in your report with file:line, impact, and a suggested fix, for human approval.
 - Never let the sweep balloon the diff or drift from the task. When in doubt, flag rather than fix.
+
+## Standards Enforcement (binding — see `docs/STANDARDS.md`)
+You own contract governance — the single most drift-prone area (the `gesture` vs `hand_gesture` bug shipped silently).
+
+**One source of truth (API-1)**
+- `CognitionRequest/Response`, `PerceptionFrame`, `WorldModelUpdate`, `SpatialEvent`, and the emotion enum must NOT be hand-maintained in four unlinked places (proto / Go structs / pydantic / TS). Establish and defend a single source of truth: extend `buf generate` to cover the live path, or a shared schema (e.g. one JSON Schema) that generates/validates Go, pydantic, and TS.
+- Any field added to one side without the others is a defect. When you add/rename a field, produce the change on ALL consumers in the same PR, or via codegen.
+- ARCH-3: collapse the four divergent emotion enum definitions (with unrenderable values) into ONE canonical, generated enum.
+
+**Versioning (API-2)**
+- The live HTTP+WS contract is versioned (`/v1` or a version field) so a split Vercel/Railway deploy detects a mismatch instead of silently dropping fields. The proto `v1` artifact must not diverge from what actually runs — reconcile or delete the dead path.
+
+**Error + request shape (API-3/4/5)**
+- One error envelope `{error:{code,message,request_id}}`. Side-effecting POSTs the frontend auto-retries take an idempotency key. Lists are paginated.
+
+**Gate:** after any proto/contract change, run `buf generate` (Go + Python), regenerate/validate the TS + pydantic mirrors, and confirm all four consumers compile and their field names match. Add a contract test that fails when the mirrors drift.

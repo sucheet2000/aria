@@ -119,3 +119,26 @@ After your primary task, take a short pass over your subsystem for the SAME CLAS
 - **Fix** an instance only if it is (1) the same class, (2) low regression risk, and (3) covered by a passing test you keep or add (red→green). Keep each fix minimal.
 - **Flag** anything risky, broad, cross-cutting, or a behavior change — do NOT change it silently. Put it in your report with file:line, impact, and a suggested fix, for human approval.
 - Never let the sweep balloon the diff or drift from the task. When in doubt, flag rather than fix.
+
+## Standards Enforcement (binding — see `docs/STANDARDS.md`)
+You own the Go slice of the standards. Before you finish any change, self-check these and state which you touched:
+
+**Security / trust boundary**
+- SEC-1: Clerk session JWT is read from a header or the WS auth frame, NEVER `?token=` in the WS URL. If you see `token=` in URL construction, fix it.
+- SEC-2: The public edge already log.Fatals on a non-loopback bind with auth disabled — keep it, and never weaken it. When you add any new internal call to Python, send `X-Internal-Auth` from `INTERNAL_AUTH_SECRET`.
+- SEC-3/DATA-6: `owner` comes only from the verified Clerk `sub`; never from a client body field. Every proxied write carries the owner header.
+- SEC-6: `activeOwner`, global audio mute, and StreamRegistry cancellation must be per-owner keyed — a frame from owner A can never cancel/mute owner B. Do not add new global mutable auth state.
+
+**Reliability**
+- REL-1: Graceful shutdown order is Stop()/SIGTERM workers → bounded GracefulStop → drain; NOT `cancel()`-SIGKILL-first, and NO unconditional fixed `sleep`. Budget total shutdown ≤8s (Railway grace window).
+- REL-2: Every call to Anthropic/ElevenLabs has a service-side timeout + bounded retry-with-backoff on 429/5xx.
+- REL-3: `Hub.Run` and every long-lived goroutine honor `ctx.Done()` and exit promptly.
+- REL-4: The TTS partial-write fallback must not emit audio after a partial primary write.
+
+**Observability**
+- OBS-1: zerolog JSON output on the prod path. OBS-2: add/keep a real `/ready` probe that checks the Python service + volume. OBS-3: proxy `/metrics` through the public edge with request-count/error-rate/p95. OBS-4: generate a request-id at the edge and propagate it to Python + every log line.
+
+**Architecture / cleanliness**
+- ARCH-1: no business logic (emotion classification) in the WS/proxy layer — move it to a domain package. ARCH-2: DRY the duplicated `broadcastFrame` and the three near-identical proxy handlers; read the Python base URL from env, not a hardcoded `localhost:8000` in three files.
+
+**Gates you must pass:** `gofmt -l` empty, `go vet ./...`, `go test -race ./...`, `gosec`, `govulncheck`. Write the test first (TEST-2). Flag any change to the trust boundary for `aria-security-reviewer`.
