@@ -4,10 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+import app.cognition.prompt as prompt_module
 from app.cognition.conflict import detect_conflict, speech_sentiment, visual_sentiment
 from app.cognition.prompt import (
     CONFLICT_INSTRUCTION,
     NO_CONFLICT_INSTRUCTION,
+    _load_soul,
     build_system_prompt,
 )
 from app.models.schemas import (
@@ -85,6 +87,29 @@ def test_build_system_prompt_no_conflict_instruction_when_aligned():
     vision = PerceptionFrame(emotion="angry", confidence=0.7)
     prompt = build_system_prompt(vision, "I am frustrated", [], [])
     assert NO_CONFLICT_INSTRUCTION in prompt
+
+
+# --- _load_soul: SOUL_PATH override + repo-root fallback ---
+
+
+def test_load_soul_reads_from_soul_path_env(tmp_path, monkeypatch):
+    soul_file = tmp_path / "SOUL.md"
+    soul_file.write_text("I am the test soul identity.")
+    monkeypatch.setenv("SOUL_PATH", str(soul_file))
+    monkeypatch.setattr(prompt_module, "_soul_cache", None)
+    assert _load_soul() == "I am the test soul identity."
+
+
+def test_load_soul_falls_back_to_repo_root_when_unset(monkeypatch):
+    monkeypatch.delenv("SOUL_PATH", raising=False)
+    monkeypatch.setattr(prompt_module, "_soul_cache", None)
+    assert "ARIA" in _load_soul()
+
+
+def test_load_soul_returns_empty_when_file_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOUL_PATH", str(tmp_path / "missing.md"))
+    monkeypatch.setattr(prompt_module, "_soul_cache", None)
+    assert _load_soul() == ""
 
 
 # --- CognitionResponse schema ---

@@ -8,10 +8,10 @@ FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS go-builder
 
 WORKDIR /src
 
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY backend/ .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
@@ -44,7 +44,7 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 # Install the CPU-only torch wheel first so requirements.txt finds torch already
 # satisfied and skips the ~3 GB CUDA build (mirrors ci.yml).
-COPY requirements.txt ./
+COPY backend/requirements.txt ./
 RUN pip install --upgrade pip setuptools wheel \
     && pip install torch==2.10.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt
@@ -60,6 +60,7 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8080 \
     PYTHON_BIN=python3 \
     PYTHONPATH=/app:/app/gen/python \
+    SOUL_PATH=/app/SOUL.md \
     PATH="/opt/venv/bin:${PATH}"
 
 # System libraries the ML stack needs at runtime:
@@ -80,7 +81,8 @@ WORKDIR /app
 
 COPY --from=py-builder /opt/venv /opt/venv
 
-COPY . .
+COPY backend/ .
+COPY SOUL.md /app/SOUL.md
 COPY --from=go-builder /out/server ./server
 RUN chmod +x ./server ./start.sh
 
