@@ -22,6 +22,7 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 |------|------|-------------|
 | `DATA-1` | Ephemeral FS wiped all memory + anchors on every redeploy; persist paths hardcoded to `/app`, no volume env var | **A.1** — `DATA_DIR` setting; ChromaDB + SQLite anchors write to the Railway volume at `/data`; verified live on prod (commit `38afeb6`) |
 | `SEC-2` | Go→Python trust boundary was **fail-open** — no production startup guard on the Python side | **SEC-2 PR** — `validate_internal_auth` in `app.main` lifespan fails closed when `INTERNAL_AUTH_SECRET` is empty and `ENV != "local"` |
+| `REL-2` | Anthropic cognition call had **no timeout or retry**; `response.content[0]` unguarded against empty completions | **REL-2 PR** — `AsyncAnthropic` wired with config-driven `timeout`/`max_retries` (SDK backoff on 429/5xx); empty/non-text completion now returns a safe fallback instead of `IndexError` |
 
 ## Open debt
 
@@ -36,7 +37,6 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `DEP-1` | Python dependency graph non-deterministic — ~18/28 unpinned, no lockfile, no hashes | high | `backend/requirements.txt` | Phase E |
 | `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
 | `REL-1` | Graceful shutdown broken — `cancel()` SIGKILLs workers before `Stop()`, then a hard 10s sleep | medium | Go server shutdown | Phase E |
-| `REL-2` | Anthropic cognition call has **no timeout or retry** — transient 429/529 become hard 500s in the voice loop | medium | Python cognition client | Phase E |
 | `FE-1/FE-2` | WCAG 2.1 AA failures (labels, contrast, focus, reduced-motion) plus **no error boundary** on any live rendered path | medium | `frontend/src` | Phase E |
 | `DATA-5` | Unwired, unscoped **GraphMemory** subsystem shipped as latent risk (drop `networkx` if deleted) | medium | memory pipeline | Phase E |
 | `ARCH-1/2/3` | Business logic (emotion) in the transport layer; duplicated `broadcastFrame` + 3 near-identical proxy handlers + `localhost:8000` in 3 files; 4 divergent emotion enums | low–med | Go + frontend | Phase E / v2 |
