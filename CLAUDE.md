@@ -14,6 +14,54 @@ Vercel frontend) in phases. **Read the design + phase map before large changes:*
 - Locked decisions: full scope incl. audit hardening; single-user auth now with a
   multi-user-ready (`owner`/`user_id`-keyed) data model.
 
+## Engineering Standards — Binding (read `docs/STANDARDS.md`)
+Every change to ARIA must satisfy `docs/STANDARDS.md`. That file is the enforceable bar; this
+section is how you obey it on each change. Rule IDs like `DATA-1` refer to `docs/STANDARDS.md`.
+Pre-existing violations live in `docs/STANDARDS_DEBT.md` (tracked, not blocking — the ratchet).
+
+### Non-negotiables (a PR that breaks any of these does not merge)
+- **No secret in a URL** — Clerk/internal tokens go in headers or a WS auth frame, never `?token=` (SEC-1).
+- **Fail closed** — any process trusting `X-Aria-Owner`/`X-Internal-Auth` refuses to boot without
+  `INTERNAL_AUTH_SECRET` when `ENV != local` (SEC-2). gRPC binds `127.0.0.1` only.
+- **Owner-scope every data access** at the query layer, from the verified identity — never a body field (SEC-3, DATA-6).
+- **No durable state on ephemeral FS** — every persist path is env-driven via `DATA_DIR`; no hardcoded `/app`/`./data` (DATA-1).
+- **No server-side physical camera/mic capture** — `cv2.VideoCapture(<int>)` / `sounddevice` input are banned in cloud paths; capture is browser-side (SCALE-1).
+- **Every declared import is in the lockfile, pinned + hashed** — including `webrtcvad`. No hand-installed deps (DEP-1, DEP-2).
+- **Every third-party call has a timeout + bounded retry**; guard `response.content[0]` (REL-2).
+- **Advertised retention is enforced by deletion**, not read-time filtering (DATA-3).
+- **Contracts change in one source of truth**, versioned — never hand-edit one of proto/Go/pydantic/TS alone (API-1, API-2). The `gesture` vs `hand_gesture` bug is why.
+- **Never commit `backend/.env`; never hardcode API keys; never `git push` without an explicit instruction.**
+
+### Definition of Done checklist (paste into every PR description)
+```
+- [ ] Tests written first; `make check` green (pytest + go -race + vitest + lint + type-check)
+- [ ] No new MUST-rule violation (docs/STANDARDS.md); grandfathered items untouched
+- [ ] Secrets & persist paths env-driven; fail-closed guards intact (SEC-2, DATA-1, FE-4)
+- [ ] Owner-scoping preserved on all data paths (SEC-3, DATA-6)
+- [ ] New deps pinned + hashed + declared + audited (DEP-1..5)
+- [ ] New routes: structured JSON log + error metric + request-id + response_model (OBS/API)
+- [ ] Contract changes in one source of truth, versioned (API-1, API-2)
+- [ ] a11y checked on any UI change: label, contrast, focus, reduced-motion (FE-1)
+- [ ] Commit message shown in plain English and approved before commit
+```
+
+### Which agent to use when (delegate so subsystem context isn't lost)
+- Go server (hub/WS, auth edge, gRPC, tts/vision proxy, shutdown, metrics) → **aria-go-backend**
+- Python FastAPI, perception/cognition/memory pipeline, LLM client, persistence → **aria-python-pipeline**
+- Next.js, three.js avatar, hooks, zustand, spatial canvas, a11y, WS boundary → **aria-frontend**
+- protobuf/buf contracts + the live HTTP/WS contract source-of-truth → **aria-proto**
+- Before merging anything touching auth, owner-scoping, secrets, data access, or the trust
+  boundary → **aria-security-reviewer** (read-only review, must pass).
+
+### Order of operations for any change
+1. Plan (file-by-file) and get explicit "go" before code.
+2. Delegate to the owning agent above.
+3. TDD: red → green → refactor.
+4. `make check` locally; fix all four suites.
+5. Run `aria-security-reviewer` if the change touches the trust boundary/data.
+6. Show the plain-English commit message; wait for approval; commit.
+7. Open PR to `integration` (never push to dev/prod without an explicit instruction).
+
 ## Tech Stack
 - Backend: Go 1.26, Python 3.13, FastAPI, gRPC (buf), protobuf
 - Frontend: Next.js 14, TypeScript, Three.js, Tailwind
@@ -80,8 +128,10 @@ requirements.txt is unchanged so local macOS dev is unaffected.
 - Always push to integration, merge to main after each week
 
 ## Code Generation
-Proto stubs: cd proto && buf generate
-Python stubs: python3 -m grpc_tools.protoc -I. --python_out=../backend/gen/python --grpc_python_out=../backend/gen/python perception.proto
+Proto contract: proto/perception/v1/perception.proto (package aria.perception.v1)
+Stubs (Go + Python): cd proto && buf generate
+One command generates both Go (backend/gen/go/perception/v1) and self-contained
+nested Python (backend/gen/python/perception/v1). No separate grpc_tools step.
 
 ## Architecture Decisions
 - Session IDs: UUIDs generated per client, stored in ariaStore (a per-user `owner` key is added in Phase 3)

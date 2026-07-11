@@ -42,9 +42,34 @@ def validate_anthropic_key(settings: Settings) -> None:
     )
 
 
+def validate_internal_auth(settings: Settings) -> None:
+    """Guard against a fail-open Go<->Python trust boundary.
+
+    ``require_internal_auth`` only enforces the ``X-Internal-Auth`` header when
+    ``INTERNAL_AUTH_SECRET`` is set; an empty secret silently disables the
+    boundary, so an exposed ``:8000`` would let any client forge the
+    ``X-Aria-Owner`` identity. In a non-local ``ENV`` an empty secret is a fatal
+    startup error (fail closed, mirroring the Go edge); locally it is a loud
+    warning so dev without the Go server still runs.
+    """
+    if settings.INTERNAL_AUTH_SECRET:
+        return
+    if settings.ENV != "local":
+        raise RuntimeError(
+            "INTERNAL_AUTH_SECRET is empty but ENV is "
+            f"{settings.ENV!r} (non-local); refusing to start with a "
+            "fail-open trust boundary"
+        )
+    logger.warning(
+        "INTERNAL_AUTH_SECRET is empty; the Go<->Python trust boundary is open. "
+        "Set it in backend/.env (continuing for local dev).",
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     validate_anthropic_key(settings)
+    validate_internal_auth(settings)
     logger.info("ARIA backend starting up", host=settings.HOST, port=settings.PORT)
     # Ensure the durable-data tree exists before the stores initialize. In the
     # cloud DATA_DIR points at a mounted volume so memory + anchors survive

@@ -28,7 +28,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | `GestureType` (enum); `gesture` field on `HandGestureEvent` (type: `GestureType`) |
+| Proto | `proto/perception/v1/perception.proto` | `GestureType` (enum); `gesture` field on `HandGestureEvent` (type: `GestureType`) |
 | Python backend | `app/pipeline/gesture_classifier.py` | `GestureResult` (NamedTuple); `gesture_type: int` (field) |
 | Python backend | `app/pipeline/vision_worker.py` | `gesture_name: str` (local var; string: `"point"`, `"stop"`, `"none"`, etc.) |
 | Python backend | `app/models/schemas.py` | `gesture_name: str` (field in `GestureState`); `gesture: str` (field in `CognitionRequest`) |
@@ -57,7 +57,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | — (not modelled; absent from proto) |
+| Proto | `proto/perception/v1/perception.proto` | — (not modelled; absent from proto) |
 | Python backend | `app/pipeline/gesture_classifier.py` | `TwoHandGesture` (dataclass); `gesture_type: str` (field: `"HOLD"`, `"EXPAND"`, `"THROW"`, `"BOND"`, `"NONE"`) |
 | Python backend | `app/models/schemas.py` | `two_hand_gesture: str` (field in `CognitionRequest`) |
 | Python backend | `app/api/cognition_route.py` | `req.two_hand_gesture` (str) |
@@ -81,7 +81,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | `SpatialAnchor` (message); `anchor_id` (field); `spatial_anchor_id` (field on `HandGestureEvent` tag 13) |
+| Proto | `proto/perception/v1/perception.proto` | `SpatialAnchor` (message); `anchor_id` (field); `spatial_anchor_id` (field on `HandGestureEvent` tag 13) |
 | Python backend | `app/spatial/anchor_registry.py` | `SpatialAnchor` (dataclass); `anchor_id: str` (field) |
 | Python backend | `app/spatial/gesture_anchor_bridge.py` | `anchor_id` (local var); dict key `"anchor_id"` in returned payload |
 | Python backend | `app/api/cognition_route.py` | `spatial_event` dict (no typed class); key `"anchor_id"` forwarded from bridge |
@@ -108,7 +108,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | `PerceptionFrame` (message for raw per-frame data from vision worker) |
+| Proto | `proto/perception/v1/perception.proto` | `PerceptionFrame` (message for raw per-frame data from vision worker) |
 | Python backend | `app/pipeline/vision.py` | `VisionState` (return type of `process_frame`) |
 | Python backend | `app/models/schemas.py` | `VisionState` (full raw model with landmarks); `VisionContext` (trimmed model for cognition input) |
 | Python backend | `app/api/cognition_route.py` | `vision_state: VisionContext` (field in `CognitionRequest`); local var `vision: VisionContext` |
@@ -136,7 +136,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | `session_id` (string field on `HandGestureEvent`, `CognitionRequest`, `CognitionResponse`, `PerceptionFrame`, `StreamRequest`) |
+| Proto | `proto/perception/v1/perception.proto` | `session_id` (string field on `HandGestureEvent`, `CognitionRequest`, `CognitionResponse`, `PerceptionFrame`, `StreamRequest`) |
 | Python backend | `app/models/schemas.py` | `session_id: str` (field in `CognitionRequest`) |
 | Python backend | `app/api/cognition_route.py` | `req.session_id` |
 | Python backend | `app/spatial/gesture_anchor_bridge.py` | `session_id: str` (parameter) |
@@ -161,7 +161,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | `CognitionRequest` (message); `CognitionResponse` (message) |
+| Proto | `proto/perception/v1/perception.proto` | `CognitionRequest` (message); `CognitionResponse` (message) |
 | Python backend | `app/models/schemas.py` | `CognitionRequest` (Pydantic model); `SymbolicResponse` (response model — **not** `CognitionResponse`) |
 | Python backend | `app/api/cognition_route.py` | `CognitionRequest` (request); `result: SymbolicResponse` (internal); returns anonymous `dict` (no typed response class) |
 | Go server | `internal/cognition/handler.go` | `CognitionRequest` (Go struct); `CognitionResponse` (Go struct) |
@@ -182,7 +182,7 @@ All tests passing: 219 Python, 20 vitest, Go build clean.
 
 | Layer | File | Name used |
 |-------|------|-----------|
-| Proto | `proto/perception.proto` | — (not modelled) |
+| Proto | `proto/perception/v1/perception.proto` | — (not modelled) |
 | Python backend | `app/spatial/gesture_anchor_bridge.py` | returns `dict \| None` (no typed class); dict key `"type"` is `"anchor_registered"`, `"anchors_bonded"`, `"anchor_thrown"`, `"world_expand"` |
 | Python backend | `app/api/cognition_route.py` | `spatial_event: dict \| None` (local variable); returned under JSON key `"spatial_event"` |
 | Python backend | `app/models/schemas.py` | — (not modelled; no `SpatialEvent` class) |

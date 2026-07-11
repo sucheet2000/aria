@@ -21,6 +21,20 @@ repos:
       - id: ruff-format
         files: '^backend/'
 
+  # SEC-5: block committing secrets / backend/.env locally.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # SEC-9: Python SAST at commit time (medium+ severity, app code only).
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ["-ll"]
+        files: '^backend/app/.*\.py$'
+
   - repo: local
     hooks:
       - id: gofmt
@@ -41,3 +55,35 @@ repos:
         language: system
         files: '^frontend/src/.*\.(ts|tsx)$'
         pass_filenames: false
+
+      # mypy at commit time (matches the CI step) so type errors surface locally.
+      - id: mypy
+        name: mypy (backend)
+        entry: bash -c 'cd backend && mypy app tests'
+        language: system
+        files: '^backend/.*\.py$'
+        pass_filenames: false
+
+      # SEC-1: fail if a staged .go/.ts/.tsx builds a WebSocket URL with the auth
+      # token in the query string. Tokens belong in a header / auth frame.
+      - id: no-token-in-ws-url
+        name: 'SEC-1: no auth token in a WebSocket URL'
+        language: pygrep
+        entry: '(wss?://|WS_URL|wsUrl|ws_url)\S*[?&]token='
+        files: '\.(go|ts|tsx)$'
+
+      # DATA-1: fail if a staged backend .py writes durable state to the ephemeral
+      # container FS instead of the DATA_DIR-driven path.
+      - id: no-hardcoded-persist-path
+        name: 'DATA-1: no hardcoded /app persist path (use DATA_DIR)'
+        language: pygrep
+        entry: '/app/(memory|data|anchors)'
+        files: '^backend/.*\.py$'
+
+      # SCALE-1: fail if a staged backend .py opens a server-side physical
+      # camera/mic — capture must be browser-side in the cloud.
+      - id: no-device-capture
+        name: 'SCALE-1: no server-side camera/mic capture'
+        language: pygrep
+        entry: 'cv2\.VideoCapture\(|(sounddevice|sd)\.(Raw)?InputStream'
+        files: '^backend/.*\.py$'

@@ -1,10 +1,18 @@
 version: v2
 plugins:
-  - remote: buf.build/protocolbuffers/go
+  - remote: buf.build/protocolbuffers/go:v1.36.11
     out: ../backend
     opt:
       - module=github.com/sucheet2000/aria/backend
-  - remote: buf.build/grpc/go
+  - remote: buf.build/grpc/go:v1.6.1
     out: ../backend
     opt:
       - module=github.com/sucheet2000/aria/backend
+  # Python plugins are version-pinned: v31.1 emits protobuf 6.31.x gencode,
+  # which is import-compatible with the installed protobuf 6.33.5 runtime.
+  # An unpinned/newer plugin emits 7.x gencode that fails runtime_version.VersionError.
+  # grpc/python is pinned to v1.78.0 to match the installed grpcio runtime.
+  - remote: buf.build/protocolbuffers/python:v31.1
+    out: ../backend/gen/python
+  - remote: buf.build/grpc/python:v1.78.0
+    out: ../backend/gen/python

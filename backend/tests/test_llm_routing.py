@@ -7,7 +7,7 @@ Week 6: LMCache + tiered LLM routing tests.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -144,3 +144,100 @@ class TestSoulCache:
 
         assert result == ""
         assert prompt_mod._soul_cache == ""
+
+
+# ── REL-2: timeout, bounded retry, empty-completion guard ─────────────────────
+
+def _fake_response(text: str | None) -> MagicMock:
+    """Build a stand-in Anthropic message response.
+
+    ``text=None`` yields an empty ``content`` list (empty completion).
+    """
+    response = MagicMock()
+    if text is None:
+        response.content = []
+    else:
+        block = MagicMock()
+        block.text = text
+        response.content = [block]
+    return response
+
+
+class TestAnthropicReliability:
+    def test_client_uses_settings_defaults(self) -> None:
+        """No explicit timeout/retries → the client is wired from settings."""
+        from app.config import settings
+
+        client = LLMClient(api_key="test-key")
+        assert client._client.timeout == settings.ANTHROPIC_TIMEOUT_SECONDS
+        assert client._client.max_retries == settings.ANTHROPIC_MAX_RETRIES
+
+    def test_client_accepts_injected_timeout_and_retries(self) -> None:
+        """Explicit values are passed straight through to AsyncAnthropic."""
+        client = LLMClient(api_key="test-key", timeout=12.5, max_retries=7)
+        assert client._client.timeout == 12.5
+        assert client._client.max_retries == 7
+
+    @pytest.mark.asyncio
+    async def test_empty_completion_returns_fallback_not_indexerror(self) -> None:
+        """An empty ``content`` list must not raise IndexError."""
+        from app.models.schemas import PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        client._client.messages.create = AsyncMock(return_value=_fake_response(None))
+
+        result = await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert result.symbolic_inference == "empty completion"
+        assert result.world_model_update is None
+        assert result.natural_language_response == ""
+
+    @pytest.mark.asyncio
+    async def test_non_text_block_returns_fallback(self) -> None:
+        """A first block without a ``.text`` attribute falls back, not AttributeError."""
+        from app.models.schemas import PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        block = MagicMock(spec=[])  # no .text attribute
+        response = MagicMock()
+        response.content = [block]
+        client._client.messages.create = AsyncMock(return_value=response)
+
+        result = await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert result.symbolic_inference == "empty completion"
+
+    @pytest.mark.asyncio
+    async def test_wellformed_completion_parses(self) -> None:
+        """A normal completion still parses content[0].text (no regression)."""
+        from app.models.schemas import PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        payload = (
+            '{"symbolic_inference": "user is calm", '
+            '"natural_language_response": "Hi there."}'
+        )
+        client._client.messages.create = AsyncMock(return_value=_fake_response(payload))
+
+        result = await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert result.symbolic_inference == "user is calm"
+        assert result.natural_language_response == "Hi there."

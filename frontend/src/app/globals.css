@@ -51,6 +51,26 @@ input::placeholder {
   color: var(--on-surface-faint);
 }
 
+/* --- Accessibility: visible keyboard focus --- */
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* --- Accessibility: honor reduced-motion preference --- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* --- Animations --- */
 
 @keyframes aria-pulse-dot {

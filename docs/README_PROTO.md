@@ -10,16 +10,18 @@ For a production-grade neurosymbolic system, JSON is a liability:
 4.  **gRPC Streaming:** Enables the bi-directional communication required for sub-100ms interrupts.
 
 ## Compilation
-To generate code for both Go and Python, run:
+The contract lives at `proto/perception/v1/perception.proto`. A single command
+generates code for both Go and Python:
 
 ```bash
 # Install buf (see https://buf.build/docs/installation)
-buf generate
+cd proto && buf generate
 ```
 
 This will output:
-- `gen/go/`: Go package for the server and gRPC services.
-- `gen/python/`: Python package for the perception and cognition workers.
+- `backend/gen/go/perception/v1/`: Go package for the server and gRPC services.
+- `backend/gen/python/perception/v1/`: self-contained nested Python package for
+  the perception and cognition workers (imported as `from perception.v1 import ...`).
 
 ## Usage in ARIA
 1.  **System 1 (Vision/Audio):** Use the generated Python classes to serialize MediaPipe landmarks and Whisper transcriptions.

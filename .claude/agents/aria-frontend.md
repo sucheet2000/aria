@@ -115,3 +115,28 @@ After your primary task, take a short pass over your subsystem for the SAME CLAS
 - **Fix** an instance only if it is (1) the same class, (2) low regression risk, and (3) covered by a passing test you keep or add (red→green). Keep each fix minimal.
 - **Flag** anything risky, broad, cross-cutting, or a behavior change — do NOT change it silently. Put it in your report with file:line, impact, and a suggested fix, for human approval.
 - Never let the sweep balloon the diff or drift from the task. When in doubt, flag rather than fix.
+
+## Standards Enforcement (binding — see `docs/STANDARDS.md`)
+You own the frontend slice. Self-check before finishing:
+
+**Accessibility (WCAG 2.1 AA — currently failing several Level A/AA at once)**
+- FE-1: every icon-only control gets an `aria-label`; body text ≥4.5:1 contrast; visible keyboard focus on all focusable elements; every animation honors `prefers-reduced-motion`. `eslint-plugin-jsx-a11y` (error) must pass.
+
+**Robustness of live surfaces**
+- FE-2: wrap every live rendered path — especially the WebGL `<Canvas>` — in an error boundary so a context loss / render throw can't white-screen the companion. The existing boundary wraps dead code; move it to live code.
+- FE-3: type + runtime-validate the WebSocket message boundary (zod / discriminated union). A malformed frame is dropped+logged, never poisons the store or crashes cognition. No `any` at the WS boundary.
+- FE-5: don't re-create the avatar render loop on every store change — create the loop once, feed store values via refs.
+
+**Config / deploy (Vercel)**
+- FE-4: `NEXT_PUBLIC_API_BASE` (and required public env) fails loudly at startup in production if unset — no silent `localhost:8000` shipped to Vercel. Centralize the base URL in one config module (no hardcoding in three files).
+
+**Security touchpoint**
+- SEC-1: build the WS URL WITHOUT the Clerk token in the query string — send it in the subprotocol/auth-frame the Go server expects.
+
+**Contracts**
+- API-1: the frontend field names MUST match the pydantic model (`gesture`/`hand_gesture`). Change shared contracts in the source of truth.
+
+**Testing**
+- TEST-1: `npm test` (vitest) is now a gating CI step — keep the 5 suites green; add a test with every behavior change (anchor hydration, owner-scoped BroadcastChannel sync, delete flow).
+
+**Gates:** `npm run lint` (incl. jsx-a11y), `npm run type-check`, `npm run build`, `npm test`. No `any` in app code.

@@ -9,6 +9,7 @@ import structlog
 from anthropic import AsyncAnthropic
 
 from app.cognition.prompt import build_system_prompt
+from app.config import settings
 from app.models.schemas import (
     CognitionResponse,
     ConversationTurn,
@@ -89,8 +90,20 @@ def _handle_local(utterance: str, last_response: str) -> str:
 class LLMClient:
     MAX_TOKENS = 512
 
-    def __init__(self, api_key: str) -> None:
-        self._client = AsyncAnthropic(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = settings.ANTHROPIC_TIMEOUT_SECONDS,
+        max_retries: int = settings.ANTHROPIC_MAX_RETRIES,
+    ) -> None:
+        # The SDK does exponential-backoff retries on 408/409/429/>=500 via
+        # max_retries and enforces a per-request timeout — wire both from config
+        # so a transient 429/529 degrades gracefully instead of a hard 500.
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     async def complete(
         self,
@@ -149,7 +162,21 @@ class LLMClient:
         elapsed_ms = int((time.time() - start) * 1000)
         logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
 
-        raw = response.content[0].text.strip()  # type: ignore[union-attr]
+        first_block = response.content[0] if response.content else None
+        text = getattr(first_block, "text", None)
+        if text is None:
+            logger.warning(
+                "llm empty or non-text completion, falling back",
+                tier=tier,
+                model=model,
+            )
+            return CognitionResponse(
+                symbolic_inference="empty completion",
+                world_model_update=None,
+                natural_language_response="",
+            )
+
+        raw = text.strip()
         result = self._parse_response(raw)
         return result
 

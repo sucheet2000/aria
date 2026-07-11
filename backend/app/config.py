@@ -16,10 +16,19 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Names the deploy environment. Local dev defaults to "local"; set to
+    # "production" (or any non-local value) in the cloud. A non-local ENV makes
+    # missing security config a fatal startup error instead of a warning.
+    ENV: str = "local"
+
     ANTHROPIC_API_KEY: str = ""
     # When true, an empty ANTHROPIC_API_KEY is a fatal startup error instead of
     # a warning. Left false so key-less local dev keeps working.
     REQUIRE_ANTHROPIC_KEY: bool = False
+    # Per-request timeout (seconds) for outbound Anthropic cognition calls.
+    ANTHROPIC_TIMEOUT_SECONDS: float = 30.0
+    # Bounded SDK retries on transient (408/409/429/>=500) Anthropic errors.
+    ANTHROPIC_MAX_RETRIES: int = 3
     ELEVENLABS_API_KEY: str = ""
     HOST: str = "127.0.0.1"
     PORT: int = 8000

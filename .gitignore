@@ -72,8 +72,6 @@ mcp-servers-repo/
 *.pptx
 *.ppt
 .claude/settings.json
-backend/data/anchors.db
-backend/data/*.db
 backend/data/*.db
 .claude/*
 !.claude/agents/
@@ -83,5 +81,3 @@ backend/data/*.db
 # clerk CLI agent-skill artifacts
 .agents/
 skills-lock.json
-backend/data/*.db
-backend/data/*.db

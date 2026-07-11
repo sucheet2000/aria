@@ -8,6 +8,7 @@ import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
 import StatusBar from "@/components/StatusBar";
 import VoiceDot from "@/components/VoiceDot";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SpatialCanvas } from "@/spatial/SpatialCanvas";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
@@ -46,9 +47,9 @@ function SpatialIcon() {
   );
 }
 
-const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; icon: () => JSX.Element }> = [
-  { id: "chat", icon: ChatIcon },
-  { id: "memory", icon: MemoryIcon },
+const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.Element }> = [
+  { id: "chat", label: "chat", icon: ChatIcon },
+  { id: "memory", label: "memory", icon: MemoryIcon },
 ];
 
 function AriaApp() {
@@ -108,7 +109,9 @@ function AriaApp() {
           position: "relative",
           transition: "flex 0.3s ease",
         }}>
-          <Avatar3D />
+          <ErrorBoundary label="Avatar unavailable">
+            <Avatar3D />
+          </ErrorBoundary>
         </div>
 
         {/* Spatial canvas panel */}
@@ -120,7 +123,9 @@ function AriaApp() {
             background: "#000",
             animation: "aria-fade-up 0.2s ease forwards",
           }}>
-            <SpatialCanvas />
+            <ErrorBoundary label="3D view unavailable">
+              <SpatialCanvas />
+            </ErrorBoundary>
           </div>
         )}
       </div>
@@ -160,12 +165,14 @@ function AriaApp() {
         paddingTop: 24,
         gap: 24,
       }}>
-        {SIDEBAR_ITEMS.map(({ id, icon: Icon }) => (
+        {SIDEBAR_ITEMS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => togglePanel(id)}
             className={`sidebar-btn${activePanel === id ? " sidebar-btn-active" : ""}`}
+            aria-label={`${activePanel === id ? "Close" : "Open"} ${label} panel`}
+            aria-pressed={activePanel === id}
           >
             <Icon />
           </button>
@@ -176,6 +183,8 @@ function AriaApp() {
           type="button"
           onClick={() => setShowSpatial(prev => !prev)}
           className={`sidebar-btn${showSpatial ? " sidebar-btn-active" : ""}`}
+          aria-label="Toggle spatial canvas"
+          aria-pressed={showSpatial}
           title="Toggle spatial canvas"
         >
           <SpatialIcon />

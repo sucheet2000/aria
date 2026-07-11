@@ -132,12 +132,11 @@ func main() {
 	<-quit
 
 	log.Info().Msg("shutdown signal received")
-	cancel()
 
-	grpcSrv.GracefulStop()
-	audioWorker.Stop()
-	worker.Stop()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), server.ShutdownTimeout)
+	defer shutdownCancel()
 
-	time.Sleep(10 * time.Second)
+	server.GracefulShutdown(shutdownCtx, cancel, srv, grpcSrv, audioWorker, worker)
+
 	log.Info().Msg("server stopped")
 }
