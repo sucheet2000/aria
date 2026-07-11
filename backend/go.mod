@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/clerk/clerk-sdk-go/v2 v2.7.0
-	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/chi/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/nats-io/nats-server/v2 v2.12.6
