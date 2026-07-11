@@ -98,5 +98,8 @@ jobs:
       - name: Build
         env:
           # Publishable key is public (ships in the client bundle); needed at build time.
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+          # Dependabot and fork PRs cannot read Actions secrets, so fall back to a
+          # dummy public key — the build only needs a valid-format key to prerender,
+          # and the real key is injected on the actual deploy (Vercel).
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuZXhhbXBsZS5jb20k' }}
         run: cd frontend && npm run build
