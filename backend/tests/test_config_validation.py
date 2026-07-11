@@ -62,3 +62,19 @@ def test_env_defaults_to_local(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_env_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "production")
     assert Settings().ENV == "production"
+
+
+def test_anthropic_reliability_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("ANTHROPIC_MAX_RETRIES", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.ANTHROPIC_TIMEOUT_SECONDS == 30.0
+    assert settings.ANTHROPIC_MAX_RETRIES == 3
+
+
+def test_anthropic_reliability_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("ANTHROPIC_MAX_RETRIES", "7")
+    settings = Settings(_env_file=None)
+    assert settings.ANTHROPIC_TIMEOUT_SECONDS == 12.5
+    assert settings.ANTHROPIC_MAX_RETRIES == 7
