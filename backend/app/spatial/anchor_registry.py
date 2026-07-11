@@ -24,9 +24,15 @@ from threading import Lock
 
 from app.config import settings
 
-_DEFAULT_DB = Path(__file__).parent.parent.parent / "data" / "anchors.db"
-
 _SELECT_COLS = "anchor_id, label, x, y, z, created_at_us"
+
+
+def _default_db_path() -> Path:
+    """Anchors DB location, derived from the configured DATA_DIR.
+
+    Resolved lazily so DATA_DIR can be set via env/monkeypatch after import.
+    """
+    return Path(settings.DATA_DIR) / "data" / "anchors.db"
 
 
 @dataclass
@@ -53,7 +59,8 @@ class AnchorRegistry:
     The registry persists across restarts.
     """
 
-    def __init__(self, db_path: Path = _DEFAULT_DB) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
+        db_path = db_path if db_path is not None else _default_db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
         self._lock = Lock()

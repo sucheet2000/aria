@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from pathlib import Path
 
 import structlog
 from starlette.concurrency import run_in_threadpool
@@ -35,7 +36,9 @@ class MemoryStore:
     ``run_in_threadpool`` so it never blocks the FastAPI event loop.
     """
 
-    def __init__(self, persist_dir: str = "./memory") -> None:
+    def __init__(self, persist_dir: str | None = None) -> None:
+        if persist_dir is None:
+            persist_dir = str(Path(settings.DATA_DIR) / "memory")
         self._persist_dir = persist_dir
         self._client = None
         self._profile = None
@@ -45,6 +48,7 @@ class MemoryStore:
     def load(self) -> None:
         try:
             import chromadb
+            Path(self._persist_dir).mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(path=self._persist_dir)
             self._profile = self._client.get_or_create_collection(PROFILE_COLLECTION)
             self._episodic = self._client.get_or_create_collection(EPISODIC_COLLECTION)
