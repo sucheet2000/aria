@@ -43,6 +43,7 @@ class MetricsCollector:
                 inst._token_cost: dict[str, dict[str, int]] = {}
                 inst._anchors_created: int = 0
                 inst._gesture_events: dict[str, int] = {}
+                inst._errors: int = 0
                 inst._data_lock = Lock()
                 cls._instance = inst
         return cls._instance
@@ -69,6 +70,10 @@ class MetricsCollector:
         with self._data_lock:
             self._gesture_events[gesture_type] = self._gesture_events.get(gesture_type, 0) + 1
 
+    def record_error(self) -> None:
+        with self._data_lock:
+            self._errors += 1
+
     def snapshot(self) -> dict:
         with self._data_lock:
             return {
@@ -77,4 +82,5 @@ class MetricsCollector:
                 "token_cost": {k: dict(v) for k, v in self._token_cost.items()},
                 "anchors_created": self._anchors_created,
                 "gesture_events": dict(self._gesture_events),
+                "errors": self._errors,
             }
