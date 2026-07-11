@@ -25,6 +25,8 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `REL-2` | Anthropic cognition call had **no timeout or retry**; `response.content[0]` unguarded against empty completions | **REL-2 PR** — `AsyncAnthropic` wired with config-driven `timeout`/`max_retries` (SDK backoff on 429/5xx); empty/non-text completion now returns a safe fallback instead of `IndexError` |
 | `DATA-3` | Episodic **30-day TTL never enforced** — unbounded growth, PII retained forever | **DATA-3 PR** — `MemoryStore.sweep_expired` deletes episodic docs where `expires_at < now`; runs on `load()`, throttled (`SWEEP_INTERVAL_SECONDS`) on the episodic write path; read-time filter kept as defense-in-depth |
 | `TEST-1` | Frontend vitest suites never ran in CI — all 5 non-gating | **B2** (#60) — `npm test` (vitest) is now a gating CI step |
+| `DATA-5` | Unwired, unscoped GraphMemory subsystem shipped as latent risk | **#70** — deleted (proven dead: referenced only by its own test); dropped the `networkx` dep |
+| `REL-1` | Graceful shutdown mis-ordered — `cancel()`/SIGKILL before `Stop()`, then an unconditional 10s sleep | **#71** — ordered drain bounded to 8s: HTTP listener close → worker `Stop()` → gRPC `GracefulStop` w/ hard fallback → `cancel()` last; no fixed sleep |
 
 ## Open debt
 
@@ -36,9 +38,7 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `OBS-1/2/3` | Production observability blind — `/metrics` unreachable through the edge, health check that can't fail, non-JSON logs | high | Go edge + Python | Phase E |
 | `DEP-1` | Python dependency graph non-deterministic — ~18/28 unpinned, no lockfile, no hashes | high | `backend/requirements.txt` | Phase E |
 | `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
-| `REL-1` | Graceful shutdown broken — `cancel()` SIGKILLs workers before `Stop()`, then a hard 10s sleep | medium | Go server shutdown | Phase E |
-| `FE-1/FE-2` | WCAG 2.1 AA failures (labels, contrast, focus, reduced-motion) plus **no error boundary** on any live rendered path | medium | `frontend/src` | Phase E |
-| `DATA-5` | Unwired, unscoped **GraphMemory** subsystem shipped as latent risk (drop `networkx` if deleted) | medium | memory pipeline | Phase E |
+| `FE-1` | **Partial (#69):** icon-button labels, visible focus, reduced-motion **done**; **contrast** violations still open (need palette review — `--on-surface-faint` on `--void` ≈ 2.1:1 in placeholders/empty states/timestamps) | medium | `frontend/src` (CSS palette) | Phase E (contrast) |
 | `ARCH-1/2/3` | Business logic (emotion) in the transport layer; duplicated `broadcastFrame` + 3 near-identical proxy handlers + `localhost:8000` in 3 files; 4 divergent emotion enums | low–med | Go + frontend | Phase E / v2 |
 
 ---
