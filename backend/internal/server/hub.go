@@ -20,6 +20,7 @@ const (
 // AudioController is implemented by the audio worker.
 type AudioController interface {
 	Mute(muted bool)
+	WriteAudio(pcm []byte)
 }
 
 // broadcastMsg is a queued broadcast. When scoped is true the message is only
