@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     )
 
     ANTHROPIC_API_KEY: str = ""
+    # When true, an empty ANTHROPIC_API_KEY is a fatal startup error instead of
+    # a warning. Left false so key-less local dev keeps working.
+    REQUIRE_ANTHROPIC_KEY: bool = False
     ELEVENLABS_API_KEY: str = ""
     HOST: str = "127.0.0.1"
     PORT: int = 8000
