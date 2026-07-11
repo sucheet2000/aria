@@ -44,6 +44,30 @@ jobs:
       - name: Pytest
         run: PYTHONPATH=backend python -m pytest backend/tests/ -v
 
+      # REPORT-ONLY (SEC-9): Python SAST. -ll = medium+ severity only.
+      - name: Bandit (SAST, report-only)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r app -ll
+
+      # REPORT-ONLY (DEP-5): Python dependency CVE scan against the pinned lockfile.
+      - name: pip-audit (dep CVEs, report-only)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      # REPORT-ONLY (DEP-2): the audio worker imports webrtcvad, which is NOT in
+      # requirements.txt — so this import fails on any clean machine. This step makes
+      # that failure visible in CI instead of at runtime on Railway. Flip to gating
+      # (remove continue-on-error) the moment webrtcvad is added to the lockfile.
+      - name: Import smoke — undeclared deps (report-only)
+        continue-on-error: true
+        run: PYTHONPATH=backend python -c "import webrtcvad; print('webrtcvad import OK')"
+
   go-backend:
     name: Go backend — build, vet, test
     runs-on: ubuntu-latest
@@ -75,6 +99,23 @@ jobs:
         working-directory: backend
         run: go test -race ./...
 
+      # REPORT-ONLY (SEC-9): Go SAST. Surfaces High/Critical without blocking;
+      # flip to gating once the go-backend findings are triaged (STANDARDS_DEBT.md).
+      - name: gosec (SAST, report-only)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          "$(go env GOPATH)/bin/gosec" ./...
+
+      # REPORT-ONLY (DEP-5): Go dependency CVE scan.
+      - name: govulncheck (dep CVEs, report-only)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
   frontend:
     name: Frontend — lint, type-check, build
     runs-on: ubuntu-latest
@@ -95,6 +136,11 @@ jobs:
       - name: TypeScript type-check
         run: cd frontend && npm run type-check
 
+      # GATING (TEST-1): vitest was never run in CI before — all 5 suites were
+      # non-gating. It is green (33 tests), so it now blocks merge like the others.
+      - name: Vitest
+        run: cd frontend && npm test
+
       - name: Build
         env:
           # Publishable key is public (ships in the client bundle); needed at build time.
@@ -103,3 +149,25 @@ jobs:
           # and the real key is injected on the actual deploy (Vercel).
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuZXhhbXBsZS5jb20k' }}
         run: cd frontend && npm run build
+
+      # REPORT-ONLY (DEP-5): surfaces High/Critical npm CVEs without blocking.
+      # Flip to gating once the frontend dep debt is cleared (see STANDARDS_DEBT.md).
+      - name: npm audit (report-only)
+        continue-on-error: true
+        run: cd frontend && npm audit --audit-level=high
+
+  # REPORT-ONLY (SEC-5): scan the full history + diff for committed secrets / .env.
+  # Report-only because history predates the secret hygiene work (Phase D scrubs it);
+  # flip to gating after the history is clean.
+  secret-scan:
+    name: Secret scan (gitleaks, report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
