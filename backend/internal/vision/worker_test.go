@@ -3,6 +3,7 @@ package vision
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -130,6 +131,109 @@ func TestStart_ConcurrentReentrancy_NoRace(t *testing.T) {
 	cancel()
 	wg.Wait()
 	w.Stop()
+}
+
+// waitForProcess polls until run() has published a started subprocess handle and
+// returns it. It reads w.cmd under procMu so the read is race-free.
+func waitForProcess(t *testing.T, w *Worker) *exec.Cmd {
+	t.Helper()
+	for i := 0; i < 400; i++ {
+		w.procMu.Lock()
+		cmd := w.cmd
+		w.procMu.Unlock()
+		if cmd != nil && cmd.Process != nil {
+			return cmd
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("subprocess did not start in time")
+	return nil
+}
+
+// waitForBroadcast polls until the hub has received at least one broadcast.
+func waitForBroadcast(t *testing.T, hub *countingHub) {
+	t.Helper()
+	for i := 0; i < 400; i++ {
+		if hub.n.Load() >= 1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("no broadcast observed in time")
+}
+
+// TestStop_SingleWaitOwner_EscalatesToSIGKILL proves two things at once under -race:
+//   - run() is the SOLE cmd.Wait() owner: while run()'s Wait() is in-flight on a
+//     live process, Stop() must NOT call a second cmd.Wait() (a double Wait races
+//     on the Cmd's internal ProcessState).
+//   - Stop() still escalates to SIGKILL when the process ignores SIGTERM.
+//
+// The fake script traps (ignores) SIGTERM and stays alive, so only SIGKILL can
+// reap it. run() is invoked directly (no Start/cancel) so the exec.CommandContext
+// cancellation does not pre-empt Stop()'s own SIGTERM -> timeout -> SIGKILL path.
+func TestStop_SingleWaitOwner_EscalatesToSIGKILL(t *testing.T) {
+	hub := &countingHub{}
+	dir, script := writeScript(t, "trap '' TERM\necho '{\"v\":1}'\nwhile true; do sleep 0.05; done\n")
+	w := New("/bin/sh", script, dir, hub)
+	w.stopTimeout = 300 * time.Millisecond
+
+	runDone := make(chan struct{})
+	go func() {
+		_ = w.run(context.Background())
+		close(runDone)
+	}()
+
+	waitForProcess(t, w)
+	// Wait for the script's echo line so we know `trap '' TERM` (which runs first)
+	// is installed; otherwise a SIGTERM before the trap would kill the shell and
+	// bypass the escalation path we mean to exercise.
+	waitForBroadcast(t, hub)
+
+	start := time.Now()
+	w.Stop()
+	elapsed := time.Since(start)
+
+	if elapsed < w.stopTimeout {
+		t.Fatalf("Stop returned in %v; expected >= %v (SIGTERM ignored -> escalation path)", elapsed, w.stopTimeout)
+	}
+
+	select {
+	case <-runDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run() did not return after Stop; the single Wait() owner never reaped the process")
+	}
+}
+
+// TestStop_ConcurrentWithRestartLoop_NoRace runs Stop() concurrently with Start()'s
+// restart loop. The subprocess exits non-zero so the loop keeps relaunching; Stop()
+// must tear everything down with run() remaining the sole cmd.Wait() owner, with no
+// data race between the loop's in-flight Wait() and Stop().
+func TestStop_ConcurrentWithRestartLoop_NoRace(t *testing.T) {
+	dir, script := writeScript(t, "echo '{\"v\":1}'\nexit 1\n")
+	w := New("/bin/sh", script, dir, &countingHub{})
+	w.restartDelay = 5 * time.Millisecond
+	w.stopTimeout = 200 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startDone := make(chan struct{})
+	go func() {
+		_ = w.Start(ctx)
+		close(startDone)
+	}()
+
+	// Let the restart loop cycle a few times before tearing down.
+	time.Sleep(40 * time.Millisecond)
+
+	w.Stop()
+	cancel()
+
+	select {
+	case <-startDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Start did not return after Stop/cancel")
+	}
 }
 
 // TestStart_CancelledContextReturnsPromptly proves a cancelled context returns nil

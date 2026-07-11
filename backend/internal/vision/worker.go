@@ -32,12 +32,14 @@ type Worker struct {
 	workDir       string
 	hub           Broadcaster
 	cmd           *exec.Cmd
+	done          chan struct{}
 	cancel        context.CancelFunc
 	procMu        sync.Mutex
 	stdin         io.WriteCloser
 	stdinMu       sync.Mutex
 	lastSessionID string
 	restartDelay  time.Duration
+	stopTimeout   time.Duration
 	log           zerolog.Logger
 }
 
@@ -72,6 +74,7 @@ func New(pythonBin, scriptPath, workDir string, hub Broadcaster) *Worker {
 		workDir:      workDir,
 		hub:          hub,
 		restartDelay: 2 * time.Second,
+		stopTimeout:  5 * time.Second,
 		log:          log.With().Str("component", "vision-worker").Logger(),
 	}
 }
@@ -131,9 +134,14 @@ func (w *Worker) run(ctx context.Context) error {
 
 	// Publish the process handle only after Start() has fully populated it, so a
 	// concurrent Stop() (guarded by procMu) observes a stable, started process.
+	// done is closed when this run returns (after its single cmd.Wait), letting
+	// Stop() detect process exit without calling Wait() a second time.
+	done := make(chan struct{})
 	w.procMu.Lock()
 	w.cmd = cmd
+	w.done = done
 	w.procMu.Unlock()
+	defer close(done)
 
 	w.stdinMu.Lock()
 	w.stdin = stdinPipe
@@ -198,11 +206,14 @@ func (w *Worker) run(ctx context.Context) error {
 	return err
 }
 
-// Stop sends SIGTERM to the process, waits up to 5 seconds, then sends SIGKILL.
+// Stop cancels the run context, sends SIGTERM, waits up to stopTimeout for the
+// process to exit, then sends SIGKILL. It does not call cmd.Wait() — run() owns
+// the single Wait() call and closes done when it has reaped the process.
 func (w *Worker) Stop() {
 	w.procMu.Lock()
 	cancel := w.cancel
 	cmd := w.cmd
+	done := w.done
 	w.procMu.Unlock()
 
 	if cancel != nil {
@@ -215,15 +226,10 @@ func (w *Worker) Stop() {
 
 	cmd.Process.Signal(syscall.SIGTERM)
 
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
 	select {
 	case <-done:
 		w.log.Info().Msg("vision process stopped cleanly")
-	case <-time.After(5 * time.Second):
+	case <-time.After(w.stopTimeout):
 		w.log.Warn().Msg("vision process did not stop in time, sending sigkill")
 		cmd.Process.Kill()
 	}
