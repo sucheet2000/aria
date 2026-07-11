@@ -120,7 +120,7 @@ func TestCognitionResponse_SpatialEventPassthrough(t *testing.T) {
 func TestHandler_OversizedBodyReturns413(t *testing.T) {
 	wm := memory.New(5)
 	client := NewWithLogger("http://127.0.0.1:1", wm, zerolog.Nop())
-	h := NewHandler(client, NewStreamRegistry(), zerolog.Nop())
+	h := NewHandler(client, zerolog.Nop())
 
 	big := strings.Repeat("a", (64<<10)+1)
 	body := `{"message":"` + big + `","session_id":"s1"}`

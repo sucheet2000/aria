@@ -27,7 +27,7 @@ func newTestServer(pythonURL string) *Server {
 	cfg := &config.Config{Port: 0}
 	hub := NewHub()
 	wm := memory.New(5)
-	s := New(cfg, hub, wm, nil)
+	s := New(cfg, hub, wm)
 	s.pythonURL = pythonURL
 	s.httpClient = &http.Client{Timeout: 5 * time.Second}
 	return s
