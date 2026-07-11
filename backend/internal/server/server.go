@@ -41,6 +41,13 @@ func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cogni
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
 		pythonURL:     "http://localhost:8000",
 	}
+	s.httpServer = &http.Server{
+		Addr:         cfg.Addr(),
+		Handler:      s.router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	return s
 }
 
@@ -109,14 +116,6 @@ func (s *Server) Start(ctx context.Context) error {
 		log.Warn().Msg("FastAPI not ready, serving anyway")
 	}
 
-	s.httpServer = &http.Server{
-		Addr:         s.cfg.Addr(),
-		Handler:      s.router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info().Str("addr", s.cfg.Addr()).Msg("http server listening")
@@ -125,17 +124,24 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Shutdown is orchestrated by GracefulShutdown once ctx is cancelled; here we
+	// just stop blocking so the caller can return.
 	select {
 	case <-ctx.Done():
+		return nil
 	case err := <-errCh:
 		return err
 	}
+}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+// Shutdown gracefully stops the HTTP server, refusing new connections and
+// draining in-flight requests, bounded by ctx.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.httpServer == nil {
+		return nil
+	}
 	log.Info().Msg("shutting down http server")
-	return s.httpServer.Shutdown(shutdownCtx)
+	return s.httpServer.Shutdown(ctx)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
