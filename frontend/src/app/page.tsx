@@ -14,6 +14,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
+import { useVisionCapture } from "@/hooks/useVisionCapture";
 
 type SidebarPanel = "chat" | "memory";
 
@@ -47,6 +48,16 @@ function SpatialIcon() {
   );
 }
 
+function CameraIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.Element }> = [
   { id: "chat", label: "chat", icon: ChatIcon },
   { id: "memory", label: "memory", icon: MemoryIcon },
@@ -55,11 +66,13 @@ const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.El
 function AriaApp() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
   const [showSpatial, setShowSpatial] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const assistantMessageCount = conversationHistory.filter(m => m.role === "assistant").length;
   const isThinking = useAriaStore(s => s.isThinking);
   const { sendMessage } = useCognition();
   const { speak } = useTTS();
+  const { active: cameraActive, error: cameraError } = useVisionCapture(cameraEnabled);
 
   useWebSocket();
 
@@ -189,7 +202,43 @@ function AriaApp() {
         >
           <SpatialIcon />
         </button>
+
+        {/* Camera perception toggle — opt-in, no auto-prompt on load */}
+        <button
+          type="button"
+          onClick={() => setCameraEnabled(prev => !prev)}
+          className={`sidebar-btn${cameraEnabled ? " sidebar-btn-active" : ""}`}
+          aria-label={cameraEnabled ? "Disable camera perception" : "Enable camera perception"}
+          aria-pressed={cameraEnabled}
+          title={cameraError ?? (cameraActive ? "Camera perception on" : "Enable camera perception")}
+        >
+          <CameraIcon />
+        </button>
       </nav>
+
+      {/* Camera status — announced for assistive tech */}
+      {cameraEnabled && (cameraError || cameraActive) && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            left: 72, bottom: 24,
+            zIndex: 10,
+            padding: "6px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            color: cameraError ? "var(--danger, #f87171)" : "var(--on-surface)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--outline-ghost)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          {cameraError ?? "Camera perception active"}
+        </div>
+      )}
 
       {/* Slide-out log panel — chat */}
       {activePanel === "chat" && (

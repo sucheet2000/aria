@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
+import { visionCaptureActiveRef } from "@/hooks/visionCaptureState";
 import { WS_URL } from "@/lib/config";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
@@ -95,6 +96,9 @@ export function useWebSocket() {
           }
 
           if (msg.type === "vision_state" || !msg.type) {
+            // Once the browser produces PerceptionFrames locally (Phase A.2a),
+            // the local producer is the source of truth — drop server frames.
+            if (visionCaptureActiveRef.current) return;
             useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
             return;
           }

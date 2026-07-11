@@ -1,0 +1,5 @@
+# MediaPipe binaries are large (~43MB) and are NOT committed to git.
+# Provision them at build/deploy time (see README.md for source + version).
+# Locally they are copied/downloaded into this folder so `npm run dev` works.
+wasm/
+*.task
