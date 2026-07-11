@@ -15,6 +15,7 @@ import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
 import { useVisionCapture } from "@/hooks/useVisionCapture";
+import { useAudioCapture } from "@/hooks/useAudioCapture";
 
 type SidebarPanel = "chat" | "memory";
 
@@ -58,6 +59,18 @@ function CameraIcon() {
   );
 }
 
+function MicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.Element }> = [
   { id: "chat", label: "chat", icon: ChatIcon },
   { id: "memory", label: "memory", icon: MemoryIcon },
@@ -67,12 +80,14 @@ function AriaApp() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
   const [showSpatial, setShowSpatial] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const assistantMessageCount = conversationHistory.filter(m => m.role === "assistant").length;
   const isThinking = useAriaStore(s => s.isThinking);
   const { sendMessage } = useCognition();
   const { speak } = useTTS();
   const { active: cameraActive, error: cameraError } = useVisionCapture(cameraEnabled);
+  const { active: micActive, error: micError } = useAudioCapture(micEnabled);
 
   useWebSocket();
 
@@ -214,6 +229,18 @@ function AriaApp() {
         >
           <CameraIcon />
         </button>
+
+        {/* Microphone streaming toggle — opt-in, no auto-prompt on load */}
+        <button
+          type="button"
+          onClick={() => setMicEnabled(prev => !prev)}
+          className={`sidebar-btn${micEnabled ? " sidebar-btn-active" : ""}`}
+          aria-label={micEnabled ? "Disable microphone streaming" : "Enable microphone streaming"}
+          aria-pressed={micEnabled}
+          title={micError ?? (micActive ? "Microphone streaming on" : "Enable microphone streaming")}
+        >
+          <MicIcon />
+        </button>
       </nav>
 
       {/* Camera status — announced for assistive tech */}
@@ -237,6 +264,30 @@ function AriaApp() {
           }}
         >
           {cameraError ?? "Camera perception active"}
+        </div>
+      )}
+
+      {/* Microphone status — announced for assistive tech */}
+      {micEnabled && (micError || micActive) && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            left: 72, bottom: 64,
+            zIndex: 10,
+            padding: "6px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            color: micError ? "var(--danger, #f87171)" : "var(--on-surface)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--outline-ghost)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          {micError ?? "Microphone streaming active"}
         </div>
       )}
 
