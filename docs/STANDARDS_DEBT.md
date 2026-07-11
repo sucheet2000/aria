@@ -21,6 +21,10 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | Rule | Item | Resolved by |
 |------|------|-------------|
 | `DATA-1` | Ephemeral FS wiped all memory + anchors on every redeploy; persist paths hardcoded to `/app`, no volume env var | **A.1** — `DATA_DIR` setting; ChromaDB + SQLite anchors write to the Railway volume at `/data`; verified live on prod (commit `38afeb6`) |
+| `TEST-1` | Frontend vitest suites never ran in CI — all 5 non-gating | **B2** (#60) — `npm test` (vitest) now a gating CI step |
+| `SEC-2` | Go→Python trust boundary was **fail-open** — no production startup guard on the Python side | **#63** — `validate_internal_auth` in `app.main` lifespan refuses to boot when `INTERNAL_AUTH_SECRET` empty and `ENV != local` |
+| `REL-2` | Anthropic cognition call had no timeout or retry; `response.content[0]` unguarded — transient 429/529 became hard 500s | **#64** — SDK timeout + bounded retry; empty-completion guard returns the safe fallback |
+| `DATA-3` | Episodic 30-day TTL never enforced — unbounded growth, PII retained forever | **#65** — real deletion sweep (`delete where expires_at < now`), run on load + throttled on write |
 
 ## Open debt
 
@@ -29,15 +33,11 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `SCALE-1` | Perception reads the **container's physical camera/mic** — the headline feature cannot run in the cloud; capture must move browser-side | critical | `backend/app/pipeline` vision/audio workers | **Phase A.2** (browser-side perception rewrite) |
 | `DEP-2` | `webrtcvad` imported but **undeclared** — audio worker hard-exits(1) on any machine but the author's | high | audio worker + `requirements` | Phase E |
 | `API-1` | Single-hand gestures silently dropped: frontend sends `gesture`, Python reads `hand_gesture` — contract drift across 4 hand-maintained copies | high | proto / Go / pydantic / TS | Phase E |
-| `TEST-1` | Frontend **vitest suites never run in CI** — all 5 are non-gating | high | `.github/workflows/ci.yml` frontend job | **Phase B2** (gate `npm test`) |
-| `DATA-3` | Episodic **30-day TTL never enforced** — unbounded growth, PII retained forever | high | memory pipeline | Phase E |
 | `OBS-1/2/3` | Production observability blind — `/metrics` unreachable through the edge, health check that can't fail, non-JSON logs | high | Go edge + Python | Phase E |
 | `DEP-1` | Python dependency graph non-deterministic — ~18/28 unpinned, no lockfile, no hashes | high | `backend/requirements.txt` | Phase E |
 | `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
-| `SEC-2` | Go→Python trust boundary is **fail-open** — no production startup guard on the Python side | medium | `backend/app/main.py` lifespan | Phase E |
 | `REL-1` | Graceful shutdown broken — `cancel()` SIGKILLs workers before `Stop()`, then a hard 10s sleep | medium | Go server shutdown | Phase E |
-| `REL-2` | Anthropic cognition call has **no timeout or retry** — transient 429/529 become hard 500s in the voice loop | medium | Python cognition client | Phase E |
-| `FE-1/FE-2` | WCAG 2.1 AA failures (labels, contrast, focus, reduced-motion) plus **no error boundary** on any live rendered path | medium | `frontend/src` | Phase E |
+| `FE-1/FE-2` | WCAG 2.1 AA failures (labels, contrast, focus, reduced-motion) plus **no error boundary** on any live rendered path | medium | `frontend/src` | Phase E (in progress) |
 | `DATA-5` | Unwired, unscoped **GraphMemory** subsystem shipped as latent risk (drop `networkx` if deleted) | medium | memory pipeline | Phase E |
 | `ARCH-1/2/3` | Business logic (emotion) in the transport layer; duplicated `broadcastFrame` + 3 near-identical proxy handlers + `localhost:8000` in 3 files; 4 divergent emotion enums | low–med | Go + frontend | Phase E / v2 |
 
