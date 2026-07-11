@@ -13,6 +13,7 @@ from app.cognition.prompt import (
     build_system_prompt,
 )
 from app.models.schemas import (
+    CognitionRequest,
     CognitionResponse,
     PerceptionFrame,
     WorldModelTriple,
@@ -135,6 +136,23 @@ def test_symbolic_response_with_world_model_update():
     assert sr.world_model_update.triple.object == "dark mode"
 
 
+# --- CognitionRequest gesture field contract (API-1) ---
+
+
+def test_cognition_request_parses_gesture_field_from_json():
+    """The inbound JSON key sent by the frontend + Go is `gesture` (API-1).
+
+    Proves a single-hand gesture is received, not silently dropped to "none".
+    """
+    req = CognitionRequest.model_validate({"message": "look", "gesture": "HOLD"})
+    assert req.gesture == "HOLD"
+
+
+def test_cognition_request_gesture_defaults_to_none():
+    req = CognitionRequest.model_validate({"message": "hi"})
+    assert req.gesture == "none"
+
+
 # --- cognition route: DI + gesture + owner scoping ---
 
 
@@ -176,7 +194,7 @@ def test_cognition_route_point_gesture_produces_spatial_event(tmp_path):
             "/api/cognition",
             json={
                 "message": "look at that",
-                "hand_gesture": "point",
+                "gesture": "point",
                 "pointing_vector": [0.1, -0.2, 0.9],
                 "session_id": "test-session-001",
             },
