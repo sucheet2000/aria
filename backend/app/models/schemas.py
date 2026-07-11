@@ -58,7 +58,7 @@ class CognitionRequest(BaseModel):
     working_memory: list[str] = Field(default_factory=list)
     episodic_memory: list[str] = Field(default_factory=list)
     # Gesture fields forwarded from vision_worker JSON
-    hand_gesture: str = "none"
+    gesture: str = "none"
     two_hand_gesture: str = "NONE"
     pointing_vector: list[float] | None = None
     session_id: str = ""
