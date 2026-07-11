@@ -92,6 +92,12 @@ func main() {
 		srv.AddReadyCheck("audio", audioWorker.Running)
 	}
 
+	// Gate /ready on the always-on audio worker; the vision worker is on-demand
+	// (lazily started per client) and so is not a readiness signal.
+	if cfg.AudioEnabled {
+		srv.AddReadyCheck("audio", audioWorker.Running)
+	}
+
 	go func() {
 		if err := srv.Start(ctx); err != nil {
 			log.Error().Err(err).Msg("server error")
