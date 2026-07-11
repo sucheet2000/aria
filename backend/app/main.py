@@ -13,15 +13,37 @@ from app.api.tts_route import router as tts_router
 from app.api.websocket import ws_router
 from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
-from app.config import settings
+from app.config import Settings, settings
 from app.spatial.anchor_registry import AnchorRegistry
 from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
 logger = structlog.get_logger()
 
 
+def validate_anthropic_key(settings: Settings) -> None:
+    """Guard against a silently-missing Anthropic key.
+
+    An empty key builds an ``AsyncAnthropic`` client fine and only fails at
+    call time, so misconfiguration hides until the first request. When
+    ``REQUIRE_ANTHROPIC_KEY`` is set this is a fatal startup error; otherwise it
+    is a loud warning so key-less local dev still runs.
+    """
+    if settings.ANTHROPIC_API_KEY:
+        return
+    if settings.REQUIRE_ANTHROPIC_KEY:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is empty but REQUIRE_ANTHROPIC_KEY is set; "
+            "refusing to start"
+        )
+    logger.warning(
+        "ANTHROPIC_API_KEY is empty; cognition will fail at call time. "
+        "Set it in backend/.env (continuing for key-less local dev).",
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    validate_anthropic_key(settings)
     logger.info("ARIA backend starting up", host=settings.HOST, port=settings.PORT)
     # Construct the expensive services once; handlers receive them via Depends.
     app.state.llm = LLMClient(api_key=settings.ANTHROPIC_API_KEY)

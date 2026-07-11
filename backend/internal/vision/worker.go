@@ -29,13 +29,16 @@ type Broadcaster interface {
 type Worker struct {
 	pythonBin     string
 	scriptPath    string
+	workDir       string
 	hub           Broadcaster
 	cmd           *exec.Cmd
+	cancel        context.CancelFunc
+	procMu        sync.Mutex
 	stdin         io.WriteCloser
 	stdinMu       sync.Mutex
 	lastSessionID string
+	restartDelay  time.Duration
 	log           zerolog.Logger
-	cancel        context.CancelFunc
 }
 
 // SetActiveSession writes the active frontend session ID to the vision worker's
@@ -62,49 +65,51 @@ func (w *Worker) writeSessionLocked(id string) {
 }
 
 // New creates a new Worker.
-func New(pythonBin, scriptPath string, hub Broadcaster) *Worker {
+func New(pythonBin, scriptPath, workDir string, hub Broadcaster) *Worker {
 	return &Worker{
-		pythonBin:  pythonBin,
-		scriptPath: scriptPath,
-		hub:        hub,
-		log:        log.With().Str("component", "vision-worker").Logger(),
+		pythonBin:    pythonBin,
+		scriptPath:   scriptPath,
+		workDir:      workDir,
+		hub:          hub,
+		restartDelay: 2 * time.Second,
+		log:          log.With().Str("component", "vision-worker").Logger(),
 	}
 }
 
-// Start launches the Python vision subprocess and restarts it if it exits unexpectedly.
+// Start launches the Python vision subprocess and restarts it after a bounded
+// backoff whenever it exits for any reason other than context cancellation.
 func (w *Worker) Start(ctx context.Context) error {
+	w.procMu.Lock()
 	if w.cancel != nil {
+		w.procMu.Unlock()
 		return nil
 	}
 	ctx, w.cancel = context.WithCancel(ctx)
+	w.procMu.Unlock()
 	defer func() {
+		w.procMu.Lock()
 		w.cancel = nil
+		w.procMu.Unlock()
 	}()
 
 	for {
-		if err := w.run(ctx); err != nil {
-			return err
+		err := w.run(ctx)
+		if ctx.Err() != nil {
+			return nil
 		}
-
+		w.log.Error().Err(err).Msg("vision process exited unexpectedly, restarting")
 		select {
+		case <-time.After(w.restartDelay):
 		case <-ctx.Done():
 			return nil
-		default:
-			w.log.Error().Msg("vision process exited unexpectedly, restarting in 2s")
-			select {
-			case <-time.After(2 * time.Second):
-			case <-ctx.Done():
-				return nil
-			}
 		}
 	}
 }
 
 func (w *Worker) run(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, w.pythonBin, w.scriptPath, "--grpc")
-	cmd.Dir = "/Users/sucheetboppana/aria/backend"
+	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+cmd.Dir+":"+cmd.Dir+"/gen/python")
-	w.cmd = cmd
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -124,6 +129,12 @@ func (w *Worker) run(ctx context.Context) error {
 		return err
 	}
 
+	// Publish the process handle only after Start() has fully populated it, so a
+	// concurrent Stop() (guarded by procMu) observes a stable, started process.
+	w.procMu.Lock()
+	w.cmd = cmd
+	w.procMu.Unlock()
+
 	w.stdinMu.Lock()
 	w.stdin = stdinPipe
 	lastSess := w.lastSessionID
@@ -140,7 +151,10 @@ func (w *Worker) run(ctx context.Context) error {
 
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("vision process started")
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		var lastVisionBroadcast time.Time
 		const visionFrameInterval = 200 * time.Millisecond
 
@@ -161,13 +175,19 @@ func (w *Worker) run(ctx context.Context) error {
 		}
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			w.log.Warn().Str("source", "python").Msg(scanner.Text())
 		}
 	}()
 
+	// Drain the scanner goroutines to EOF before reaping. cmd.Wait closes the
+	// stdout/stderr pipes on process exit, so reaping first can truncate an
+	// in-flight read and drop the run's output.
+	wg.Wait()
 	err = cmd.Wait()
 	w.stdinMu.Lock()
 	w.stdin = nil
@@ -180,19 +200,24 @@ func (w *Worker) run(ctx context.Context) error {
 
 // Stop sends SIGTERM to the process, waits up to 5 seconds, then sends SIGKILL.
 func (w *Worker) Stop() {
-	if w.cancel != nil {
-		w.cancel()
+	w.procMu.Lock()
+	cancel := w.cancel
+	cmd := w.cmd
+	w.procMu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 
-	if w.cmd == nil || w.cmd.Process == nil {
+	if cmd == nil || cmd.Process == nil {
 		return
 	}
 
-	w.cmd.Process.Signal(syscall.SIGTERM)
+	cmd.Process.Signal(syscall.SIGTERM)
 
 	done := make(chan error, 1)
 	go func() {
-		done <- w.cmd.Wait()
+		done <- cmd.Wait()
 	}()
 
 	select {
@@ -200,6 +225,6 @@ func (w *Worker) Stop() {
 		w.log.Info().Msg("vision process stopped cleanly")
 	case <-time.After(5 * time.Second):
 		w.log.Warn().Msg("vision process did not stop in time, sending sigkill")
-		w.cmd.Process.Kill()
+		cmd.Process.Kill()
 	}
 }

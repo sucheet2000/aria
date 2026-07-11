@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -37,8 +38,18 @@ type Worker struct {
 	whisperModel string
 	hub          Broadcaster
 	cmd          *exec.Cmd
+	procMu       sync.Mutex
 	stdinPipe    io.WriteCloser
+	stdinMu      sync.Mutex
+	restartDelay time.Duration
 	log          zerolog.Logger
+}
+
+// setStdinPipe stores the current stdin pipe under stdinMu.
+func (w *Worker) setStdinPipe(p io.WriteCloser) {
+	w.stdinMu.Lock()
+	w.stdinPipe = p
+	w.stdinMu.Unlock()
 }
 
 // New creates a new Worker.
@@ -49,38 +60,34 @@ func New(pythonBin, scriptPath, workDir, whisperModel string, hub Broadcaster) *
 		workDir:      workDir,
 		whisperModel: whisperModel,
 		hub:          hub,
+		restartDelay: 2 * time.Second,
 		log:          log.With().Str("component", "audio-worker").Logger(),
 	}
 }
 
-// Start launches the Python audio subprocess and restarts it if it exits unexpectedly.
+// Start launches the Python audio subprocess and restarts it after a bounded
+// backoff whenever it exits for any reason other than context cancellation.
 func (w *Worker) Start(ctx context.Context) error {
 	for {
-		if err := w.run(ctx); err != nil {
-			return err
+		err := w.run(ctx)
+		if ctx.Err() != nil {
+			return nil
 		}
-
+		w.log.Error().Err(err).Msg("audio process exited unexpectedly, restarting")
 		select {
+		case <-time.After(w.restartDelay):
 		case <-ctx.Done():
 			return nil
-		default:
-			w.log.Error().Msg("audio process exited unexpectedly, restarting in 2s")
-			select {
-			case <-time.After(2 * time.Second):
-			case <-ctx.Done():
-				return nil
-			}
 		}
 	}
 }
 
 func (w *Worker) run(ctx context.Context) error {
-	w.stdinPipe = nil
+	w.setStdinPipe(nil)
 
 	cmd := exec.CommandContext(ctx, w.pythonBin, "-u", w.scriptPath, "--model", w.whisperModel)
 	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+w.workDir)
-	w.cmd = cmd
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -101,10 +108,19 @@ func (w *Worker) run(ctx context.Context) error {
 		return err
 	}
 
-	w.stdinPipe = stdin
+	// Publish the process handle only after Start() has fully populated it, so a
+	// concurrent Stop() (guarded by procMu) observes a stable, started process.
+	w.procMu.Lock()
+	w.cmd = cmd
+	w.procMu.Unlock()
+
+	w.setStdinPipe(stdin)
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("audio process started")
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -125,15 +141,21 @@ func (w *Worker) run(ctx context.Context) error {
 		}
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			w.log.Warn().Str("source", "python-audio").Msg(scanner.Text())
 		}
 	}()
 
+	// Drain the scanner goroutines to EOF before reaping. cmd.Wait closes the
+	// stdout/stderr pipes on process exit, so reaping first can truncate an
+	// in-flight read and drop the run's output.
+	wg.Wait()
 	err = cmd.Wait()
-	w.stdinPipe = nil
+	w.setStdinPipe(nil)
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -142,26 +164,32 @@ func (w *Worker) run(ctx context.Context) error {
 
 // Mute sends a mute/unmute command to the Python audio process via stdin.
 func (w *Worker) Mute(muted bool) {
-	if w.stdinPipe == nil {
+	w.stdinMu.Lock()
+	pipe := w.stdinPipe
+	w.stdinMu.Unlock()
+	if pipe == nil {
 		return
 	}
 	payload := `{"mute":false}` + "\n"
 	if muted {
 		payload = `{"mute":true}` + "\n"
 	}
-	_, _ = w.stdinPipe.Write([]byte(payload))
+	_, _ = pipe.Write([]byte(payload))
 }
 
 // Stop sends SIGTERM to the process, then SIGKILL after 2 seconds.
 // It does not call cmd.Wait() — run() owns the single Wait() call.
 func (w *Worker) Stop() {
-	if w.cmd == nil || w.cmd.Process == nil {
+	w.procMu.Lock()
+	cmd := w.cmd
+	w.procMu.Unlock()
+	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	w.cmd.Process.Signal(syscall.SIGTERM)
+	cmd.Process.Signal(syscall.SIGTERM)
 	time.Sleep(2 * time.Second)
-	if w.cmd.Process != nil {
-		w.cmd.Process.Kill()
+	if cmd.Process != nil {
+		cmd.Process.Kill()
 	}
 	w.log.Info().Msg("audio process stopped")
 }
