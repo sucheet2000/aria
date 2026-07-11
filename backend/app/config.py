@@ -16,6 +16,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Names the deploy environment. Local dev defaults to "local"; set to
+    # "production" (or any non-local value) in the cloud. A non-local ENV makes
+    # missing security config a fatal startup error instead of a warning.
+    ENV: str = "local"
+
     ANTHROPIC_API_KEY: str = ""
     # When true, an empty ANTHROPIC_API_KEY is a fatal startup error instead of
     # a warning. Left false so key-less local dev keeps working.
