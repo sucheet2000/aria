@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sucheet2000/aria/backend/internal/auth"
+	"github.com/sucheet2000/aria/backend/internal/reqid"
 )
 
 const pythonTTSURL = "http://localhost:8000/api/tts"
@@ -89,6 +90,7 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 		req.Header.Set(auth.OwnerHeader, owner)
 	}
 	auth.SetInternalAuth(req, c.internalAuthSecret)
+	reqid.SetHeader(req, ctx)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
