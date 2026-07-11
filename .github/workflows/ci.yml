@@ -60,12 +60,10 @@ jobs:
           pip install pip-audit
           pip-audit -r requirements.txt
 
-      # REPORT-ONLY (DEP-2): the audio worker imports webrtcvad, which is NOT in
-      # requirements.txt — so this import fails on any clean machine. This step makes
-      # that failure visible in CI instead of at runtime on Railway. Flip to gating
-      # (remove continue-on-error) the moment webrtcvad is added to the lockfile.
-      - name: Import smoke — undeclared deps (report-only)
-        continue-on-error: true
+      # GATING (DEP-2): webrtcvad is now declared in requirements.txt, so the audio
+      # worker's import must resolve on a clean image. This gate keeps it declared —
+      # if someone imports an undeclared package, CI fails here instead of on Railway.
+      - name: Import smoke — worker deps
         run: PYTHONPATH=backend python -c "import webrtcvad; print('webrtcvad import OK')"
 
   go-backend:
