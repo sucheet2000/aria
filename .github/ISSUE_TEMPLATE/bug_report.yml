@@ -1,0 +1,66 @@
+name: Bug report
+description: Report something in ARIA that is broken or behaving unexpectedly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in as much
+        detail as you can — it makes the problem much faster to reproduce and fix.
+
+        Do **not** include API keys, `.env` contents, or other secrets. For a
+        security vulnerability, follow `SECURITY.md` instead of opening an issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I do X, ARIA does Y, but I expected Z.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of ARIA is involved?
+      options:
+        - Go server (WebSocket hub / HTTP / cognition & TTS proxy)
+        - Python pipeline (FastAPI / cognition / memory / audio worker)
+        - Frontend (Next.js / avatar / spatial canvas)
+        - Build / CI / tooling
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that trigger the bug.
+      placeholder: |
+        1. Start the three dev terminals
+        2. Open http://localhost:3000
+        3. Say "Hey ARIA ..."
+        4. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Paste console/server logs or drop screenshots. Redact any secrets.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, Go / Python / Node versions, and whether local or deployed.
+      placeholder: |
+        - OS: macOS 15.3
+        - Browser: Chrome 130
+        - Go: 1.26.1, Python: 3.13, Node: 20.x
+        - Local dev / Railway + Vercel
+    validations:
+      required: false

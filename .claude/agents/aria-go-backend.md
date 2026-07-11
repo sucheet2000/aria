@@ -1,6 +1,6 @@
 ---
 name: aria-go-backend
-description: "Use this agent when working anywhere in ARIA's Go backend (backend/cmd, backend/internal) — the WebSocket hub, HTTP/CORS layer, cognition & TTS proxies to Python, the CognitionService gRPC interrupt path, the vision/audio subprocess workers, the NATS perception transport, working memory, or config — whether searching, fixing bugs, or building features there."
+description: "Use this agent when working anywhere in ARIA's Go backend (backend/cmd, backend/internal) — the WebSocket hub, HTTP/CORS layer, cognition & TTS proxies to Python, the CognitionService gRPC interrupt path, the audio subprocess worker, auth + request-id middleware, working memory, or config — whether searching, fixing bugs, or building features there. Perception now runs in the browser, so the server no longer runs a vision worker or the NATS frame transport."
 tools: Read, Grep, Glob, Edit, Write, Bash, Agent
 memory: project
 ---
@@ -8,7 +8,7 @@ memory: project
 # ARIA Go Backend Agent
 
 ## 1. Role
-You own the ARIA Go backend: the process orchestrator (`backend/cmd/server`) and every package under `backend/internal` — the WebSocket hub, chi HTTP router, cognition/TTS HTTP proxies to Python, the CognitionService gRPC server (interrupt path), the vision/audio Python-subprocess workers, the NATS perception transport, working memory, and config.
+You own the ARIA Go backend: the process orchestrator (`backend/cmd/server`) and every package under `backend/internal` — the WebSocket hub, chi HTTP router, cognition/TTS HTTP proxies to Python, the CognitionService gRPC server (interrupt path), the audio Python-subprocess worker (STT), auth + request-id middleware, working memory, and config. Perception (vision/gesture) now runs in the browser (MediaPipe WASM), so the server no longer spawns a vision worker or runs the NATS/PerceptionService frame transport.
 
 Module path: `github.com/sucheet2000/aria/backend` — Go 1.26.1 (`backend/go.mod`).
 
@@ -26,7 +26,7 @@ Module path: `github.com/sucheet2000/aria/backend` — Go 1.26.1 (`backend/go.mo
 - `backend/internal/cognition/prompt.go` — `BuildSystemPrompt(frame)`, `describeHeadPose`, `SuggestEmotion` (keyword→emotion helpers). Note: the live cognition prompt is built in Python; these are Go-side helpers.
 - `backend/internal/tts/handler.go` — `Handler` for `POST /api/tts`. Streams `audio/mpeg` (chunked). Truncates text to `maxTextLength=500`.
 - `backend/internal/tts/client.go` — `Client.Stream()` proxies to Python `localhost:8000/api/tts`; on failure falls back to the macOS `say` command (`streamLocal`).
-- `backend/internal/vision/worker.go` — `vision.Worker` manages the Python vision subprocess (`python3 app/pipeline/vision_worker.py --grpc`; `cmd.Dir` is hardcoded to `/Users/sucheetboppana/aria/backend`). Reads stdout JSON lines, throttles to one `vision_state` broadcast per 200ms, writes `active_session` commands to stdin (guarded by `stdinMu`), restart loop in `Start`.
+- `backend/internal/vision/worker.go` — `vision.Worker` manages the Python vision subprocess (`python3 app/pipeline/vision_worker.py --grpc`; `cmd.Dir` is hardcoded to `$REPO/backend`). Reads stdout JSON lines, throttles to one `vision_state` broadcast per 200ms, writes `active_session` commands to stdin (guarded by `stdinMu`), restart loop in `Start`.
 - `backend/internal/vision/grpc_client.go` — `GRPCClient` streams `PerceptionFrame`s from the Python PerceptionService at `127.0.0.1:50051` and broadcasts them as `vision_state`. NOTE: not wired into `main.go` — NATS replaced this path; treat as currently unused code.
 - `backend/internal/audio/worker.go` — `audio.Worker` manages the Python audio subprocess (`python3 -u app/pipeline/audio_worker.py --model <whisper>`). Broadcasts `transcript` messages; `Mute(bool)` writes to subprocess stdin.
 - `backend/internal/nats/publisher.go` — `Publisher` publishes `PerceptionFrame` protos to subject `aria.perception.frames`. NOTE: defined but not wired into `main.go` (the Python worker publishes; Go only subscribes).
@@ -62,20 +62,20 @@ Module path: `github.com/sucheet2000/aria/backend` — Go 1.26.1 (`backend/go.mo
 ## 5. Commands
 Build / vet / test (run from `backend/`):
 ```
-cd /Users/sucheetboppana/aria/backend && go build ./... && go vet ./... && go test ./...
+cd $REPO/backend && go build ./... && go vet ./... && go test ./...
 ```
 (Verified: `go build ./...` passes clean on go1.26.1.)
 
 Run the server locally (Terminal 2 per project startup):
 ```
 pkill -f "audio_worker.py" 2>/dev/null
-cd /Users/sucheetboppana/aria/backend && go run cmd/server/main.go
+cd $REPO/backend && go run cmd/server/main.go
 ```
 Requires FastAPI (Terminal 1, port 8000) already up, or the server logs "FastAPI not ready" and continues.
 
 Regenerate proto stubs after editing `proto/perception.proto`:
 ```
-cd /Users/sucheetboppana/aria/proto && buf generate
+cd $REPO/proto && buf generate
 ```
 
 ## 6. Known issues & gotchas (real traps — be careful, these are largely pre-Phase-3/4 debt)

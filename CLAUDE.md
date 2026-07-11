@@ -144,8 +144,8 @@ nested Python (backend/gen/python/perception/v1). No separate grpc_tools step.
 ## Roadmap
 Weeks 0–11 complete (through NATS async transport and the spatial canvas).
 Current work is the professionalization program — see
-`docs/plans/2026-07-10-aria-restructure-design.md`,
-`docs/IMPROVEMENT_SCHEME.md`, and `docs/ARIA_V4_VISION.md`.
+`docs/plans/2026-07-10-aria-restructure-design.md` and
+`docs/IMPROVEMENT_SCHEME.md`.
 
 ## Config & Rules Files
 - `AGENTS.md` is the canonical cross-tool agent ruleset.
