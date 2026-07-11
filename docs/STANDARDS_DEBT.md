@@ -27,6 +27,8 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `TEST-1` | Frontend vitest suites never ran in CI — all 5 non-gating | **B2** (#60) — `npm test` (vitest) is now a gating CI step |
 | `DATA-5` | Unwired, unscoped GraphMemory subsystem shipped as latent risk | **#70** — deleted (proven dead: referenced only by its own test); dropped the `networkx` dep |
 | `REL-1` | Graceful shutdown mis-ordered — `cancel()`/SIGKILL before `Stop()`, then an unconditional 10s sleep | **#71** — ordered drain bounded to 8s: HTTP listener close → worker `Stop()` → gRPC `GracefulStop` w/ hard fallback → `cancel()` last; no fixed sleep |
+| `API-1` | Single-hand gestures dropped: frontend/Go send `gesture`, Python read `hand_gesture` | **#74** — renamed pydantic field to `gesture` (one canonical name); frontend/Go were already correct |
+| `OBS-1/2/3/4/5` | Production observability blind — non-JSON logs, no request correlation, `/metrics` not through the edge, no failing readiness, unhandled 500s silent | **#75 + #76** — structlog/zerolog JSON on prod; `X-Request-ID` generated at the Go edge + forwarded + bound into Python logs; public `/ready` (Go pings Python + worker probes) + `/metrics` proxied through the edge; global error handler logs + increments an error metric |
 
 ## Open debt
 
@@ -34,8 +36,6 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 |------|------|----------|-------|--------|
 | `SCALE-1` | Perception reads the **container's physical camera/mic** — the headline feature cannot run in the cloud; capture must move browser-side | critical | `backend/app/pipeline` vision/audio workers | **Phase A.2** (browser-side perception rewrite) |
 | `DEP-2` | `webrtcvad` imported but **undeclared** — audio worker hard-exits(1) on any machine but the author's | high | audio worker + `requirements` | Phase E |
-| `API-1` | Single-hand gestures silently dropped: frontend sends `gesture`, Python reads `hand_gesture` — contract drift across 4 hand-maintained copies | high | proto / Go / pydantic / TS | Phase E |
-| `OBS-1/2/3` | Production observability blind — `/metrics` unreachable through the edge, health check that can't fail, non-JSON logs | high | Go edge + Python | Phase E |
 | `DEP-1` | Python dependency graph non-deterministic — ~18/28 unpinned, no lockfile, no hashes | high | `backend/requirements.txt` | Phase E |
 | `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
 | `FE-1` | **Partial (#69):** icon-button labels, visible focus, reduced-motion **done**; **contrast** violations still open (need palette review — `--on-surface-faint` on `--void` ≈ 2.1:1 in placeholders/empty states/timestamps) | medium | `frontend/src` (CSS palette) | Phase E (contrast) |
