@@ -3,7 +3,7 @@ wheel
 fastapi
 uvicorn[standard]
 websockets
-mediapipe==0.10.32
+mediapipe==0.10.35
 opencv-python
 anthropic==0.85.0
 chromadb==1.5.5
