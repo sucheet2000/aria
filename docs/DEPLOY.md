@@ -67,10 +67,30 @@ Vercel (Next.js) ──> Railway Go URL
 | `RATE_LIMIT_GLOBAL_RPS` | No | no | Global ceiling requests/sec. Default `50`. |
 | `RATE_LIMIT_GLOBAL_BURST` | No | no | Global burst. Default `100`. |
 | `AUDIO_ENABLED` | Recommended | no | Set `false` in the cloud — there is no microphone on the server. |
+| `DATA_DIR` | **Yes** | no | Base dir for durable user data (memory + anchors). **Must** point at a mounted volume, e.g. `/data`. See "Persistent storage" below. Unset defaults to `backend/` (local dev only). |
 | `DEBUG` | No | no | `false` in production. |
 
 Never set `ALLOW_INSECURE_NO_AUTH` in production. It is a local-dev-only escape
 hatch. In production you set a real `CLERK_SECRET_KEY` instead.
+
+### Persistent storage (required)
+
+The container filesystem is **ephemeral** — it is wiped on every redeploy. All
+durable user data lives under `DATA_DIR`: ChromaDB memory in `DATA_DIR/memory`
+and the SQLite spatial anchors in `DATA_DIR/data/anchors.db`. If `DATA_DIR`
+points at the container's own filesystem, every deploy erases all memory and
+anchors.
+
+On Railway, back it with a Volume:
+
+1. Backend service → **Settings → Volumes → New Volume**.
+2. **Mount path:** `/data`.
+3. Service → **Variables**: set `DATA_DIR=/data`.
+4. Redeploy. Memory and anchors now persist across deploys and restarts.
+
+This is **required** for the cloud — without a mounted volume plus `DATA_DIR`,
+all user data is wiped on every deploy. Local dev leaves `DATA_DIR` unset and
+keeps writing to `backend/` exactly as before.
 
 ### Frontend (Vercel project environment)
 

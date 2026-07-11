@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import Depends, FastAPI
@@ -45,9 +46,13 @@ def validate_anthropic_key(settings: Settings) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     validate_anthropic_key(settings)
     logger.info("ARIA backend starting up", host=settings.HOST, port=settings.PORT)
+    # Ensure the durable-data tree exists before the stores initialize. In the
+    # cloud DATA_DIR points at a mounted volume so memory + anchors survive
+    # redeploys; locally it defaults to backend/ (unchanged layout).
+    Path(settings.DATA_DIR).mkdir(parents=True, exist_ok=True)
     # Construct the expensive services once; handlers receive them via Depends.
     app.state.llm = LLMClient(api_key=settings.ANTHROPIC_API_KEY)
-    app.state.memory = MemoryStore(persist_dir="./memory")
+    app.state.memory = MemoryStore()
     app.state.memory.load()
     app.state.registry = AnchorRegistry()
     app.state.bridge = GestureAnchorBridge(app.state.registry)
