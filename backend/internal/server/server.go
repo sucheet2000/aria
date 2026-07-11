@@ -101,6 +101,14 @@ func (s *Server) Start(ctx context.Context) error {
 		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
 	})
 
+	// Wait (bounded, non-fatal) for FastAPI so the first cognition/tts request
+	// does not fail with a connection-refused 500 during startup.
+	if waitForPython(ctx, s.httpClient, s.pythonURL+"/health", pythonReadyRetries, pythonReadyInterval) {
+		log.Info().Msg("FastAPI service ready")
+	} else {
+		log.Warn().Msg("FastAPI not ready, serving anyway")
+	}
+
 	s.httpServer = &http.Server{
 		Addr:         s.cfg.Addr(),
 		Handler:      s.router,
@@ -201,6 +209,33 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body) //nolint:errcheck
+}
+
+const (
+	pythonReadyRetries  = 10
+	pythonReadyInterval = 500 * time.Millisecond
+)
+
+// waitForPython polls healthURL until it returns 200 or the retry budget is spent.
+// It never blocks longer than retries*interval and is non-fatal: a false return
+// means "FastAPI is not confirmed ready, proceed anyway".
+func waitForPython(ctx context.Context, client *http.Client, healthURL string, retries int, interval time.Duration) bool {
+	for i := 0; i < retries; i++ {
+		if req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil); err == nil {
+			if resp, err := client.Do(req); err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return true
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(interval):
+		}
+	}
+	return false
 }
 
 // isLoopback reports whether host is a loopback (or unset) bind address, i.e. one

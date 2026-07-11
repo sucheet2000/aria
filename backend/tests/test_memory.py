@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from unittest import mock
+
 import pytest
 
 
@@ -95,6 +98,69 @@ async def test_store_triple_offloads_to_threadpool(tmp_path, monkeypatch) -> Non
 
     # the blocking ChromaDB work ran off the event loop, not inline
     assert called["fn"] == "_store_triple_sync"
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_empty_collection_returns_empty(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+    assert store.loaded
+
+    # Both collections are empty: the guard must short-circuit and return []
+    # deterministically, never reaching (or depending on an error from) query().
+    with mock.patch.object(
+        store._profile, "query", side_effect=AssertionError("query on empty")
+    ) as profile_query, mock.patch.object(
+        store._episodic, "query", side_effect=AssertionError("query on empty")
+    ) as episodic_query:
+        result = await store.query_relevant("anything at all", owner="local")
+
+    assert result == []
+    profile_query.assert_not_called()
+    episodic_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_store_triple_dedup(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    await store.store_triple("sucheet", "prefers", "Go", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "prefers", "Go", 0.95, "explicit_statement", owner="local")
+
+    ids = store._profile.get(where={"owner": "local"})["ids"]
+    assert len(ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_query_relevant_excludes_expired_episodic(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    await store.store_triple(
+        "user", "likes", "tea", 0.8, "behavioral_inference", owner="local"
+    )
+    # Fresh episodic fact is returned.
+    fresh = await store.query_relevant("what does the user like", owner="local")
+    assert "user likes tea" in fresh
+
+    # Force its TTL into the past; it must now be filtered out of results.
+    doc_id = store._episodic.get(where={"owner": "local"})["ids"][0]
+    meta = store._episodic.get(ids=[doc_id])["metadatas"][0]
+    meta["expires_at"] = time.time() - 10
+    store._episodic.update(ids=[doc_id], metadatas=[meta])
+
+    expired = await store.query_relevant("what does the user like", owner="local")
+    assert "user likes tea" not in expired
 
 
 @pytest.mark.asyncio

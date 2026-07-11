@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -71,7 +70,7 @@ func main() {
 	hub := server.NewHub(nil)
 
 	// Create vision worker with hub as broadcaster, then wire it back into hub.
-	worker := vision.New(cfg.PythonBin, cfg.VisionScript, hub)
+	worker := vision.New(cfg.PythonBin, cfg.VisionScript, workDir, hub)
 	hub.SetVision(worker)
 
 	// StreamRegistry bridges the CognitionService gRPC interrupt path and the HTTP handler.
@@ -117,21 +116,8 @@ func main() {
 		}()
 	}
 
-	// Wait for FastAPI to be ready before accepting cognition requests
-	log.Info().Msg("waiting for FastAPI cognition service")
-	for i := 0; i < 30; i++ {
-		resp, err := http.Get("http://localhost:8000/health")
-		if err == nil && resp.StatusCode == 200 {
-			resp.Body.Close()
-			log.Info().Msg("FastAPI cognition service ready")
-			break
-		}
-		if i == 29 {
-			log.Warn().Msg("FastAPI not ready after 30s, continuing anyway")
-		}
-		time.Sleep(time.Second)
-	}
-
+	// The server waits for FastAPI readiness (bounded, non-fatal) before it
+	// begins serving so the first cognition request does not 500.
 	srv := server.New(cfg, hub, wm, registry)
 
 	go func() {
