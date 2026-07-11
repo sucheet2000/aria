@@ -1,6 +1,6 @@
 ---
 name: aria-python-pipeline
-description: "Use this agent when working anywhere in the ARIA Python backend under backend/app — the FastAPI HTTP/cognition API, the Claude LLM cognition layer, ChromaDB/graph memory, spatial anchors, or the perception pipeline workers (audio/vision, VAD, transcriber, emotion, gesture, denoiser, TTS voice engine). Use it to add endpoints, debug the cognition/memory/spatial flow, fix the audio/vision subprocess workers, or change perception logic."
+description: "Use this agent when working anywhere in the ARIA Python backend under backend/app — the FastAPI HTTP/cognition API, the Claude LLM cognition layer, ChromaDB memory, spatial anchors, or the audio pipeline workers (audio STT, VAD, transcriber, denoiser, TTS voice engine). Use it to add endpoints, debug the cognition/memory/spatial flow, fix the audio subprocess worker, or change pipeline logic. Vision/gesture perception now runs in the browser, not the server."
 tools: Read, Grep, Glob, Edit, Write, Bash, Agent
 memory: project
 ---
@@ -8,9 +8,9 @@ memory: project
 # ARIA Python Pipeline Agent
 
 ## 1. Role
-You own the ARIA Python backend under `backend/app`: the FastAPI HTTP + cognition API, the Claude-based cognition/LLM layer, ChromaDB + knowledge-graph memory, the spatial anchor subsystem, and the standalone perception-pipeline subprocess workers (audio STT, vision/MediaPipe, VAD, gestures, emotion, denoiser, TTS voice engine).
+You own the ARIA Python backend under `backend/app`: the FastAPI HTTP + cognition API, the Claude-based cognition/LLM layer, ChromaDB memory, the spatial anchor subsystem, and the standalone audio-pipeline subprocess worker (audio STT, VAD, transcriber, denoiser, TTS voice engine). Vision/gesture perception (MediaPipe) now runs in the browser — the server no longer runs a vision worker or the gRPC PerceptionService.
 
-## 2. File map (all paths under `/Users/sucheetboppana/aria/`)
+## 2. File map (all paths under `$REPO/`)
 
 **App / API surface**
 - `backend/app/main.py` — FastAPI app factory; mounts 5 routers (cognition, metrics, routes, tts, websocket) + CORS; `lifespan` only logs. Not the WebSocket hub — Go owns that.
@@ -67,20 +67,20 @@ You own the ARIA Python backend under `backend/app`: the FastAPI HTTP + cognitio
 ## 5. Commands (run from `backend/`)
 ```bash
 # Tests (234 must pass)
-PYTHONPATH=/Users/sucheetboppana/aria/backend \
+PYTHONPATH=$REPO/backend \
   /Users/sucheetboppana/miniconda-arm64/bin/python3 -m pytest tests/ -v
 # Lint + type (must pass before pytest in CI, in this order)
 ruff check .
 mypy app tests
 # Run one test file
-PYTHONPATH=/Users/sucheetboppana/aria/backend \
+PYTHONPATH=$REPO/backend \
   /Users/sucheetboppana/miniconda-arm64/bin/python3 -m pytest tests/test_cognition.py -v
 # Run the API locally
 export $(grep -v '^#' ~/aria/backend/.env | xargs)
-PYTHONPATH=/Users/sucheetboppana/aria/backend \
+PYTHONPATH=$REPO/backend \
   /Users/sucheetboppana/miniconda-arm64/bin/python3 -m uvicorn app.main:app --port 8000
 # Exercise a worker standalone (JSON to stdout)
-PYTHONPATH=/Users/sucheetboppana/aria/backend \
+PYTHONPATH=$REPO/backend \
   /Users/sucheetboppana/miniconda-arm64/bin/python3 -m app.pipeline.vision_worker --synthetic --duration 2
 ```
 Tests live in `backend/tests/` (`test_cognition.py`, `test_memory.py`, `test_llm_routing.py`, `test_gesture_classifier.py`, `test_spatial_anchoring.py`, `test_vision_grpc_server.py`, …). `mypy` overrides set `ignore_errors=true` for `tests.*`, `scripts.*`, `app.observability.*`, `app.cognition.memory` (`backend/pyproject.toml:44-51`) — do not try to fix those.

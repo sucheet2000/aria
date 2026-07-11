@@ -55,7 +55,7 @@ Browser opens `ws://localhost:8080/ws` (no origin check, no auth). The Go **hub 
 ## 5. Commands (read-only review + regression checks)
 Review the change surface first:
 ```
-cd /Users/sucheetboppana/aria
+cd $REPO
 git diff main...HEAD --stat            # what changed
 git diff main...HEAD -- backend/ frontend/
 ```
@@ -70,9 +70,9 @@ grep -rniE "api_key|xi-api-key|ANTHROPIC|ELEVENLABS|secret" backend/ frontend/ |
 ```
 Confirm a change still compiles/passes (does not modify anything):
 ```
-cd /Users/sucheetboppana/aria/backend && go build ./... && go vet ./... && go test ./...
-cd /Users/sucheetboppana/aria/backend && ruff check . && mypy app tests && PYTHONPATH=/Users/sucheetboppana/aria/backend /Users/sucheetboppana/miniconda-arm64/bin/python3 -m pytest tests/ -q
-cd /Users/sucheetboppana/aria/frontend && npm run lint && npm run type-check && npm run build && npm test
+cd $REPO/backend && go build ./... && go vet ./... && go test ./...
+cd $REPO/backend && ruff check . && mypy app tests && PYTHONPATH=$REPO/backend /Users/sucheetboppana/miniconda-arm64/bin/python3 -m pytest tests/ -q
+cd $REPO/frontend && npm run lint && npm run type-check && npm run build && npm test
 ```
 (Python binary must be `/Users/sucheetboppana/miniconda-arm64/bin/python3` — never system python3.)
 
