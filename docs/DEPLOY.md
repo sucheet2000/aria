@@ -93,12 +93,15 @@ hatch. In production you set a real `CLERK_SECRET_KEY` instead.
 1. **Create the project.** Railway dashboard → **New Project** → **Deploy from
    GitHub repo** → pick the ARIA repo and the branch you want to ship.
 2. **Point the service at the backend.** Service → **Settings → Source**:
-   - **Root Directory:** `backend`
-   - **Builder:** Dockerfile (Railway auto-detects `backend/Dockerfile`).
+   - **Root Directory:** repo root (leave blank / `/`). The image is built from
+     the repo root so `SOUL.md` — which lives at the root, outside `backend/` — is
+     copied into the image. `SOUL_PATH=/app/SOUL.md` is baked into the Dockerfile,
+     so `prompt.py` loads ARIA's identity with no manual env var.
+   - **Builder:** Dockerfile. Set the **Dockerfile path** to `backend/Dockerfile`.
    - The settings in `deploy/railway.json` mirror this (builder = Dockerfile,
-     health check `/health`, restart on failure). To apply them as code, set the
-     service's config-as-code path to `deploy/railway.json`, or copy that file to
-     `backend/railway.json`.
+     `dockerfilePath: backend/Dockerfile`, health check `/health`, restart on
+     failure). To apply them as code, set the service's config-as-code path to
+     `deploy/railway.json`.
 3. **Set the environment variables** from the backend table in section 3
    (Service → **Variables**). At minimum: `ANTHROPIC_API_KEY`,
    `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `CLERK_SECRET_KEY`,
@@ -156,10 +159,12 @@ These are outside "deploy config" scope (they are Go/Python/frontend code) but
 3. **Server-local vision/audio capture.** The workers capture the *server's*
    camera/mic. A Railway container has neither, so live perception is effectively
    off in the cloud until capture moves client-side. Set `AUDIO_ENABLED=false`.
-4. **`SOUL.md` is outside the build context.** It lives at the repo root; the
-   backend image is built from `backend/`, so it isn't copied. `prompt.py` falls
-   back to an empty identity (no crash, but ARIA loses its persona). To ship SOUL,
-   move/copy it into `backend/` or build from repo root with a repo-root Dockerfile.
+4. **✅ Resolved.** `SOUL.md` now ships in the image. The backend is built from a
+   **repo-root context** (`docker build -f backend/Dockerfile .`), the Dockerfile
+   does `COPY SOUL.md /app/SOUL.md`, and it bakes `SOUL_PATH=/app/SOUL.md` so
+   `prompt.py` loads ARIA's identity explicitly (env override, repo-root fallback
+   for local dev). On Railway set **Root Directory** to the repo root and the
+   **Dockerfile path** to `backend/Dockerfile` (section 4).
 5. **✅ Resolved (Phase 5b).** `INTERNAL_AUTH_SECRET` is now enforced end-to-end:
    Go sends `X-Internal-Auth` on every internal call and Python's
    `require_internal_auth` returns 403 on a missing/wrong secret (constant-time
@@ -172,8 +177,8 @@ These are outside "deploy config" scope (they are Go/Python/frontend code) but
 ## 8. Test the backend image locally (optional)
 
 ```bash
-# Build the same image Railway builds:
-docker build -f backend/Dockerfile -t aria-backend backend
+# Build the same image Railway builds (repo-root context so SOUL.md is copied):
+docker build -f backend/Dockerfile -t aria-backend .
 
 # Run with docker-compose (Go public on :8080, Python internal, audio off):
 ANTHROPIC_API_KEY=... ELEVENLABS_API_KEY=... docker compose up

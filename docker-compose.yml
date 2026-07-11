@@ -4,8 +4,8 @@ services:
   # published — the Python service on 127.0.0.1:8000 is never exposed.
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8080:8080" # Go server only. Python :8000 stays inside the container.
     environment:

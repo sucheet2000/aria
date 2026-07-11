@@ -1,0 +1,23 @@
+# Repo-root build context (see backend/Dockerfile). Keep the daemon context
+# small: only backend/ + SOUL.md need to be sent. Everything below is either
+# irrelevant to the image or must never ship in it.
+frontend/
+**/node_modules
+.git
+backend/.venv
+**/__pycache__
+**/*.pyc
+backend/data
+backend/memory
+**/*.db
+docs/
+.claude/
+.env
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Docs and stray Markdown are not needed in the image — but SOUL.md is ARIA's
+# runtime identity and MUST remain copyable.
+*.md
+!SOUL.md

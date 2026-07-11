@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import pathlib
 
 from app.cognition.conflict import detect_conflict
@@ -28,7 +29,11 @@ def _load_soul() -> str:
     """Load ARIA's identity from SOUL.md. Cached after first read."""
     global _soul_cache
     if _soul_cache is None:
-        soul_path = pathlib.Path(__file__).parent.parent.parent.parent / "SOUL.md"
+        soul_path = (
+            pathlib.Path(os.environ["SOUL_PATH"])
+            if os.environ.get("SOUL_PATH")
+            else pathlib.Path(__file__).parent.parent.parent.parent / "SOUL.md"
+        )
         _soul_cache = soul_path.read_text() if soul_path.exists() else ""
     return _soul_cache
 
