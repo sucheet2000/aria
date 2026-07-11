@@ -1,4 +1,4 @@
-# Used for unit tests. Production vision runs via vision_worker.py subprocess.
+# Test-only VisionPipeline helper. Live vision capture runs in the browser (A.2a).
 from __future__ import annotations
 
 import asyncio

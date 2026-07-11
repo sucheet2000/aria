@@ -33,9 +33,9 @@ class AudioTranscript(BaseModel):
 class PerceptionFrame(BaseModel):
     """Trimmed per-frame perception data forwarded to the cognition layer.
 
-    Aligns with proto PerceptionFrame — carries only the fields the LLM
-    prompt and cognition route actually consume (emotion, head-pose, presence
-    flags). Raw landmarks are stripped before this point.
+    Carries only the fields the LLM prompt and cognition route actually
+    consume (emotion, head-pose, presence flags). Raw landmarks are stripped
+    before this point.
     """
     emotion: str = "neutral"
     confidence: float = 0.0
@@ -57,7 +57,7 @@ class CognitionRequest(BaseModel):
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     working_memory: list[str] = Field(default_factory=list)
     episodic_memory: list[str] = Field(default_factory=list)
-    # Gesture fields forwarded from vision_worker JSON
+    # Gesture fields forwarded from the browser perception layer
     gesture: str = "none"
     two_hand_gesture: str = "NONE"
     pointing_vector: list[float] | None = None

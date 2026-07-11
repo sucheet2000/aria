@@ -26,7 +26,7 @@ var testOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 
 func startWSServer(t *testing.T, verifier auth.Verifier, authEnabled bool, origins []string) (*httptest.Server, *Hub) {
 	t.Helper()
-	hub := NewHub(nil)
+	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go hub.Run(ctx)
