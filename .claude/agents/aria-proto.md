@@ -1,102 +1,80 @@
 ---
 name: aria-proto
-description: "Use this agent when changing the protobuf contract in proto/perception/v1/perception.proto — adding or renaming fields/messages/enums/RPCs, regenerating Go+Python stubs, or debugging the CognitionService interrupt contract, message-type wire-format, port-bind, PYTHONPATH, or cross-layer naming mismatches. Note: the PerceptionService frame stream and NATS transport are retired (perception is browser-side); the message types and the CognitionService contract remain live."
+description: "Use this agent when changing the protobuf contract in proto/perception/v1/perception.proto — adding or renaming messages/fields/enums, regenerating the Go + Python stubs, or debugging message wire-format, buf lint/breaking checks, PYTHONPATH/import-layout, or cross-layer naming and enum-ordinal alignment. The proto is message-only now (no gRPC services); its live consumers are the Python wire-format tests and the browser gesture-enum mirror."
 tools: Read, Grep, Glob, Edit, Write, Bash, Agent
 memory: project
 ---
 
-# aria-proto — Protobuf / buf / gRPC Contract Agent
+# aria-proto — Protobuf / buf Contract Agent
 
 ## 1. Role
-You own ARIA's single source-of-truth wire contract — `proto/perception/v1/perception.proto` and its generated Go + Python stubs — and every place the Go backend and Python pipeline consume those stubs. The retired PerceptionService (:50051) frame stream and NATS transport are gone now that perception runs in the browser; the live consumer is the CognitionService interrupt path (:50052) plus the shared message types.
+You own ARIA's protobuf wire contract — `proto/perception/v1/perception.proto` and its generated Go + Python stubs — and every place those stubs (and the enum ordinals they define) are consumed. The proto is **message-only** now: perception runs in the browser and the old gRPC/NATS frame transports are retired, so the file defines perception message types and enums with **no services or RPCs**. The live consumers are the Python wire-format contract tests and the browser gesture classifier, whose `HAND_GESTURE_*` integer constants must stay aligned with the proto `HandGestureType` ordinals.
 
 ## 2. File map (all paths verified)
 **Contract source**
-- `$REPO/proto/perception/v1/perception.proto` — the ONLY `.proto`. Package `aria.perception.v1`. Defines messages (`Point3D`, `HandGestureEvent`, `SpatialAnchor`, `SpatialEvent`, `CognitionRequest`, `CognitionResponse`, `HandData`, `PerceptionFrame`, `StreamRequest`), enums (`Handedness`, `GestureType`, `HandGestureType`, `TwoHandGestureType`), and two services (`CognitionService`, `PerceptionService`). Heavily commented tag-budget discipline.
+- `$REPO/proto/perception/v1/perception.proto` — the ONLY `.proto`. Package `aria.perception.v1`. Defines messages (`Point3D`, `HandGestureEvent`, `SpatialAnchor`) and enums (`Handedness`, `GestureType`, `HandGestureType`, `TwoHandGestureType`). No services. Heavily commented tag-budget discipline.
 - `$REPO/proto/buf.yaml` — buf v2 module config. `lint: STANDARD`, `breaking: FILE`.
-- `$REPO/proto/buf.gen.yaml` — buf v2 gen config used by `cd proto && buf generate`. **Go plugins ONLY** (`buf.build/protocolbuffers/go`, `buf.build/grpc/go`), `out: ../backend`, `opt: module=github.com/sucheet2000/aria/backend`. Emits nothing for Python.
-- `$REPO/buf.gen.yaml` — a second, ROOT buf **v1** config (local `go`/`go-grpc`/`python`/`py-grpc` plugins → `gen/go` + `gen/python`). Not the one the documented command uses; know it exists so you don't edit the wrong file.
+- `$REPO/proto/buf.gen.yaml` — buf v2 gen config used by `cd proto && buf generate`. It has **both** Go plugins (`buf.build/protocolbuffers/go`, `buf.build/grpc/go`, `out: ../backend`, `opt: module=github.com/sucheet2000/aria/backend`) **and** Python plugins (`buf.build/protocolbuffers/python`, `buf.build/grpc/python`, `out: ../backend/gen/python`) — version-pinned. So one `buf generate` emits Go **and** Python; there is no separate `grpc_tools` step. (The grpc plugins produce near-empty stubs because there are no services.) There is no longer a second root-level `buf.gen.yaml`.
 
 **Generated stubs (DO NOT hand-edit)**
-- `$REPO/backend/gen/go/perception/v1/perception.pb.go` + `perception_grpc.pb.go` — Go stubs, package `perceptionv1`, import path `github.com/sucheet2000/aria/backend/gen/go/perception/v1`.
-- `$REPO/backend/gen/python/perception/v1/perception_pb2.py` + `perception_pb2_grpc.py` — **nested** Python stubs that ALL Python code imports via `from perception.v1 import ...` (package needs the `__init__.py` files present in `perception/` and `perception/v1/`).
-- `$REPO/backend/gen/python/perception_pb2.py` + `perception_pb2_grpc.py` — **flat** Python stubs (what the documented `grpc_tools` command emits). Currently a byte-identical copy of the nested pair; effectively vestigial. Nothing imports these.
+- `$REPO/backend/gen/go/perception/v1/perception.pb.go` — Go message stubs, package `perceptionv1`, import path `github.com/sucheet2000/aria/backend/gen/go/perception/v1`. There is **no** `perception_grpc.pb.go` — the proto is message-only.
+- `$REPO/backend/gen/python/perception/v1/perception_pb2.py` + `perception_pb2_grpc.py` + `__init__.py` — **nested** Python stubs that all Python code imports via `from perception.v1 import ...` (needs the `__init__.py` files present in `perception/` and `perception/v1/`). `perception_pb2_grpc.py` is near-empty (no services). There are no flat `gen/python/*.py` copies anymore.
 
-**Consumers — Go (5 files + tests)**
-- `$REPO/backend/internal/vision/grpc_client.go` — PerceptionService **client**; dials `127.0.0.1:50051` (const `visionGRPCAddr`, line 14), `client.StreamFrames(...)`, reads `PerceptionFrame`s, flattens to legacy `vision_state` JSON for the hub.
-- `$REPO/backend/internal/cognition/grpc_server.go` — CognitionService **server** impl (`CognitionGRPCServer`); routes `interrupt_signal` → `StreamRegistry`, broadcasts `gesture_event`/`text_input`.
-- `$REPO/backend/cmd/server/main.go` — registers `perceptionv1.RegisterCognitionServiceServer` and binds `cfg.CognitionGRPCAddr` (:50052), lines ~80-91.
-- `$REPO/backend/internal/config/config.go:87` — `cognitionGRPCAddr = "127.0.0.1:50052"`.
-- `$REPO/backend/internal/nats/publisher.go` + `subscriber.go` — NATS transport reuses `perceptionv1.PerceptionFrame` (marshal/unmarshal) as the async alternative to the gRPC frame stream.
-
-**Consumers — Python (2 files)**
-- `$REPO/backend/app/pipeline/vision_grpc_server.py` — PerceptionService **server** on `127.0.0.1:50051` (`GRPC_PORT = 50051`, `server.add_insecure_port(f"127.0.0.1:{GRPC_PORT}")` line 62). Prepends `gen/python` to `sys.path` (line 17) then `from perception.v1 import perception_pb2, perception_pb2_grpc`.
-- `$REPO/backend/app/pipeline/vision_worker.py` — CognitionService **client**; dials `127.0.0.1:50052` (line 249), builds `PerceptionFrame`/`HandData`/`Point3D`, streams gesture/interrupt events.
-- `$REPO/backend/internal/vision/worker.go:103` — spawns the Python worker with `PYTHONPATH=<backend>:<backend>/gen/python` (the fix from commit `5e1520a`).
+**Consumers**
+- `$REPO/backend/tests/test_spatial_anchoring.py` — the live wire-format contract test: `from perception.v1 import perception_pb2` and round-trips `Point3D` / `SpatialAnchor` / `HandGestureEvent` (serialize → parse → assert fields). Runs with `PYTHONPATH` including `backend/gen/python`.
+- `$REPO/frontend/src/lib/perception/gesture.ts` — the browser gesture classifier. Declares `HAND_GESTURE_*` integer constants (`UNSPECIFIED=0` … `POINT=5`) that MUST match the proto `HandGestureType` ordinals. This is the live cross-layer alignment — renumbering the enum silently desyncs the browser classifier.
+- No Go runtime consumer today. The message-only proto is not imported by Go server code (the gRPC/NATS transports that used to carry `PerceptionFrame`s are gone).
 
 **Docs**
-- `$REPO/docs/README_PROTO.md` — why-protobuf rationale.
-- `$REPO/docs/NAMING_AUDIT.md` — the canonical cross-layer naming map (7 concepts, what was renamed and in which commit). Read this BEFORE renaming any field.
+- `$REPO/proto/README.md` — why-protobuf rationale (moved here from the old docs path).
+- `$REPO/docs/archive/naming-audit-2026-04.md` — the canonical cross-layer naming map. Read this BEFORE renaming any field.
 
 ## 3. How it works
-Two gRPC services run in **opposite** client/server directions — this is the #1 thing to keep straight:
-- **PerceptionService (:50051)** — raw per-frame transport, Python → Go. Python `vision_grpc_server.py` is the **server**; Go `grpc_client.go` is the **client**. `StreamFrames(StreamRequest) → stream PerceptionFrame` (server-streaming). Go flattens frames into legacy `vision_state` WebSocket JSON so the frontend needs no change.
-- **CognitionService (:50052)** — bi-directional cognition/interrupt path. Go `grpc_server.go` (registered in `main.go`) is the **server**; Python `vision_worker.py` is the **client**. `StreamCognition(stream CognitionRequest) → stream CognitionResponse` carries the `oneof payload { gesture_event | text_input | interrupt_signal }`; an `interrupt_signal:true` fires the sub-100ms Priority Interrupt through `StreamRegistry.Cancel(session_id)` — the handler cancels that concrete session and first rejects a `default`/empty session_id with `InvalidArgument` (`grpc_server.go` line ~62). (A separate `StreamRegistry.CancelActive()` exists on the registry, but the gRPC interrupt path does NOT call it.) `RegisterAnchor(SpatialAnchor) → SpatialAnchor` is currently a **stub** that echoes the anchor straight back (`grpc_server.go` line ~89); real Week-9 spatial-anchor persistence is not wired yet.
-- A NATS transport (`internal/nats/*`) is the async alternative to the PerceptionService frame stream and marshals the **same** `perceptionv1.PerceptionFrame` proto — so a frame-shape change touches the NATS path too.
-
-Data flow: MediaPipe landmarks → Python builds `Point3D`/`HandData`/`PerceptionFrame` → over gRPC (:50051) or NATS → Go decodes → hub → WebSocket → frontend. Gestures/interrupts flow the other way over CognitionService (:50052).
+The proto is now a **pure schema/contract library**, not a transport. `Point3D`, `HandGestureEvent`, and `SpatialAnchor` describe MediaPipe-derived landmark/gesture/anchor shapes; the enums (`HandGestureType`, `TwoHandGestureType`, `GestureType`, `Handedness`) fix the semantic vocabulary. Perception now runs in the browser: the browser classifies gestures (mirroring the `HandGestureType` ordinals in `gesture.ts`) and posts derived `gesture`/`pointing_vector` data to the HTTP cognition route as plain JSON. Nothing streams these protos over the wire server-side. Two things keep the contract honest: the Python `test_spatial_anchoring.py` tests assert the message wire-format stays stable, and the browser enum constants must equal the proto ordinals. The tag-budget comments inside the `.proto` reference the retired Week-3 gRPC / Week-5 NATS transports as historical rationale for the tag layout — treat them as archaeology, not current architecture; do not reintroduce a service or transport based on them.
 
 ## 4. Conventions
-- **Field names are the contract.** Keep the same concept named identically across layers; proto `snake_case` → Go PascalCase accessors (`SessionId`, `TimestampUs`, `frame.Hands`, `pt.X`) → Python `snake_case` kwargs (`session_id=`, `timestamp_us=`, `hands=`). Before renaming anything, consult `docs/NAMING_AUDIT.md` for the canonical name and update ALL layers together.
+- **Field names are the contract.** Keep a concept named identically across layers; proto `snake_case` → Go PascalCase accessors (`SessionId`, `TimestampUs`, `pt.X`) → Python `snake_case` kwargs (`session_id=`, `timestamp_us=`). Before renaming anything, consult `docs/archive/naming-audit-2026-04.md` for the canonical name and update every layer together.
+- **Enum ordinals are a cross-layer contract.** `HandGestureType` ordinals must equal the `HAND_GESTURE_*` ints in `frontend/src/lib/perception/gesture.ts`. Enum value names are prefixed with the full enum name in CONSTANT_CASE (`HAND_GESTURE_TYPE_*`, `TWO_HAND_GESTURE_TYPE_*`) to satisfy buf STANDARD.
 - **Tag-budget discipline.** Hot, every-frame fields live in tags 1–15 (1-byte header); 16+ costs 2 bytes. Preserve the tag-budget comment blocks when editing messages. Timestamps are `int64 *_us` (microseconds since epoch), never `google.protobuf.Timestamp`.
 - **Never reuse or renumber a tag.** Removing a field → add it to `reserved` (numbers AND names), like `Point3D`'s `reserved 6,7,8` / `reserved "x_quantized",...`. Add new fields at the next free tag or a documented reserved slot.
-- **Enums carry an `_UNSPECIFIED = 0` zero value**; handlers must guard against it. Enum value names are prefixed with the full enum name in CONSTANT_CASE (`HAND_GESTURE_TYPE_*`, `TWO_HAND_GESTURE_TYPE_*`) to satisfy buf STANDARD.
+- **Enums carry an `_UNSPECIFIED = 0` zero value**; handlers must guard against it.
 - **Stubs are generated, never edited by hand.** Change `.proto`, then regenerate.
 
 ## 5. Commands (run from the given dirs; use the project Python)
 ```bash
-# Regenerate GO stubs (this is what CLAUDE.md's `buf generate` does — GO ONLY):
-cd $REPO/proto && buf generate          # → backend/gen/go/perception/v1/
-
-# Regenerate PYTHON stubs (SEPARATE step — buf does NOT do this):
-cd $REPO/proto && \
-  /Users/sucheetboppana/miniconda-arm64/bin/python3 -m grpc_tools.protoc \
-  -I. --python_out=../backend/gen/python --grpc_python_out=../backend/gen/python perception.proto
-# NOTE: this writes FLAT gen/python/perception_pb2.py — you must also refresh the
-# nested gen/python/perception/v1/ copy that the code actually imports (see gotchas).
+# Regenerate BOTH Go + Python stubs (one command — buf.gen.yaml has all four plugins):
+cd $REPO/proto && buf generate    # → backend/gen/go/perception/v1/ + backend/gen/python/perception/v1/
 
 # Lint / breaking-change check:
 cd $REPO/proto && buf lint
-cd $REPO/proto && buf build            # fails fast on a malformed .proto
+cd $REPO/proto && buf build       # fails fast on a malformed .proto
 
-# Verify Go stubs compile + all Go consumers build:
+# Verify Go stubs compile + the Go tree builds:
 cd $REPO/backend && go build ./... && go vet ./... && go test ./...
 
 # Verify Python stubs import under the real runtime path:
 PYTHONPATH=$REPO/backend:$REPO/backend/gen/python \
   /Users/sucheetboppana/miniconda-arm64/bin/python3 \
-  -c "from perception.v1 import perception_pb2, perception_pb2_grpc; print('ok', perception_pb2.PerceptionFrame().DESCRIPTOR.full_name)"
+  -c "from perception.v1 import perception_pb2; print('ok', perception_pb2.HandGestureEvent().DESCRIPTOR.full_name)"
 
-# Full Python gate (per CLAUDE.md — ruff → mypy → 234 pytest):
+# Full Python gate (per CLAUDE.md — ruff → mypy → pytest):
 cd $REPO/backend && ruff check . && mypy app tests && \
   PYTHONPATH=$REPO/backend /Users/sucheetboppana/miniconda-arm64/bin/python3 -m pytest tests/ -v
 ```
 
 ## 6. Known issues & gotchas
-- **`buf generate` regenerates GO ONLY.** `proto/buf.gen.yaml` (v2) has only the two Go plugins with `out: ../backend`. After ANY `.proto` change you MUST run BOTH the `buf generate` (Go) and the `grpc_tools.protoc` (Python) commands, or the stubs silently diverge.
-- **The Python stubs are CURRENTLY STALE — live proof of the drift.** The proto + Go stub name the `HandGestureType` values `HAND_GESTURE_TYPE_*`, but both `gen/python` copies still say `HAND_GESTURE_*` (no `_TYPE_`). Enum numbers are unchanged so nothing crashes today (no Python code reads `perception_pb2.HAND_GESTURE_*`), but it confirms Python was not regenerated after the last proto lint fix. Regenerating Python will rename those symbols — expect that diff and don't treat it as a regression.
-- **Import-layout mismatch.** All code imports `from perception.v1 import perception_pb2` (nested `backend/gen/python/perception/v1/`, requires the empty `__init__.py` files). But the documented `grpc_tools` command emits a FLAT `backend/gen/python/perception_pb2.py`. So the documented command does NOT land files where the code imports them — after regenerating Python, copy/refresh the nested `perception/v1/` pair (currently flat and nested are byte-identical) and keep both `__init__.py`s, or the imports break.
-- **PYTHONPATH must include `backend/gen/python`.** `worker.go:103` injects it for the spawned worker; `vision_grpc_server.py:17` also `sys.path.insert`s it. For manual runs/tests use `PYTHONPATH=$REPO/backend:$REPO/backend/gen/python`. This was the fix in commit `5e1520a`.
-- **gRPC binds are hardcoded to 127.0.0.1 — never 0.0.0.0.** PerceptionService = `127.0.0.1:50051` (`vision_grpc_server.py:62`, `grpc_client.go:14`); CognitionService = `127.0.0.1:50052` (`config.go:87`, `vision_worker.py:249`). Note: `internal/config/config.go:47` and `app/config.py:15` set `HOST = "0.0.0.0"` — that is the FastAPI/HTTP host, NOT the gRPC bind; do not conflate them.
-- **Client/server roles are inverted per service** (Python serves 50051 / Go serves 50052). Easy to wire backwards when adding an RPC — re-check §3.
-- **`buf lint` is not clean and that's intentional.** It reports STANDARD violations: package `aria.perception.v1` not in a matching `aria/perception/v1` directory (proto lives flat at `proto/`), RPC request/response naming (`CognitionRequest`/`StreamRequest`/`PerceptionFrame`/`CognitionResponse`), and `RegisterAnchor` using `SpatialAnchor` for both request and response. These are pre-existing design choices; CI does not run buf lint. Don't "fix" them without an explicit ask.
-- **Breaking-change policy is `FILE`.** Renaming a field or changing a tag is breaking. Any such change must regenerate BOTH stubs AND update all consumers atomically: Go (`grpc_client.go`, `grpc_server.go`, `main.go`, `nats/publisher.go`, `nats/subscriber.go`) and Python (`vision_grpc_server.py`, `vision_worker.py`), plus the NATS `PerceptionFrame` path.
-- **Two-hand gestures & spatial events are partly proto, partly not.** `TwoHandGestureType` exists as a proto enum but the message isn't carried over gRPC (Python passes two-hand gestures as strings via the HTTP cognition route); `SpatialEvent` is a proto message but is delivered as a JSON dict on the HTTP response. Check `NAMING_AUDIT.md` concepts 2 and 7 before assuming a concept flows over gRPC.
+- **`buf generate` now regenerates BOTH Go and Python.** `proto/buf.gen.yaml` (v2) carries the Go and Python plugins together, so a single `buf generate` refreshes every stub — there is no separate `grpc_tools.protoc` step, and no root-level `buf.gen.yaml`.
+- **Import-layout: code imports `from perception.v1 import perception_pb2`.** buf emits the Python stubs to `backend/gen/python/perception/v1/`; the `__init__.py` files in `perception/` and `perception/v1/` make that package importable. Keep them.
+- **PYTHONPATH must include `backend/gen/python`.** For manual runs/tests use `PYTHONPATH=$REPO/backend:$REPO/backend/gen/python`, or the nested `from perception.v1 import ...` import fails.
+- **Enum-ordinal drift is the top risk.** The proto `HandGestureType` ordinals and the browser `HAND_GESTURE_*` constants in `gesture.ts` are maintained in two files. Renumbering the enum (or inserting a value) without updating `gesture.ts` silently misclassifies gestures. Change both together.
+- **`buf lint` is not clean and that's intentional.** It reports STANDARD violations (package `aria.perception.v1` vs. the flat proto directory, enum-value naming, etc.). These are pre-existing design choices; CI does not run buf lint. Don't "fix" them without an explicit ask.
+- **Breaking-change policy is `FILE`.** Renaming a field or changing a tag is breaking. Any such change must regenerate BOTH stubs AND update all consumers atomically: the Python wire-format tests and the browser enum mirror.
+- **Historical transport comments are stale rationale.** The tag-budget/reserved comments cite the retired gRPC and NATS transports; they explain *why the tags are laid out this way*, not what runs today. Don't take them as a live architecture.
 
 ## 7. When to use / not use this agent
-**Use when:** editing `proto/perception.proto`; adding/renaming a message, enum, field, or RPC; regenerating or debugging the Go/Python stubs; fixing wire-format, enum-drift, port-bind (50051/50052), PYTHONPATH/import, or cross-layer naming mismatches; or reasoning about the blast radius of a contract change across the Go and Python consumers.
+**Use when:** editing `proto/perception/v1/perception.proto`; adding/renaming a message, enum, or field; regenerating or debugging the Go/Python stubs; fixing wire-format, enum-ordinal alignment, import-layout, PYTHONPATH, or buf lint/breaking issues; or reasoning about the blast radius of a contract change across the Python tests and the browser enum.
 
-**Do NOT use when:** the work is business logic that merely happens to use the stubs (MediaPipe/gesture-classifier internals, cognition/LLM prompt logic, StreamRegistry cancel semantics, NATS reconnect behavior, frontend rendering) with no contract change — route those to the vision/cognition/backend/frontend agents. If a task needs both a contract change and downstream logic, make the `.proto` + stub change here and hand the consumer logic to the owning agent.
+**Do NOT use when:** the work is business logic that merely happens to use the schema (the browser gesture-classifier heuristics, cognition/LLM prompt logic, frontend rendering) with no contract change — route those to the owning subsystem agent. If a task needs both a schema change and downstream logic, make the `.proto` + stub change here and hand the consumer logic to the owning agent.
 
 ## Orchestrating sub-agents (parallel dispatch)
 
@@ -120,9 +98,9 @@ After your primary task, take a short pass over your subsystem for the SAME CLAS
 You own contract governance — the single most drift-prone area (the `gesture` vs `hand_gesture` bug shipped silently).
 
 **One source of truth (API-1)**
-- `CognitionRequest/Response`, `PerceptionFrame`, `WorldModelUpdate`, `SpatialEvent`, and the emotion enum must NOT be hand-maintained in four unlinked places (proto / Go structs / pydantic / TS). Establish and defend a single source of truth: extend `buf generate` to cover the live path, or a shared schema (e.g. one JSON Schema) that generates/validates Go, pydantic, and TS.
+- `CognitionRequest/Response`, `WorldModelUpdate`, `SpatialEvent`, and the emotion enum must NOT be hand-maintained in unlinked places (proto / Go structs / pydantic / TS). Establish and defend a single source of truth: extend `buf generate` to cover the live path, or a shared schema (e.g. one JSON Schema) that generates/validates Go, pydantic, and TS.
 - Any field added to one side without the others is a defect. When you add/rename a field, produce the change on ALL consumers in the same PR, or via codegen.
-- ARCH-3: collapse the four divergent emotion enum definitions (with unrenderable values) into ONE canonical, generated enum.
+- ARCH-3: collapse the divergent emotion enum definitions (with unrenderable values) into ONE canonical, generated enum.
 
 **Versioning (API-2)**
 - The live HTTP+WS contract is versioned (`/v1` or a version field) so a split Vercel/Railway deploy detects a mismatch instead of silently dropping fields. The proto `v1` artifact must not diverge from what actually runs — reconcile or delete the dead path.
@@ -130,4 +108,4 @@ You own contract governance — the single most drift-prone area (the `gesture` 
 **Error + request shape (API-3/4/5)**
 - One error envelope `{error:{code,message,request_id}}`. Side-effecting POSTs the frontend auto-retries take an idempotency key. Lists are paginated.
 
-**Gate:** after any proto/contract change, run `buf generate` (Go + Python), regenerate/validate the TS + pydantic mirrors, and confirm all four consumers compile and their field names match. Add a contract test that fails when the mirrors drift.
+**Gate:** after any proto/contract change, run `buf generate` (Go + Python), regenerate/validate the TS + pydantic mirrors, and confirm all consumers compile and their field names/enum ordinals match. Add a contract test that fails when the mirrors drift.
