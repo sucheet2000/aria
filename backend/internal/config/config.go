@@ -31,6 +31,9 @@ type Config struct {
 	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
 	// Python requires. Empty disables the boundary for local dev.
 	InternalAuthSecret string
+	// PythonBaseURL is the single source of truth for the internal Python FastAPI
+	// base URL that Go proxies cognition, tts, memory, and anchor requests to.
+	PythonBaseURL string
 	// AllowedOrigins is the CORS allow-list for /api/* responses and the /ws origin check.
 	AllowedOrigins []string
 	// Rate-limit params for the paid endpoints (per-caller bucket + global ceiling).
@@ -96,6 +99,11 @@ func Load() *Config {
 		cognitionGRPCAddr = "127.0.0.1:50052"
 	}
 
+	pythonBaseURL := os.Getenv("PYTHON_BASE_URL")
+	if pythonBaseURL == "" {
+		pythonBaseURL = "http://127.0.0.1:8000"
+	}
+
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
 	rateLimitRPS := 5.0
@@ -142,6 +150,7 @@ func Load() *Config {
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
 		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),
+		PythonBaseURL:        pythonBaseURL,
 		AllowedOrigins:       allowedOrigins,
 		RateLimitRPS:         rateLimitRPS,
 		RateLimitBurst:       rateLimitBurst,
