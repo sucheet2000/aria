@@ -16,6 +16,7 @@ EPISODIC_COLLECTION = "aria_episodic"
 WORKING_COLLECTION = "aria_working"
 
 EPISODIC_TTL_DAYS = 30
+SWEEP_INTERVAL_SECONDS = 3600
 
 
 class MemoryStore:
@@ -44,6 +45,7 @@ class MemoryStore:
         self._profile = None
         self._episodic = None
         self._working = None
+        self._last_sweep: float = 0.0
 
     def load(self) -> None:
         try:
@@ -54,6 +56,8 @@ class MemoryStore:
             self._episodic = self._client.get_or_create_collection(EPISODIC_COLLECTION)
             self._working = self._client.get_or_create_collection(WORKING_COLLECTION)
             self._migrate_owner_metadata()
+            self._sweep_expired_sync()
+            self._last_sweep = time.time()
             logger.info("memory store loaded",
                 profile_count=self._profile.count(),
                 episodic_count=self._episodic.count(),
@@ -152,7 +156,11 @@ class MemoryStore:
                 collection = self._profile
             elif source in ("behavioral_inference", "visual_inference"):
                 collection = self._episodic
-                metadata["expires_at"] = time.time() + EPISODIC_TTL_DAYS * 86400
+                now = time.time()
+                metadata["expires_at"] = now + EPISODIC_TTL_DAYS * 86400
+                if now - self._last_sweep > SWEEP_INTERVAL_SECONDS:
+                    self._sweep_expired_sync()
+                    self._last_sweep = now
             else:
                 collection = self._working
 
@@ -202,6 +210,26 @@ class MemoryStore:
         except Exception as e:
             logger.error("query_relevant failed", error=str(e))
         return results[:n_results]
+
+    async def sweep_expired(self) -> int:
+        if not self.loaded:
+            return 0
+        return await run_in_threadpool(self._sweep_expired_sync)
+
+    def _sweep_expired_sync(self) -> int:
+        if self._episodic is None:
+            return 0
+        now = time.time()
+        try:
+            expired = self._episodic.get(where={"expires_at": {"$lt": now}})
+            ids = expired["ids"]
+            if ids:
+                self._episodic.delete(ids=ids)
+            logger.info("episodic ttl sweep", swept=len(ids))
+            return len(ids)
+        except Exception as e:
+            logger.error("sweep_expired failed", error=str(e))
+            return 0
 
     async def clear_working(self, owner: str | None = None) -> None:
         owner = owner or settings.DEFAULT_OWNER

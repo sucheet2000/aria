@@ -164,6 +164,100 @@ async def test_query_relevant_excludes_expired_episodic(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_sweep_deletes_expired_episodic(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    await store.store_triple(
+        "user", "likes", "tea", 0.8, "behavioral_inference", owner="local"
+    )
+    doc_id = store._episodic.get(where={"owner": "local"})["ids"][0]
+    meta = store._episodic.get(ids=[doc_id])["metadatas"][0]
+    meta["expires_at"] = time.time() - 10
+    store._episodic.update(ids=[doc_id], metadatas=[meta])
+    assert store._episodic.count() == 1
+
+    swept = await store.sweep_expired()
+
+    # Enforcement is by DELETION, not read-time filtering: the doc is gone.
+    assert swept == 1
+    assert store._episodic.count() == 0
+    assert store._episodic.get(ids=[doc_id])["ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_sweep_keeps_unexpired_episodic(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    await store.store_triple(
+        "user", "likes", "tea", 0.8, "behavioral_inference", owner="local"
+    )
+    assert store._episodic.count() == 1
+
+    swept = await store.sweep_expired()
+
+    assert swept == 0
+    assert store._episodic.count() == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_expired_sync_returns_count(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    for obj in ("tea", "coffee"):
+        await store.store_triple(
+            "user", "likes", obj, 0.8, "behavioral_inference", owner="local"
+        )
+    ids = store._episodic.get(where={"owner": "local"})["ids"]
+    for doc_id in ids:
+        meta = store._episodic.get(ids=[doc_id])["metadatas"][0]
+        meta["expires_at"] = time.time() - 10
+        store._episodic.update(ids=[doc_id], metadatas=[meta])
+
+    assert store._sweep_expired_sync() == 2
+    assert store._episodic.count() == 0
+
+
+@pytest.mark.asyncio
+async def test_store_triple_throttles_sweep(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition.memory import MemoryStore
+    store = MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    # Force the next episodic write to run a sweep.
+    store._last_sweep = 0.0
+    with mock.patch.object(
+        store, "_sweep_expired_sync", wraps=store._sweep_expired_sync
+    ) as spy:
+        await store.store_triple(
+            "user", "likes", "tea", 0.8, "behavioral_inference", owner="local"
+        )
+        assert spy.call_count == 1
+        first_sweep_ts = store._last_sweep
+        assert first_sweep_ts > 0.0
+
+        # A second write within SWEEP_INTERVAL_SECONDS must NOT re-run the delete.
+        await store.store_triple(
+            "user", "likes", "coffee", 0.8, "behavioral_inference", owner="local"
+        )
+        assert spy.call_count == 1
+        assert store._last_sweep == first_sweep_ts
+
+
+@pytest.mark.asyncio
 async def test_backfill_assigns_local_owner(tmp_path) -> None:
     pytest.importorskip("chromadb")
 
