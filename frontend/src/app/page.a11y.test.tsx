@@ -43,4 +43,9 @@ describe("main page — icon-only controls have accessible names", () => {
     render(<Home />);
     expect(screen.getByRole("button", { name: /spatial/i })).toBeTruthy();
   });
+
+  it("exposes an accessible name on the microphone toggle button", () => {
+    render(<Home />);
+    expect(screen.getByRole("button", { name: /microphone/i })).toBeTruthy();
+  });
 });
