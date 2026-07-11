@@ -12,8 +12,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![Claude](https://img.shields.io/badge/Claude-cognition-D97757?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-Open-24292e?style=flat-square&logo=github)](https://codespaces.new/sucheet2000/aria?quickstart=1)
 
-[**Live site**](https://sucheet2000.github.io/aria) · [Architecture](docs/architecture.md) · [Deploy runbook](docs/DEPLOY.md) · [Contributing](CONTRIBUTING.md)
+[**Live site**](https://sucheet2000.github.io/aria) · [Architecture](docs/architecture.md) · [Deploy runbook](docs/DEPLOY.md) · [Cloud dev (Codespaces)](.devcontainer/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
