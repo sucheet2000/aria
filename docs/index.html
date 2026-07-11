@@ -939,7 +939,7 @@
           <summary><span class="v-tag">v1.1.0</span><span class="v-label">gRPC transport layer</span><span class="v-chevron">▶</span></summary>
           <ul>
             <li>Replaced stdout JSON IPC with typed gRPC stream (PerceptionService on :50051)</li>
-            <li><code>buf.gen.yaml</code> generates Go + Python stubs from <code>proto/perception.proto</code></li>
+            <li><code>proto/buf.gen.yaml</code> generates Go + Python stubs from <code>proto/perception/v1/perception.proto</code> via one <code>cd proto &amp;&amp; buf generate</code></li>
             <li><code>perception.proto</code>: Point3D, HandGestureEvent, SpatialAnchor, Handedness enum</li>
             <li>Go server implements PerceptionService client; Python vision worker implements server</li>
             <li>Proto tag budget reserved for all future weeks</li>

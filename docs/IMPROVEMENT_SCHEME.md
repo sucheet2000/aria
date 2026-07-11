@@ -7,7 +7,7 @@
 - Each week builds on the previous — no skipping
 
 ## Week 0 — Data Contract (COMPLETE)
-- proto/perception.proto: Point3D, HandGestureEvent, SpatialAnchor
+- proto/perception/v1/perception.proto: Point3D, HandGestureEvent, SpatialAnchor
 - Handedness enum (UNSPECIFIED/LEFT/RIGHT)
 - Tag budget reserved for Weeks 2, 3, 5, 9
 - CognitionService gRPC interface defined
@@ -78,5 +78,5 @@ merging any sprint. No security debt carried forward between versions.
 - Backward compatibility is non-negotiable after Week 1
 
 ## Tag Budget Reference
-See proto/perception.proto for complete tag allocation table.
+See proto/perception/v1/perception.proto for complete tag allocation table.
 Reserved ranges document exactly which week activates which fields.

@@ -153,7 +153,7 @@ Each cognition turn:
 <summary><strong>v1.1.0</strong> — gRPC transport layer</summary>
 
 - Replaced stdout JSON IPC with typed gRPC stream (PerceptionService on :50051)
-- `buf.gen.yaml` generates Go + Python stubs from `proto/perception.proto`
+- `proto/buf.gen.yaml` generates Go + Python stubs from `proto/perception/v1/perception.proto` via one `cd proto && buf generate`
 - `perception.proto`: Point3D, HandGestureEvent, SpatialAnchor, Handedness enum
 - Go server implements PerceptionService client; Python vision worker implements server
 - Proto tag budget reserved for all future weeks
