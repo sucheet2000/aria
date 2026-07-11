@@ -146,11 +146,11 @@ export default function ChatPanel() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="type a message..."
+          aria-label="Message input"
           style={{
             flex: 1,
             background: "transparent",
             border: "none",
-            outline: "none",
             fontFamily: "var(--font-body)",
             fontSize: 13,
             color: "var(--on-surface)",

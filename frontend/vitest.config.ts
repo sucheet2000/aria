@@ -7,6 +7,9 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
+  oxc: {
+    jsx: { runtime: "automatic", importSource: "react" },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
