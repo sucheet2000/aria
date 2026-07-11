@@ -44,6 +44,7 @@ type Worker struct {
 	stdinMu      sync.Mutex
 	restartDelay time.Duration
 	running      atomic.Bool
+	muted        atomic.Bool
 	log          zerolog.Logger
 }
 
@@ -172,19 +173,28 @@ func (w *Worker) run(ctx context.Context) error {
 	return err
 }
 
-// Mute sends a mute/unmute command to the Python audio process via stdin.
+// Mute gates the browser audio stream at the Go edge. When muted, WriteAudio
+// drops incoming PCM frames so the STT pipeline hears silence while ARIA speaks
+// (TTS playback). Muting no longer touches the subprocess stdin — that pipe now
+// carries raw PCM only.
 func (w *Worker) Mute(muted bool) {
+	w.muted.Store(muted)
+}
+
+// WriteAudio forwards one frame of raw Int16 PCM (16 kHz mono, little-endian)
+// from the browser mic stream to the Python audio subprocess via stdin. Frames
+// are dropped while muted, and silently ignored when no subprocess is running.
+func (w *Worker) WriteAudio(pcm []byte) {
+	if w.muted.Load() {
+		return
+	}
 	w.stdinMu.Lock()
 	pipe := w.stdinPipe
 	w.stdinMu.Unlock()
 	if pipe == nil {
 		return
 	}
-	payload := `{"mute":false}` + "\n"
-	if muted {
-		payload = `{"mute":true}` + "\n"
-	}
-	_, _ = pipe.Write([]byte(payload))
+	_, _ = pipe.Write(pcm)
 }
 
 // Stop sends SIGTERM to the process, then SIGKILL after 2 seconds.

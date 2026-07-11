@@ -79,6 +79,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
 	})
+	s.router.Get("/ws/audio", func(w http.ResponseWriter, r *http.Request) {
+		ServeAudioWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
+	})
 
 	cogClient := cognition.NewWithLogger(s.pythonURL+"/api/cognition", s.workingMemory, log.Logger)
 	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
