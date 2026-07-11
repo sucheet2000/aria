@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The ``backend/`` directory. Used as the default DATA_DIR so durable stores
+# land exactly where they do today (backend/data/anchors.db, backend/memory).
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -31,6 +37,11 @@ class Settings(BaseSettings):
     # Identity of the data owner. Single-user default today; Phase 4 sources
     # this from the authenticated identity so the data model is multi-user-ready.
     DEFAULT_OWNER: str = "local"
+
+    # Base directory for all durable user data (ChromaDB memory + SQLite
+    # anchors). Defaults to backend/ so local dev is unchanged; in the cloud set
+    # it to a mounted volume path (e.g. /data) so data survives redeploys.
+    DATA_DIR: str = str(_BACKEND_DIR)
 
     # Shared secret for the Go<->Python internal trust boundary. Go sends it as
     # X-Internal-Auth; when set, this service rejects API requests that do not
