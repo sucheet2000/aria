@@ -379,7 +379,7 @@ func (x *Point3D) GetConfidence() float32 {
 // │    │                  │ active stream when concurrent sessions exist.   │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
 // │ 10 │ stream_id        │ Exact gRPC stream identifier carried by the     │
-// │    │                  │ interrupt payload so StreamRegistry.Cancel()    │
+// │    │                  │ interrupt payload so the cancel routing path    │
 // │    │                  │ can be surgically precise.                      │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
 // │11–12│ RESERVED        │ Week 5 NATS async transport headers.           │
@@ -632,270 +632,6 @@ func (x *SpatialAnchor) GetCreatedAtUs() int64 {
 	return 0
 }
 
-// SpatialEvent describes a discrete spatial action produced by the gesture-anchor
-// bridge in response to a single- or two-hand gesture. Returned in the HTTP
-// cognition API response under the "spatial_event" key.
-//
-// event_type values (canonical):
-//
-//	"anchor_registered" — anchor_id populated; a new anchor was registered
-//	"anchors_bonded"    — anchor_ids populated; two nearest anchors were bonded
-//	"anchor_thrown"     — anchor_id + velocity populated; anchor given momentum
-//	"world_expand"      — factor populated; scale the world model
-type SpatialEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	EventType     string                 `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"` // canonical event type string (see above)
-	AnchorId      string                 `protobuf:"bytes,2,opt,name=anchor_id,json=anchorId,proto3" json:"anchor_id,omitempty"`    // primary anchor (anchor_registered, anchor_thrown)
-	AnchorIds     []string               `protobuf:"bytes,3,rep,name=anchor_ids,json=anchorIds,proto3" json:"anchor_ids,omitempty"` // anchors involved in bond events
-	Velocity      []float32              `protobuf:"fixed32,4,rep,packed,name=velocity,proto3" json:"velocity,omitempty"`           // throw direction vector [x, y, z]
-	Factor        float32                `protobuf:"fixed32,5,opt,name=factor,proto3" json:"factor,omitempty"`                      // scale factor for world_expand events
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SpatialEvent) Reset() {
-	*x = SpatialEvent{}
-	mi := &file_perception_v1_perception_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SpatialEvent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SpatialEvent) ProtoMessage() {}
-
-func (x *SpatialEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SpatialEvent.ProtoReflect.Descriptor instead.
-func (*SpatialEvent) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *SpatialEvent) GetEventType() string {
-	if x != nil {
-		return x.EventType
-	}
-	return ""
-}
-
-func (x *SpatialEvent) GetAnchorId() string {
-	if x != nil {
-		return x.AnchorId
-	}
-	return ""
-}
-
-func (x *SpatialEvent) GetAnchorIds() []string {
-	if x != nil {
-		return x.AnchorIds
-	}
-	return nil
-}
-
-func (x *SpatialEvent) GetVelocity() []float32 {
-	if x != nil {
-		return x.Velocity
-	}
-	return nil
-}
-
-func (x *SpatialEvent) GetFactor() float32 {
-	if x != nil {
-		return x.Factor
-	}
-	return 0
-}
-
-// CognitionRequest is the client→server message in the StreamCognition RPC.
-// The oneof payload ensures exactly one event type is encoded per message,
-// keeping the interrupt signal wire-size to a single varint field.
-type CognitionRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	// Types that are valid to be assigned to Payload:
-	//
-	//	*CognitionRequest_GestureEvent
-	//	*CognitionRequest_TextInput
-	//	*CognitionRequest_InterruptSignal
-	Payload       isCognitionRequest_Payload `protobuf_oneof:"payload"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CognitionRequest) Reset() {
-	*x = CognitionRequest{}
-	mi := &file_perception_v1_perception_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CognitionRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CognitionRequest) ProtoMessage() {}
-
-func (x *CognitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CognitionRequest.ProtoReflect.Descriptor instead.
-func (*CognitionRequest) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *CognitionRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-func (x *CognitionRequest) GetPayload() isCognitionRequest_Payload {
-	if x != nil {
-		return x.Payload
-	}
-	return nil
-}
-
-func (x *CognitionRequest) GetGestureEvent() *HandGestureEvent {
-	if x != nil {
-		if x, ok := x.Payload.(*CognitionRequest_GestureEvent); ok {
-			return x.GestureEvent
-		}
-	}
-	return nil
-}
-
-func (x *CognitionRequest) GetTextInput() string {
-	if x != nil {
-		if x, ok := x.Payload.(*CognitionRequest_TextInput); ok {
-			return x.TextInput
-		}
-	}
-	return ""
-}
-
-func (x *CognitionRequest) GetInterruptSignal() bool {
-	if x != nil {
-		if x, ok := x.Payload.(*CognitionRequest_InterruptSignal); ok {
-			return x.InterruptSignal
-		}
-	}
-	return false
-}
-
-type isCognitionRequest_Payload interface {
-	isCognitionRequest_Payload()
-}
-
-type CognitionRequest_GestureEvent struct {
-	GestureEvent *HandGestureEvent `protobuf:"bytes,2,opt,name=gesture_event,json=gestureEvent,proto3,oneof"`
-}
-
-type CognitionRequest_TextInput struct {
-	TextInput string `protobuf:"bytes,3,opt,name=text_input,json=textInput,proto3,oneof"`
-}
-
-type CognitionRequest_InterruptSignal struct {
-	InterruptSignal bool `protobuf:"varint,4,opt,name=interrupt_signal,json=interruptSignal,proto3,oneof"` // Sub-100ms Priority Interrupt (Week 3)
-}
-
-func (*CognitionRequest_GestureEvent) isCognitionRequest_Payload() {}
-
-func (*CognitionRequest_TextInput) isCognitionRequest_Payload() {}
-
-func (*CognitionRequest_InterruptSignal) isCognitionRequest_Payload() {}
-
-// CognitionResponse is the server→client message in the StreamCognition RPC.
-type CognitionResponse struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	SessionId             string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	NaturalLanguageOutput string                 `protobuf:"bytes,2,opt,name=natural_language_output,json=naturalLanguageOutput,proto3" json:"natural_language_output,omitempty"`
-	SymbolicInference     string                 `protobuf:"bytes,3,opt,name=symbolic_inference,json=symbolicInference,proto3" json:"symbolic_inference,omitempty"`
-	StreamComplete        bool                   `protobuf:"varint,4,opt,name=stream_complete,json=streamComplete,proto3" json:"stream_complete,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
-}
-
-func (x *CognitionResponse) Reset() {
-	*x = CognitionResponse{}
-	mi := &file_perception_v1_perception_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CognitionResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CognitionResponse) ProtoMessage() {}
-
-func (x *CognitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CognitionResponse.ProtoReflect.Descriptor instead.
-func (*CognitionResponse) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *CognitionResponse) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-func (x *CognitionResponse) GetNaturalLanguageOutput() string {
-	if x != nil {
-		return x.NaturalLanguageOutput
-	}
-	return ""
-}
-
-func (x *CognitionResponse) GetSymbolicInference() string {
-	if x != nil {
-		return x.SymbolicInference
-	}
-	return ""
-}
-
-func (x *CognitionResponse) GetStreamComplete() bool {
-	if x != nil {
-		return x.StreamComplete
-	}
-	return false
-}
-
 var File_perception_v1_perception_proto protoreflect.FileDescriptor
 
 const file_perception_v1_perception_proto_rawDesc = "" +
@@ -935,29 +671,7 @@ const file_perception_v1_perception_proto_rawDesc = "" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x127\n" +
 	"\bposition\x18\x03 \x01(\v2\x1b.aria.perception.v1.Point3DR\bposition\x12\x16\n" +
 	"\x06radius\x18\x04 \x01(\x02R\x06radius\x12\"\n" +
-	"\rcreated_at_us\x18\x05 \x01(\x03R\vcreatedAtUs\"\x9d\x01\n" +
-	"\fSpatialEvent\x12\x1d\n" +
-	"\n" +
-	"event_type\x18\x01 \x01(\tR\teventType\x12\x1b\n" +
-	"\tanchor_id\x18\x02 \x01(\tR\banchorId\x12\x1d\n" +
-	"\n" +
-	"anchor_ids\x18\x03 \x03(\tR\tanchorIds\x12\x1a\n" +
-	"\bvelocity\x18\x04 \x03(\x02R\bvelocity\x12\x16\n" +
-	"\x06factor\x18\x05 \x01(\x02R\x06factor\"\xd7\x01\n" +
-	"\x10CognitionRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12K\n" +
-	"\rgesture_event\x18\x02 \x01(\v2$.aria.perception.v1.HandGestureEventH\x00R\fgestureEvent\x12\x1f\n" +
-	"\n" +
-	"text_input\x18\x03 \x01(\tH\x00R\ttextInput\x12+\n" +
-	"\x10interrupt_signal\x18\x04 \x01(\bH\x00R\x0finterruptSignalB\t\n" +
-	"\apayload\"\xc2\x01\n" +
-	"\x11CognitionResponse\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x126\n" +
-	"\x17natural_language_output\x18\x02 \x01(\tR\x15naturalLanguageOutput\x12-\n" +
-	"\x12symbolic_inference\x18\x03 \x01(\tR\x11symbolicInference\x12'\n" +
-	"\x0fstream_complete\x18\x04 \x01(\bR\x0estreamComplete*S\n" +
+	"\rcreated_at_us\x18\x05 \x01(\x03R\vcreatedAtUs*S\n" +
 	"\n" +
 	"Handedness\x12\x1a\n" +
 	"\x16HANDEDNESS_UNSPECIFIED\x10\x00\x12\x13\n" +
@@ -982,10 +696,7 @@ const file_perception_v1_perception_proto_rawDesc = "" +
 	"\x1aTWO_HAND_GESTURE_TYPE_HOLD\x10\x02\x12 \n" +
 	"\x1cTWO_HAND_GESTURE_TYPE_EXPAND\x10\x03\x12\x1f\n" +
 	"\x1bTWO_HAND_GESTURE_TYPE_THROW\x10\x04\x12\x1e\n" +
-	"\x1aTWO_HAND_GESTURE_TYPE_BOND\x10\x052\xce\x01\n" +
-	"\x10CognitionService\x12b\n" +
-	"\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x010\x01\x12V\n" +
-	"\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchorBGZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3"
+	"\x1aTWO_HAND_GESTURE_TYPE_BOND\x10\x05BGZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3"
 
 var (
 	file_perception_v1_perception_proto_rawDescOnce sync.Once
@@ -1000,18 +711,15 @@ func file_perception_v1_perception_proto_rawDescGZIP() []byte {
 }
 
 var file_perception_v1_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_perception_v1_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_perception_v1_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_perception_v1_perception_proto_goTypes = []any{
-	(Handedness)(0),           // 0: aria.perception.v1.Handedness
-	(GestureType)(0),          // 1: aria.perception.v1.GestureType
-	(HandGestureType)(0),      // 2: aria.perception.v1.HandGestureType
-	(TwoHandGestureType)(0),   // 3: aria.perception.v1.TwoHandGestureType
-	(*Point3D)(nil),           // 4: aria.perception.v1.Point3D
-	(*HandGestureEvent)(nil),  // 5: aria.perception.v1.HandGestureEvent
-	(*SpatialAnchor)(nil),     // 6: aria.perception.v1.SpatialAnchor
-	(*SpatialEvent)(nil),      // 7: aria.perception.v1.SpatialEvent
-	(*CognitionRequest)(nil),  // 8: aria.perception.v1.CognitionRequest
-	(*CognitionResponse)(nil), // 9: aria.perception.v1.CognitionResponse
+	(Handedness)(0),          // 0: aria.perception.v1.Handedness
+	(GestureType)(0),         // 1: aria.perception.v1.GestureType
+	(HandGestureType)(0),     // 2: aria.perception.v1.HandGestureType
+	(TwoHandGestureType)(0),  // 3: aria.perception.v1.TwoHandGestureType
+	(*Point3D)(nil),          // 4: aria.perception.v1.Point3D
+	(*HandGestureEvent)(nil), // 5: aria.perception.v1.HandGestureEvent
+	(*SpatialAnchor)(nil),    // 6: aria.perception.v1.SpatialAnchor
 }
 var file_perception_v1_perception_proto_depIdxs = []int32{
 	0, // 0: aria.perception.v1.HandGestureEvent.hand:type_name -> aria.perception.v1.Handedness
@@ -1019,16 +727,11 @@ var file_perception_v1_perception_proto_depIdxs = []int32{
 	1, // 2: aria.perception.v1.HandGestureEvent.gesture:type_name -> aria.perception.v1.GestureType
 	4, // 3: aria.perception.v1.HandGestureEvent.pointing_vector:type_name -> aria.perception.v1.Point3D
 	4, // 4: aria.perception.v1.SpatialAnchor.position:type_name -> aria.perception.v1.Point3D
-	5, // 5: aria.perception.v1.CognitionRequest.gesture_event:type_name -> aria.perception.v1.HandGestureEvent
-	8, // 6: aria.perception.v1.CognitionService.StreamCognition:input_type -> aria.perception.v1.CognitionRequest
-	6, // 7: aria.perception.v1.CognitionService.RegisterAnchor:input_type -> aria.perception.v1.SpatialAnchor
-	9, // 8: aria.perception.v1.CognitionService.StreamCognition:output_type -> aria.perception.v1.CognitionResponse
-	6, // 9: aria.perception.v1.CognitionService.RegisterAnchor:output_type -> aria.perception.v1.SpatialAnchor
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_perception_v1_perception_proto_init() }
@@ -1036,20 +739,15 @@ func file_perception_v1_perception_proto_init() {
 	if File_perception_v1_perception_proto != nil {
 		return
 	}
-	file_perception_v1_perception_proto_msgTypes[4].OneofWrappers = []any{
-		(*CognitionRequest_GestureEvent)(nil),
-		(*CognitionRequest_TextInput)(nil),
-		(*CognitionRequest_InterruptSignal)(nil),
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_perception_v1_perception_proto_rawDesc), len(file_perception_v1_perception_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   6,
+			NumMessages:   3,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   0,
 		},
 		GoTypes:           file_perception_v1_perception_proto_goTypes,
 		DependencyIndexes: file_perception_v1_perception_proto_depIdxs,

@@ -25,7 +25,6 @@ type Config struct {
 	TTSProvider       string
 	ElevenLabsVoiceID string
 	WhisperModel      string
-	CognitionGRPCAddr string
 	ClerkSecretKey    string
 	ClerkJWTIssuer    string
 	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
@@ -94,11 +93,6 @@ func Load() *Config {
 		whisperModel = "base"
 	}
 
-	cognitionGRPCAddr := os.Getenv("COGNITION_GRPC_ADDR")
-	if cognitionGRPCAddr == "" {
-		cognitionGRPCAddr = "127.0.0.1:50052"
-	}
-
 	pythonBaseURL := os.Getenv("PYTHON_BASE_URL")
 	if pythonBaseURL == "" {
 		pythonBaseURL = "http://127.0.0.1:8000"
@@ -146,7 +140,6 @@ func Load() *Config {
 		TTSProvider:          ttsProvider,
 		ElevenLabsVoiceID:    elevenLabsVoiceID,
 		WhisperModel:         whisperModel,
-		CognitionGRPCAddr:    cognitionGRPCAddr,
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
 		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),

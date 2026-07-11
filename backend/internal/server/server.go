@@ -25,21 +25,19 @@ type Server struct {
 	hub           *Hub
 	cfg           *config.Config
 	workingMemory *memory.WorkingMemory
-	registry      *cognition.StreamRegistry
 	httpServer    *http.Server
 	httpClient    *http.Client
 	pythonURL     string
 	readyChecks   []readyCheck
 }
 
-// New creates a new Server with the given configuration, hub, working memory, and stream registry.
-func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cognition.StreamRegistry) *Server {
+// New creates a new Server with the given configuration, hub, and working memory.
+func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory) *Server {
 	s := &Server{
 		router:        chi.NewRouter(),
 		hub:           hub,
 		cfg:           cfg,
 		workingMemory: wm,
-		registry:      registry,
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
 		pythonURL:     cfg.PythonBaseURL,
 	}
@@ -85,7 +83,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	cogClient := cognition.NewWithLogger(s.pythonURL+"/api/cognition", s.workingMemory, log.Logger)
 	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
-	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
+	cogHandler := cognition.NewHandler(cogClient, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
 	ttsClient.SetPythonURL(s.pythonURL + "/api/tts")
