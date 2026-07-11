@@ -60,6 +60,7 @@ Vercel (Next.js) ──> Railway Go URL
 | `ELEVENLABS_VOICE_ID` | Yes | no | Which ElevenLabs voice to use. |
 | `CLERK_SECRET_KEY` | **Yes** | **yes** | Clerk secret key. **Mandatory in production** — with the `0.0.0.0` bind the Go server refuses to start without it (fail-closed). |
 | `CLERK_JWT_ISSUER` | Yes | no | Clerk issuer/JWKS URL. Enforced when verifying tokens. |
+| `ENV` | **Yes** | no | Deploy environment name. Set to `production` in the cloud (defaults to `local`). A non-local `ENV` makes the Python service fail closed without `INTERNAL_AUTH_SECRET`. |
 | `INTERNAL_AUTH_SECRET` | Yes | **yes** | Shared Go↔Python secret (invariant #2). Random long string. |
 | `ALLOWED_ORIGINS` | Yes | no | Comma-separated CORS allow-list. Set to your Vercel URL, e.g. `https://aria.vercel.app`. |
 | `RATE_LIMIT_RPS` | No | no | Per-user requests/sec on paid endpoints. Default `5`. |
@@ -69,6 +70,10 @@ Vercel (Next.js) ──> Railway Go URL
 | `AUDIO_ENABLED` | Recommended | no | Set `false` in the cloud — there is no microphone on the server. |
 | `DATA_DIR` | **Yes** | no | Base dir for durable user data (memory + anchors). **Must** point at a mounted volume, e.g. `/data`. See "Persistent storage" below. Unset defaults to `backend/` (local dev only). |
 | `DEBUG` | No | no | `false` in production. |
+
+With `ENV=production` the Python service refuses to boot without
+`INTERNAL_AUTH_SECRET` — defense-in-depth behind invariant #1 (Python stays
+private), so an accidentally-exposed `:8000` can never run fail-open.
 
 Never set `ALLOW_INSECURE_NO_AUTH` in production. It is a local-dev-only escape
 hatch. In production you set a real `CLERK_SECRET_KEY` instead.
