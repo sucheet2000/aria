@@ -57,6 +57,26 @@ func TestLoad_CognitionGRPCAddrEnvOverride(t *testing.T) {
 	}
 }
 
+func TestLoad_PythonBaseURLDefault(t *testing.T) {
+	t.Setenv("PYTHON_BASE_URL", "")
+
+	cfg := Load()
+
+	if cfg.PythonBaseURL != "http://127.0.0.1:8000" {
+		t.Errorf("PythonBaseURL = %q, want http://127.0.0.1:8000", cfg.PythonBaseURL)
+	}
+}
+
+func TestLoad_PythonBaseURLEnvOverride(t *testing.T) {
+	t.Setenv("PYTHON_BASE_URL", "http://python.internal:9000")
+
+	cfg := Load()
+
+	if cfg.PythonBaseURL != "http://python.internal:9000" {
+		t.Errorf("PythonBaseURL = %q, want http://python.internal:9000", cfg.PythonBaseURL)
+	}
+}
+
 func TestLoad_ClerkSettingsDefaultEmpty(t *testing.T) {
 	t.Setenv("CLERK_SECRET_KEY", "")
 	t.Setenv("CLERK_JWT_ISSUER", "")
