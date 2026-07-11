@@ -118,3 +118,32 @@ After your primary task, take a short pass over your subsystem for the SAME CLAS
 - **Fix** an instance only if it is (1) the same class, (2) low regression risk, and (3) covered by a passing test you keep or add (red→green). Keep each fix minimal.
 - **Flag** anything risky, broad, cross-cutting, or a behavior change — do NOT change it silently. Put it in your report with file:line, impact, and a suggested fix, for human approval.
 - Never let the sweep balloon the diff or drift from the task. When in doubt, flag rather than fix.
+
+## Standards Enforcement (binding — see `docs/STANDARDS.md`)
+You own the Python slice. Self-check before finishing:
+
+**Trust boundary / security**
+- SEC-2: `app.main` lifespan MUST refuse to boot when `INTERNAL_AUTH_SECRET` is empty and `ENV != local` (mirror the Go edge guard). Fail closed — never silently trust a forged `X-Aria-Owner`.
+- SEC-3/DATA-6: every store method takes `owner`/`user_id` as a required first arg and scopes at the query layer. Derive owner only from the validated `X-Aria-Owner` header.
+- SEC-7: delimit + trust-label user speech and recalled memory in the prompt so they can't override SOUL.md.
+
+**Data / persistence (the highest-severity dimension)**
+- DATA-1: ChromaDB dir and both SQLite paths are read from env (`DATA_DIR`) — NO hardcoded `/app/memory`, `./data`. A change that writes durable state to an implicit local dir is rejected.
+- DATA-2: schema/collection changes ship a forward-only migration; no boot-time full-collection migrate that can OOM.
+- DATA-3: the episodic 30-day TTL runs a real deletion sweep — read-time filtering alone is not enforcement.
+- DATA-5: the unwired, unscoped GraphMemory is wired+owner-scoped+tested or deleted (and drop `networkx` if deleted).
+
+**Pipeline / scale**
+- SCALE-1: NO `cv2.VideoCapture(<int>)` or `sounddevice` input stream in any cloud path — capture is browser-side; the server does inference only. This is a hard blocker, not a refactor.
+
+**Reliability**
+- REL-2: the Anthropic call has a service-side timeout + retry-with-backoff on 429/529; guard `response.content[0]` against empty completions.
+- REL-5: keep blocking Chroma/SQLite off the event loop (`run_in_executor`).
+
+**API / observability**
+- API-1: the pydantic model field names MUST match what Go/frontend send (the `gesture`/`hand_gesture` drift). Change contracts in the shared source of truth, not one side. API-6: every route declares a `response_model`. OBS-5: wrap every route in exception handling that logs + increments an error metric. OBS-1: structlog JSON on prod. OBS-4: read + log the request-id from the Go edge.
+
+**Dependencies**
+- DEP-1/2: every import you add is pinned + hashed in the lockfile AND importable on a clean image — especially `webrtcvad`. Never rely on a hand-installed venv.
+
+**Gates:** `ruff check .`, `mypy app tests`, `bandit`, `pip-audit`, pytest (write the test first). Respect the mypy-strict exclusions in CLAUDE.md.
