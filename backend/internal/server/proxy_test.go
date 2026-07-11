@@ -25,7 +25,7 @@ func (s stubVerifier) Verify(_ context.Context, _ string) (string, error) {
 
 func newTestServer(pythonURL string) *Server {
 	cfg := &config.Config{Port: 0}
-	hub := NewHub(nil)
+	hub := NewHub()
 	wm := memory.New(5)
 	s := New(cfg, hub, wm, nil)
 	s.pythonURL = pythonURL

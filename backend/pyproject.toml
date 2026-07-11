@@ -20,14 +20,11 @@ select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501", "N806"]
 
 [tool.ruff.lint.per-file-ignores]
-# gRPC generated stubs use PascalCase method names per proto convention
-"app/pipeline/vision_grpc_server.py" = ["N802"]
 # VAD state machine: silence_ms/in_speech reassignments inside branch are intentional reset guards
 "app/pipeline/audio_worker.py" = ["F841"]
 # Scripts use deferred imports after warnings suppression (intentional E402)
 "scripts/*" = ["E402", "F841"]
 # Tests manipulate sys.path before importing generated proto stubs
-"tests/test_nats_transport.py" = ["E402", "N802"]
 "tests/test_spatial_anchoring.py" = ["E402"]
 
 [tool.mypy]

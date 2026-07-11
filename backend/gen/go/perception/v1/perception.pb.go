@@ -896,175 +896,6 @@ func (x *CognitionResponse) GetStreamComplete() bool {
 	return false
 }
 
-// HandData carries the 21 MediaPipe landmarks for a single detected hand.
-// Separated from HandGestureEvent so the raw transport layer (PerceptionService)
-// can stream all landmark data without requiring a gesture classification.
-type HandData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hand          Handedness             `protobuf:"varint,1,opt,name=hand,proto3,enum=aria.perception.v1.Handedness" json:"hand,omitempty"`
-	Landmarks     []*Point3D             `protobuf:"bytes,2,rep,name=landmarks,proto3" json:"landmarks,omitempty"` // exactly 21 per MediaPipe standard
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *HandData) Reset() {
-	*x = HandData{}
-	mi := &file_perception_v1_perception_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HandData) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HandData) ProtoMessage() {}
-
-func (x *HandData) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HandData.ProtoReflect.Descriptor instead.
-func (*HandData) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *HandData) GetHand() Handedness {
-	if x != nil {
-		return x.Hand
-	}
-	return Handedness_HANDEDNESS_UNSPECIFIED
-}
-
-func (x *HandData) GetLandmarks() []*Point3D {
-	if x != nil {
-		return x.Landmarks
-	}
-	return nil
-}
-
-// PerceptionFrame is the per-frame payload streamed from the Python vision worker
-// to the Go backend over PerceptionService.StreamFrames.
-// It replaces the stdout JSON pipe introduced in Week 0.
-//
-// Tag budget (mirrors HandGestureEvent discipline):
-//
-//	1 : hands         — repeated HandData; primary payload, lowest tag = 1-byte header
-//	2 : timestamp_us  — int64 µs; consistent with HandGestureEvent.timestamp_us
-//	3 : session_id    — string; session re-hydration key (Week 2)
-type PerceptionFrame struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hands         []*HandData            `protobuf:"bytes,1,rep,name=hands,proto3" json:"hands,omitempty"`
-	TimestampUs   int64                  `protobuf:"varint,2,opt,name=timestamp_us,json=timestampUs,proto3" json:"timestamp_us,omitempty"`
-	SessionId     string                 `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PerceptionFrame) Reset() {
-	*x = PerceptionFrame{}
-	mi := &file_perception_v1_perception_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PerceptionFrame) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PerceptionFrame) ProtoMessage() {}
-
-func (x *PerceptionFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PerceptionFrame.ProtoReflect.Descriptor instead.
-func (*PerceptionFrame) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *PerceptionFrame) GetHands() []*HandData {
-	if x != nil {
-		return x.Hands
-	}
-	return nil
-}
-
-func (x *PerceptionFrame) GetTimestampUs() int64 {
-	if x != nil {
-		return x.TimestampUs
-	}
-	return 0
-}
-
-func (x *PerceptionFrame) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-// StreamRequest is sent by the Go client when opening a StreamFrames call.
-type StreamRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StreamRequest) Reset() {
-	*x = StreamRequest{}
-	mi := &file_perception_v1_perception_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StreamRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StreamRequest) ProtoMessage() {}
-
-func (x *StreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_v1_perception_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
-func (*StreamRequest) Descriptor() ([]byte, []int) {
-	return file_perception_v1_perception_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *StreamRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
 var File_perception_v1_perception_proto protoreflect.FileDescriptor
 
 const file_perception_v1_perception_proto_rawDesc = "" +
@@ -1126,18 +957,7 @@ const file_perception_v1_perception_proto_rawDesc = "" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x126\n" +
 	"\x17natural_language_output\x18\x02 \x01(\tR\x15naturalLanguageOutput\x12-\n" +
 	"\x12symbolic_inference\x18\x03 \x01(\tR\x11symbolicInference\x12'\n" +
-	"\x0fstream_complete\x18\x04 \x01(\bR\x0estreamComplete\"y\n" +
-	"\bHandData\x122\n" +
-	"\x04hand\x18\x01 \x01(\x0e2\x1e.aria.perception.v1.HandednessR\x04hand\x129\n" +
-	"\tlandmarks\x18\x02 \x03(\v2\x1b.aria.perception.v1.Point3DR\tlandmarks\"\x87\x01\n" +
-	"\x0fPerceptionFrame\x122\n" +
-	"\x05hands\x18\x01 \x03(\v2\x1c.aria.perception.v1.HandDataR\x05hands\x12!\n" +
-	"\ftimestamp_us\x18\x02 \x01(\x03R\vtimestampUs\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x03 \x01(\tR\tsessionId\".\n" +
-	"\rStreamRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId*S\n" +
+	"\x0fstream_complete\x18\x04 \x01(\bR\x0estreamComplete*S\n" +
 	"\n" +
 	"Handedness\x12\x1a\n" +
 	"\x16HANDEDNESS_UNSPECIFIED\x10\x00\x12\x13\n" +
@@ -1165,9 +985,7 @@ const file_perception_v1_perception_proto_rawDesc = "" +
 	"\x1aTWO_HAND_GESTURE_TYPE_BOND\x10\x052\xce\x01\n" +
 	"\x10CognitionService\x12b\n" +
 	"\x0fStreamCognition\x12$.aria.perception.v1.CognitionRequest\x1a%.aria.perception.v1.CognitionResponse(\x010\x01\x12V\n" +
-	"\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchor2m\n" +
-	"\x11PerceptionService\x12X\n" +
-	"\fStreamFrames\x12!.aria.perception.v1.StreamRequest\x1a#.aria.perception.v1.PerceptionFrame0\x01BGZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3"
+	"\x0eRegisterAnchor\x12!.aria.perception.v1.SpatialAnchor\x1a!.aria.perception.v1.SpatialAnchorBGZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3"
 
 var (
 	file_perception_v1_perception_proto_rawDescOnce sync.Once
@@ -1182,7 +1000,7 @@ func file_perception_v1_perception_proto_rawDescGZIP() []byte {
 }
 
 var file_perception_v1_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_perception_v1_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_perception_v1_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_perception_v1_perception_proto_goTypes = []any{
 	(Handedness)(0),           // 0: aria.perception.v1.Handedness
 	(GestureType)(0),          // 1: aria.perception.v1.GestureType
@@ -1194,31 +1012,23 @@ var file_perception_v1_perception_proto_goTypes = []any{
 	(*SpatialEvent)(nil),      // 7: aria.perception.v1.SpatialEvent
 	(*CognitionRequest)(nil),  // 8: aria.perception.v1.CognitionRequest
 	(*CognitionResponse)(nil), // 9: aria.perception.v1.CognitionResponse
-	(*HandData)(nil),          // 10: aria.perception.v1.HandData
-	(*PerceptionFrame)(nil),   // 11: aria.perception.v1.PerceptionFrame
-	(*StreamRequest)(nil),     // 12: aria.perception.v1.StreamRequest
 }
 var file_perception_v1_perception_proto_depIdxs = []int32{
-	0,  // 0: aria.perception.v1.HandGestureEvent.hand:type_name -> aria.perception.v1.Handedness
-	4,  // 1: aria.perception.v1.HandGestureEvent.landmarks:type_name -> aria.perception.v1.Point3D
-	1,  // 2: aria.perception.v1.HandGestureEvent.gesture:type_name -> aria.perception.v1.GestureType
-	4,  // 3: aria.perception.v1.HandGestureEvent.pointing_vector:type_name -> aria.perception.v1.Point3D
-	4,  // 4: aria.perception.v1.SpatialAnchor.position:type_name -> aria.perception.v1.Point3D
-	5,  // 5: aria.perception.v1.CognitionRequest.gesture_event:type_name -> aria.perception.v1.HandGestureEvent
-	0,  // 6: aria.perception.v1.HandData.hand:type_name -> aria.perception.v1.Handedness
-	4,  // 7: aria.perception.v1.HandData.landmarks:type_name -> aria.perception.v1.Point3D
-	10, // 8: aria.perception.v1.PerceptionFrame.hands:type_name -> aria.perception.v1.HandData
-	8,  // 9: aria.perception.v1.CognitionService.StreamCognition:input_type -> aria.perception.v1.CognitionRequest
-	6,  // 10: aria.perception.v1.CognitionService.RegisterAnchor:input_type -> aria.perception.v1.SpatialAnchor
-	12, // 11: aria.perception.v1.PerceptionService.StreamFrames:input_type -> aria.perception.v1.StreamRequest
-	9,  // 12: aria.perception.v1.CognitionService.StreamCognition:output_type -> aria.perception.v1.CognitionResponse
-	6,  // 13: aria.perception.v1.CognitionService.RegisterAnchor:output_type -> aria.perception.v1.SpatialAnchor
-	11, // 14: aria.perception.v1.PerceptionService.StreamFrames:output_type -> aria.perception.v1.PerceptionFrame
-	12, // [12:15] is the sub-list for method output_type
-	9,  // [9:12] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	0, // 0: aria.perception.v1.HandGestureEvent.hand:type_name -> aria.perception.v1.Handedness
+	4, // 1: aria.perception.v1.HandGestureEvent.landmarks:type_name -> aria.perception.v1.Point3D
+	1, // 2: aria.perception.v1.HandGestureEvent.gesture:type_name -> aria.perception.v1.GestureType
+	4, // 3: aria.perception.v1.HandGestureEvent.pointing_vector:type_name -> aria.perception.v1.Point3D
+	4, // 4: aria.perception.v1.SpatialAnchor.position:type_name -> aria.perception.v1.Point3D
+	5, // 5: aria.perception.v1.CognitionRequest.gesture_event:type_name -> aria.perception.v1.HandGestureEvent
+	8, // 6: aria.perception.v1.CognitionService.StreamCognition:input_type -> aria.perception.v1.CognitionRequest
+	6, // 7: aria.perception.v1.CognitionService.RegisterAnchor:input_type -> aria.perception.v1.SpatialAnchor
+	9, // 8: aria.perception.v1.CognitionService.StreamCognition:output_type -> aria.perception.v1.CognitionResponse
+	6, // 9: aria.perception.v1.CognitionService.RegisterAnchor:output_type -> aria.perception.v1.SpatialAnchor
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_perception_v1_perception_proto_init() }
@@ -1237,9 +1047,9 @@ func file_perception_v1_perception_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_perception_v1_perception_proto_rawDesc), len(file_perception_v1_perception_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   9,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   1,
 		},
 		GoTypes:           file_perception_v1_perception_proto_goTypes,
 		DependencyIndexes: file_perception_v1_perception_proto_depIdxs,

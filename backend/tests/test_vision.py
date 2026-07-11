@@ -1,34 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from app.models.schemas import VisionState
-from app.pipeline.emotion import EmotionClassifier
 from app.pipeline.vision import VisionPipeline
-
-BACKEND_DIR = Path(__file__).parent.parent
-WORKER = BACKEND_DIR / "app" / "pipeline" / "vision_worker.py"
-_WORKER_ENV = {**os.environ, "PYTHONPATH": str(BACKEND_DIR)}
-
-VALID_EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "fearful", "disgusted"]
-
-
-class _FakeLandmark:
-    def __init__(self, x: float = 0.5, y: float = 0.5, z: float = 0.0) -> None:
-        self.x = x
-        self.y = y
-        self.z = z
-
-
-def _make_landmarks(count: int = 478) -> list[_FakeLandmark]:
-    return [_FakeLandmark() for _ in range(count)]
 
 
 def test_vision_state_defaults() -> None:
@@ -64,88 +40,3 @@ async def test_pipeline_uninitialized_returns_defaults() -> None:
     result = await pipeline.process_frame(frame)
     assert result.emotion == "neutral"
     assert result.face_landmarks == []
-
-
-def test_worker_synthetic_output_schema() -> None:
-    result = subprocess.run(
-        [sys.executable, str(WORKER), "--synthetic", "--duration", "1"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        env=_WORKER_ENV,
-    )
-    assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line.strip()]
-    assert len(lines) > 0, "worker produced no output lines"
-
-    for line in lines:
-        frame = json.loads(line)
-        assert "face_landmarks" in frame
-        assert "emotion" in frame
-        assert "head_pose" in frame
-        assert "hand_landmarks" in frame
-        assert "timestamp" in frame
-
-        assert frame["emotion"] == "neutral"
-        assert isinstance(frame["timestamp"], float)
-        assert isinstance(frame["hand_landmarks"], list)
-
-        pose = frame["head_pose"]
-        assert "pitch" in pose
-        assert "yaw" in pose
-        assert "roll" in pose
-
-
-def test_worker_synthetic_face_landmarks_count() -> None:
-    result = subprocess.run(
-        [sys.executable, str(WORKER), "--synthetic", "--duration", "1"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        env=_WORKER_ENV,
-    )
-    assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line.strip()]
-    assert len(lines) > 0, "worker produced no output lines"
-
-    first = json.loads(lines[0])
-    assert len(first["face_landmarks"]) == 478, (
-        f"expected 478 face landmarks, got {len(first['face_landmarks'])}"
-    )
-    for point in first["face_landmarks"]:
-        assert len(point) == 3
-
-
-def test_emotion_classifier_returns_valid_emotion() -> None:
-    classifier = EmotionClassifier()
-    landmarks = _make_landmarks(478)
-    emotion, confidence = classifier.classify(landmarks)
-    assert emotion in EmotionClassifier.EMOTIONS
-    assert 0.0 <= confidence <= 1.0
-
-
-def test_emotion_classifier_is_deterministic() -> None:
-    classifier = EmotionClassifier()
-    classifier.reset()
-    landmarks = _make_landmarks(478)
-    result_a = classifier.classify(landmarks)
-    classifier.reset()
-    result_b = classifier.classify(landmarks)
-    assert result_a == result_b
-
-
-def test_worker_synthetic_output_includes_emotion_confidence() -> None:
-    result = subprocess.run(
-        [sys.executable, str(WORKER), "--synthetic", "--duration", "1"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        env=_WORKER_ENV,
-    )
-    assert result.returncode == 0, f"worker exited non-zero: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line.strip()]
-    assert len(lines) > 0, "worker produced no output lines"
-
-    parsed = json.loads(lines[0])
-    assert "emotion_confidence" in parsed
-    assert parsed["emotion"] in VALID_EMOTIONS

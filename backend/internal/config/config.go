@@ -17,7 +17,6 @@ type Config struct {
 	Host              string
 	Port              int
 	PythonBin         string
-	VisionScript      string
 	AnthropicKey      string
 	ElevenLabsKey     string
 	Debug             bool
@@ -27,7 +26,6 @@ type Config struct {
 	ElevenLabsVoiceID string
 	WhisperModel      string
 	CognitionGRPCAddr string
-	NatsURL           string
 	ClerkSecretKey    string
 	ClerkJWTIssuer    string
 	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
@@ -68,11 +66,6 @@ func Load() *Config {
 		pythonBin = "python3"
 	}
 
-	visionScript := os.Getenv("VISION_SCRIPT")
-	if visionScript == "" {
-		visionScript = "app/pipeline/vision_worker.py"
-	}
-
 	audioScript := os.Getenv("AUDIO_SCRIPT")
 	if audioScript == "" {
 		audioScript = "app/pipeline/audio_worker.py"
@@ -101,11 +94,6 @@ func Load() *Config {
 	cognitionGRPCAddr := os.Getenv("COGNITION_GRPC_ADDR")
 	if cognitionGRPCAddr == "" {
 		cognitionGRPCAddr = "127.0.0.1:50052"
-	}
-
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = "nats://127.0.0.1:4222"
 	}
 
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
@@ -142,7 +130,6 @@ func Load() *Config {
 		Host:                 host,
 		Port:                 port,
 		PythonBin:            pythonBin,
-		VisionScript:         visionScript,
 		AnthropicKey:         os.Getenv("ANTHROPIC_API_KEY"),
 		ElevenLabsKey:        os.Getenv("ELEVENLABS_API_KEY"),
 		Debug:                debug,
@@ -152,7 +139,6 @@ func Load() *Config {
 		ElevenLabsVoiceID:    elevenLabsVoiceID,
 		WhisperModel:         whisperModel,
 		CognitionGRPCAddr:    cognitionGRPCAddr,
-		NatsURL:              natsURL,
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
 		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),

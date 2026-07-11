@@ -17,9 +17,7 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
-	arianats "github.com/sucheet2000/aria/backend/internal/nats"
 	"github.com/sucheet2000/aria/backend/internal/server"
-	"github.com/sucheet2000/aria/backend/internal/vision"
 	"google.golang.org/grpc"
 )
 
@@ -67,12 +65,9 @@ func main() {
 		workDir, _ = os.Getwd()
 	}
 
-	// Create hub first (nil vision) so the vision worker can reference it as a broadcaster.
-	hub := server.NewHub(nil)
-
-	// Create vision worker with hub as broadcaster, then wire it back into hub.
-	worker := vision.New(cfg.PythonBin, cfg.VisionScript, workDir, hub)
-	hub.SetVision(worker)
+	// The hub fans out broadcasts to connected WebSocket clients. Vision capture
+	// now runs in the browser (A.2a), so the server no longer spawns a vision worker.
+	hub := server.NewHub()
 
 	// StreamRegistry bridges the CognitionService gRPC interrupt path and the HTTP handler.
 	registry := cognition.NewStreamRegistry()
@@ -91,15 +86,6 @@ func main() {
 			log.Error().Err(err).Msg("CognitionService gRPC server error")
 		}
 	}()
-
-	// NATS subscriber: receives PerceptionFrames from Python vision worker (--nats mode).
-	// Replaces GRPCClient for high-frequency landmark stream; gRPC retained for interrupts.
-	natsSub := arianats.NewSubscriber(cfg.NatsURL, hub)
-	if err := natsSub.Connect(); err != nil {
-		log.Warn().Err(err).Str("url", cfg.NatsURL).Msg("NATS subscriber connect failed — vision frames will fall back to stdout")
-	} else {
-		defer natsSub.Close()
-	}
 
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
 	hub.SetAudio(audioWorker)
@@ -121,8 +107,7 @@ func main() {
 	// begins serving so the first cognition request does not 500.
 	srv := server.New(cfg, hub, wm, registry)
 
-	// Gate /ready on the always-on audio worker; the vision worker is on-demand
-	// (lazily started per client) and so is not a readiness signal.
+	// Gate /ready on the always-on audio worker.
 	if cfg.AudioEnabled {
 		srv.AddReadyCheck("audio", audioWorker.Running)
 	}
@@ -143,7 +128,7 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), server.ShutdownTimeout)
 	defer shutdownCancel()
 
-	server.GracefulShutdown(shutdownCtx, cancel, srv, grpcSrv, audioWorker, worker)
+	server.GracefulShutdown(shutdownCtx, cancel, srv, grpcSrv, audioWorker)
 
 	log.Info().Msg("server stopped")
 }
