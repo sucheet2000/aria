@@ -54,13 +54,17 @@ export function useWebSocket() {
       }
 
       // Browsers can't set headers on a WS handshake, so the Clerk session token
-      // goes in the query param; the Go server verifies it before upgrading.
+      // travels in the Sec-WebSocket-Protocol header via the subprotocol list
+      // (SEC-1: never in the URL, where it leaks into logs/history). The Go
+      // server reads the token from the subprotocol and echoes back only the
+      // "aria-ws" marker before upgrading.
       const token = await getTokenRef.current?.();
       if (!mountedRef.current) return;
-      const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
 
       console.log(`[useWebSocket] connecting to ${WS_URL}`);
-      const ws = new WebSocket(url);
+      const ws = token
+        ? new WebSocket(WS_URL, ["aria-ws", token])
+        : new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
