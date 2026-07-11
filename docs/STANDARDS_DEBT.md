@@ -24,6 +24,7 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `SEC-2` | Go→Python trust boundary was **fail-open** — no production startup guard on the Python side | **SEC-2 PR** — `validate_internal_auth` in `app.main` lifespan fails closed when `INTERNAL_AUTH_SECRET` is empty and `ENV != "local"` |
 | `REL-2` | Anthropic cognition call had **no timeout or retry**; `response.content[0]` unguarded against empty completions | **REL-2 PR** — `AsyncAnthropic` wired with config-driven `timeout`/`max_retries` (SDK backoff on 429/5xx); empty/non-text completion now returns a safe fallback instead of `IndexError` |
 | `DATA-3` | Episodic **30-day TTL never enforced** — unbounded growth, PII retained forever | **DATA-3 PR** — `MemoryStore.sweep_expired` deletes episodic docs where `expires_at < now`; runs on `load()`, throttled (`SWEEP_INTERVAL_SECONDS`) on the episodic write path; read-time filter kept as defense-in-depth |
+| `TEST-1` | Frontend vitest suites never ran in CI — all 5 non-gating | **B2** (#60) — `npm test` (vitest) is now a gating CI step |
 
 ## Open debt
 
@@ -32,7 +33,6 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `SCALE-1` | Perception reads the **container's physical camera/mic** — the headline feature cannot run in the cloud; capture must move browser-side | critical | `backend/app/pipeline` vision/audio workers | **Phase A.2** (browser-side perception rewrite) |
 | `DEP-2` | `webrtcvad` imported but **undeclared** — audio worker hard-exits(1) on any machine but the author's | high | audio worker + `requirements` | Phase E |
 | `API-1` | Single-hand gestures silently dropped: frontend sends `gesture`, Python reads `hand_gesture` — contract drift across 4 hand-maintained copies | high | proto / Go / pydantic / TS | Phase E |
-| `TEST-1` | Frontend **vitest suites never run in CI** — all 5 are non-gating | high | `.github/workflows/ci.yml` frontend job | **Phase B2** (gate `npm test`) |
 | `OBS-1/2/3` | Production observability blind — `/metrics` unreachable through the edge, health check that can't fail, non-JSON logs | high | Go edge + Python | Phase E |
 | `DEP-1` | Python dependency graph non-deterministic — ~18/28 unpinned, no lockfile, no hashes | high | `backend/requirements.txt` | Phase E |
 | `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
