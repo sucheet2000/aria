@@ -83,10 +83,10 @@ async def cognition(
     episodic = await memory.query_relevant(req.message, owner=owner, n_results=5)
 
     spatial_event: SpatialEvent | None = None
-    if req.hand_gesture != "none" or req.two_hand_gesture != "NONE":
+    if req.gesture != "none" or req.two_hand_gesture != "NONE":
         spatial_event = await run_in_threadpool(
             bridge.on_gesture_event,
-            req.hand_gesture,
+            req.gesture,
             req.two_hand_gesture,
             req.pointing_vector,
             req.session_id,

@@ -42,14 +42,15 @@ func main() {
 		}
 	}
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: time.RFC3339,
-	})
-
 	cfg := config.Load()
 
+	// Structured JSON logs to stderr on the prod path (the zerolog default); the
+	// human-readable ConsoleWriter is used only for local dev (DEBUG=true).
 	if cfg.Debug {
+		log.Logger = log.Output(zerolog.ConsoleWriter{
+			Out:        os.Stdout,
+			TimeFormat: time.RFC3339,
+		})
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	} else {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -119,6 +120,12 @@ func main() {
 	// The server waits for FastAPI readiness (bounded, non-fatal) before it
 	// begins serving so the first cognition request does not 500.
 	srv := server.New(cfg, hub, wm, registry)
+
+	// Gate /ready on the always-on audio worker; the vision worker is on-demand
+	// (lazily started per client) and so is not a readiness signal.
+	if cfg.AudioEnabled {
+		srv.AddReadyCheck("audio", audioWorker.Running)
+	}
 
 	go func() {
 		if err := srv.Start(ctx); err != nil {

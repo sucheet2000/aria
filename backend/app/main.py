@@ -9,15 +9,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.cognition_route import router as cognition_router
 from app.api.deps import require_internal_auth
 from app.api.metrics_route import router as metrics_router
+from app.api.request_context import (
+    RequestIDMiddleware,
+    unhandled_exception_handler,
+)
 from app.api.routes import router
 from app.api.tts_route import router as tts_router
 from app.api.websocket import ws_router
 from app.cognition.llm import LLMClient
 from app.cognition.memory import MemoryStore
 from app.config import Settings, settings
+from app.observability.logging import configure_logging
 from app.spatial.anchor_registry import AnchorRegistry
 from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
+configure_logging(settings.ENV)
 logger = structlog.get_logger()
 
 
@@ -87,6 +93,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="ARIA Backend", version="0.1.0", lifespan=lifespan)
 
+# Catch-all: no unhandled 500 leaves the service without a structured log line
+# and an error metric. Registered app-level so it covers every router.
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -94,6 +104,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Outermost user middleware so every log line for the request carries
+# request_id and the id is echoed on the response.
+app.add_middleware(RequestIDMiddleware)
 
 # The Go server is the only legitimate caller of the paid/data API routes, so
 # they sit behind the internal trust boundary. /health and /metrics stay open

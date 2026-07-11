@@ -1,27 +1,28 @@
-setuptools>=78.1.1
-wheel
-fastapi
-uvicorn[standard]
-websockets
+setuptools==80.10.2  # >=78.1.1 for CVEs; <81 so pkg_resources stays (webrtcvad 2.0.10 needs it)
+wheel                # left unpinned — pinning wheel forces packaging>=24, conflicts with deepfilternet<24
+fastapi==0.135.1
+uvicorn[standard]==0.42.0
+websockets==16.0
 mediapipe==0.10.32
-opencv-python
+opencv-python==4.11.0.86
 anthropic==0.85.0
 chromadb==1.5.5
 torch==2.10.0
-pillow
-numpy
-pydantic
-pydantic-settings
-python-multipart
-structlog
-pytest
-pytest-asyncio
-httpx
-ruff>=0.9.0
-mypy>=1.0.0
+pillow==12.1.1
+numpy==1.26.4
+pydantic==2.12.4
+pydantic-settings==2.12.0
+python-multipart==0.0.22
+structlog==25.5.0
+pytest==9.0.2
+pytest-asyncio==1.3.0
+httpx==0.28.1
+ruff==0.15.9
+mypy==1.20.0
 faster-whisper==1.2.1
 ctranslate2==4.7.1
 onnxruntime==1.24.4
-sounddevice
+sounddevice==0.5.5
 deepfilternet==0.5.6  # noise suppression; ONNX path preferred, falls back to native df backend
 nats-py==2.14.0
+webrtcvad==2.0.10  # VAD for audio worker (DEP-2: was imported but undeclared)

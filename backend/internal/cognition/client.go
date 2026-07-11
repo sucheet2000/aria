@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sucheet2000/aria/backend/internal/auth"
 	"github.com/sucheet2000/aria/backend/internal/memory"
+	"github.com/sucheet2000/aria/backend/internal/reqid"
 )
 
 // maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
@@ -90,6 +91,7 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 		httpReq.Header.Set(auth.OwnerHeader, owner)
 	}
 	auth.SetInternalAuth(httpReq, c.internalAuthSecret)
+	reqid.SetHeader(httpReq, ctx)
 
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
+	"github.com/sucheet2000/aria/backend/internal/reqid"
 	"github.com/sucheet2000/aria/backend/internal/tts"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	httpServer    *http.Server
 	httpClient    *http.Client
 	pythonURL     string
+	readyChecks   []readyCheck
 }
 
 // New creates a new Server with the given configuration, hub, working memory, and stream registry.
@@ -53,7 +55,7 @@ func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cogni
 
 // Start registers routes, starts the HTTP server, and blocks until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) error {
-	s.router.Use(middleware.RequestID)
+	s.router.Use(requestIDMiddleware(log.Logger))
 	s.router.Use(middleware.Recoverer)
 
 	authEnabled := s.cfg.ClerkSecretKey != ""
@@ -72,6 +74,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	s.router.Get("/health", s.handleHealth)
+	s.router.Get("/ready", s.handleReady)
+	s.router.Get("/metrics", s.handleMetricsProxy)
 	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
 	})
@@ -166,6 +170,7 @@ func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request
 	}
 	setOwnerHeader(req, r)
 	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	reqid.SetHeader(req, r.Context())
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -185,6 +190,7 @@ func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	setOwnerHeader(req, r)
 	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	reqid.SetHeader(req, r.Context())
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
@@ -206,6 +212,7 @@ func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request)
 	}
 	setOwnerHeader(req, r)
 	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	reqid.SetHeader(req, r.Context())
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)

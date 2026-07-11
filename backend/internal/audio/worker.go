@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -42,7 +43,14 @@ type Worker struct {
 	stdinPipe    io.WriteCloser
 	stdinMu      sync.Mutex
 	restartDelay time.Duration
+	running      atomic.Bool
 	log          zerolog.Logger
+}
+
+// Running reports whether the audio subprocess is currently alive. It is used by
+// the /ready probe to gate readiness on the always-on audio worker.
+func (w *Worker) Running() bool {
+	return w.running.Load()
 }
 
 // setStdinPipe stores the current stdin pipe under stdinMu.
@@ -115,6 +123,8 @@ func (w *Worker) run(ctx context.Context) error {
 	w.procMu.Unlock()
 
 	w.setStdinPipe(stdin)
+	w.running.Store(true)
+	defer w.running.Store(false)
 	w.log.Info().Int("pid", cmd.Process.Pid).Msg("audio process started")
 
 	var wg sync.WaitGroup
