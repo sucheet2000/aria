@@ -128,8 +128,10 @@ requirements.txt is unchanged so local macOS dev is unaffected.
 - Always push to integration, merge to main after each week
 
 ## Code Generation
-Proto stubs: cd proto && buf generate
-Python stubs: python3 -m grpc_tools.protoc -I. --python_out=../backend/gen/python --grpc_python_out=../backend/gen/python perception.proto
+Proto contract: proto/perception/v1/perception.proto (package aria.perception.v1)
+Stubs (Go + Python): cd proto && buf generate
+One command generates both Go (backend/gen/go/perception/v1) and self-contained
+nested Python (backend/gen/python/perception/v1). No separate grpc_tools step.
 
 ## Architecture Decisions
 - Session IDs: UUIDs generated per client, stored in ariaStore (a per-user `owner` key is added in Phase 3)

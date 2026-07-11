@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: perception.proto
+// source: perception/v1/perception.proto
 
 package perceptionv1
 
@@ -57,11 +57,11 @@ func (x Handedness) String() string {
 }
 
 func (Handedness) Descriptor() protoreflect.EnumDescriptor {
-	return file_perception_proto_enumTypes[0].Descriptor()
+	return file_perception_v1_perception_proto_enumTypes[0].Descriptor()
 }
 
 func (Handedness) Type() protoreflect.EnumType {
-	return &file_perception_proto_enumTypes[0]
+	return &file_perception_v1_perception_proto_enumTypes[0]
 }
 
 func (x Handedness) Number() protoreflect.EnumNumber {
@@ -70,7 +70,7 @@ func (x Handedness) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Handedness.Descriptor instead.
 func (Handedness) EnumDescriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{0}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{0}
 }
 
 // GestureType classifies the high-level semantic intent of a detected hand pose.
@@ -114,11 +114,11 @@ func (x GestureType) String() string {
 }
 
 func (GestureType) Descriptor() protoreflect.EnumDescriptor {
-	return file_perception_proto_enumTypes[1].Descriptor()
+	return file_perception_v1_perception_proto_enumTypes[1].Descriptor()
 }
 
 func (GestureType) Type() protoreflect.EnumType {
-	return &file_perception_proto_enumTypes[1]
+	return &file_perception_v1_perception_proto_enumTypes[1]
 }
 
 func (x GestureType) Number() protoreflect.EnumNumber {
@@ -127,7 +127,7 @@ func (x GestureType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GestureType.Descriptor instead.
 func (GestureType) EnumDescriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{1}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{1}
 }
 
 // HandGestureType classifies the physical hand pose detected by the gesture
@@ -175,11 +175,11 @@ func (x HandGestureType) String() string {
 }
 
 func (HandGestureType) Descriptor() protoreflect.EnumDescriptor {
-	return file_perception_proto_enumTypes[2].Descriptor()
+	return file_perception_v1_perception_proto_enumTypes[2].Descriptor()
 }
 
 func (HandGestureType) Type() protoreflect.EnumType {
-	return &file_perception_proto_enumTypes[2]
+	return &file_perception_v1_perception_proto_enumTypes[2]
 }
 
 func (x HandGestureType) Number() protoreflect.EnumNumber {
@@ -188,7 +188,7 @@ func (x HandGestureType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HandGestureType.Descriptor instead.
 func (HandGestureType) EnumDescriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{2}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{2}
 }
 
 // TwoHandGestureType classifies gestures that require both hands simultaneously.
@@ -236,11 +236,11 @@ func (x TwoHandGestureType) String() string {
 }
 
 func (TwoHandGestureType) Descriptor() protoreflect.EnumDescriptor {
-	return file_perception_proto_enumTypes[3].Descriptor()
+	return file_perception_v1_perception_proto_enumTypes[3].Descriptor()
 }
 
 func (TwoHandGestureType) Type() protoreflect.EnumType {
-	return &file_perception_proto_enumTypes[3]
+	return &file_perception_v1_perception_proto_enumTypes[3]
 }
 
 func (x TwoHandGestureType) Number() protoreflect.EnumNumber {
@@ -249,7 +249,7 @@ func (x TwoHandGestureType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TwoHandGestureType.Descriptor instead.
 func (TwoHandGestureType) EnumDescriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{3}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{3}
 }
 
 // Point3D represents a single normalized landmark coordinate in 3D space.
@@ -276,7 +276,7 @@ type Point3D struct {
 
 func (x *Point3D) Reset() {
 	*x = Point3D{}
-	mi := &file_perception_proto_msgTypes[0]
+	mi := &file_perception_v1_perception_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -288,7 +288,7 @@ func (x *Point3D) String() string {
 func (*Point3D) ProtoMessage() {}
 
 func (x *Point3D) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[0]
+	mi := &file_perception_v1_perception_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -301,7 +301,7 @@ func (x *Point3D) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Point3D.ProtoReflect.Descriptor instead.
 func (*Point3D) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{0}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Point3D) GetX() float32 {
@@ -420,7 +420,7 @@ type HandGestureEvent struct {
 
 func (x *HandGestureEvent) Reset() {
 	*x = HandGestureEvent{}
-	mi := &file_perception_proto_msgTypes[1]
+	mi := &file_perception_v1_perception_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -432,7 +432,7 @@ func (x *HandGestureEvent) String() string {
 func (*HandGestureEvent) ProtoMessage() {}
 
 func (x *HandGestureEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[1]
+	mi := &file_perception_v1_perception_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -445,7 +445,7 @@ func (x *HandGestureEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandGestureEvent.ProtoReflect.Descriptor instead.
 func (*HandGestureEvent) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{1}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *HandGestureEvent) GetHand() Handedness {
@@ -569,7 +569,7 @@ type SpatialAnchor struct {
 
 func (x *SpatialAnchor) Reset() {
 	*x = SpatialAnchor{}
-	mi := &file_perception_proto_msgTypes[2]
+	mi := &file_perception_v1_perception_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -581,7 +581,7 @@ func (x *SpatialAnchor) String() string {
 func (*SpatialAnchor) ProtoMessage() {}
 
 func (x *SpatialAnchor) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[2]
+	mi := &file_perception_v1_perception_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -594,7 +594,7 @@ func (x *SpatialAnchor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpatialAnchor.ProtoReflect.Descriptor instead.
 func (*SpatialAnchor) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{2}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SpatialAnchor) GetAnchorId() string {
@@ -655,7 +655,7 @@ type SpatialEvent struct {
 
 func (x *SpatialEvent) Reset() {
 	*x = SpatialEvent{}
-	mi := &file_perception_proto_msgTypes[3]
+	mi := &file_perception_v1_perception_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +667,7 @@ func (x *SpatialEvent) String() string {
 func (*SpatialEvent) ProtoMessage() {}
 
 func (x *SpatialEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[3]
+	mi := &file_perception_v1_perception_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +680,7 @@ func (x *SpatialEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpatialEvent.ProtoReflect.Descriptor instead.
 func (*SpatialEvent) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{3}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SpatialEvent) GetEventType() string {
@@ -736,7 +736,7 @@ type CognitionRequest struct {
 
 func (x *CognitionRequest) Reset() {
 	*x = CognitionRequest{}
-	mi := &file_perception_proto_msgTypes[4]
+	mi := &file_perception_v1_perception_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -748,7 +748,7 @@ func (x *CognitionRequest) String() string {
 func (*CognitionRequest) ProtoMessage() {}
 
 func (x *CognitionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[4]
+	mi := &file_perception_v1_perception_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -761,7 +761,7 @@ func (x *CognitionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CognitionRequest.ProtoReflect.Descriptor instead.
 func (*CognitionRequest) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{4}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CognitionRequest) GetSessionId() string {
@@ -840,7 +840,7 @@ type CognitionResponse struct {
 
 func (x *CognitionResponse) Reset() {
 	*x = CognitionResponse{}
-	mi := &file_perception_proto_msgTypes[5]
+	mi := &file_perception_v1_perception_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +852,7 @@ func (x *CognitionResponse) String() string {
 func (*CognitionResponse) ProtoMessage() {}
 
 func (x *CognitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[5]
+	mi := &file_perception_v1_perception_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +865,7 @@ func (x *CognitionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CognitionResponse.ProtoReflect.Descriptor instead.
 func (*CognitionResponse) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{5}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CognitionResponse) GetSessionId() string {
@@ -909,7 +909,7 @@ type HandData struct {
 
 func (x *HandData) Reset() {
 	*x = HandData{}
-	mi := &file_perception_proto_msgTypes[6]
+	mi := &file_perception_v1_perception_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -921,7 +921,7 @@ func (x *HandData) String() string {
 func (*HandData) ProtoMessage() {}
 
 func (x *HandData) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[6]
+	mi := &file_perception_v1_perception_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -934,7 +934,7 @@ func (x *HandData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandData.ProtoReflect.Descriptor instead.
 func (*HandData) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{6}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HandData) GetHand() Handedness {
@@ -971,7 +971,7 @@ type PerceptionFrame struct {
 
 func (x *PerceptionFrame) Reset() {
 	*x = PerceptionFrame{}
-	mi := &file_perception_proto_msgTypes[7]
+	mi := &file_perception_v1_perception_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -983,7 +983,7 @@ func (x *PerceptionFrame) String() string {
 func (*PerceptionFrame) ProtoMessage() {}
 
 func (x *PerceptionFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[7]
+	mi := &file_perception_v1_perception_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -996,7 +996,7 @@ func (x *PerceptionFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PerceptionFrame.ProtoReflect.Descriptor instead.
 func (*PerceptionFrame) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{7}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PerceptionFrame) GetHands() []*HandData {
@@ -1030,7 +1030,7 @@ type StreamRequest struct {
 
 func (x *StreamRequest) Reset() {
 	*x = StreamRequest{}
-	mi := &file_perception_proto_msgTypes[8]
+	mi := &file_perception_v1_perception_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1042,7 +1042,7 @@ func (x *StreamRequest) String() string {
 func (*StreamRequest) ProtoMessage() {}
 
 func (x *StreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_perception_proto_msgTypes[8]
+	mi := &file_perception_v1_perception_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1055,7 +1055,7 @@ func (x *StreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
 func (*StreamRequest) Descriptor() ([]byte, []int) {
-	return file_perception_proto_rawDescGZIP(), []int{8}
+	return file_perception_v1_perception_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *StreamRequest) GetSessionId() string {
@@ -1065,11 +1065,11 @@ func (x *StreamRequest) GetSessionId() string {
 	return ""
 }
 
-var File_perception_proto protoreflect.FileDescriptor
+var File_perception_v1_perception_proto protoreflect.FileDescriptor
 
-const file_perception_proto_rawDesc = "" +
+const file_perception_v1_perception_proto_rawDesc = "" +
 	"\n" +
-	"\x10perception.proto\x12\x12aria.perception.v1\"\xb2\x01\n" +
+	"\x1eperception/v1/perception.proto\x12\x12aria.perception.v1\"\xb2\x01\n" +
 	"\aPoint3D\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x02R\x01y\x12\f\n" +
@@ -1170,20 +1170,20 @@ const file_perception_proto_rawDesc = "" +
 	"\fStreamFrames\x12!.aria.perception.v1.StreamRequest\x1a#.aria.perception.v1.PerceptionFrame0\x01BGZEgithub.com/sucheet2000/aria/backend/gen/go/perception/v1;perceptionv1b\x06proto3"
 
 var (
-	file_perception_proto_rawDescOnce sync.Once
-	file_perception_proto_rawDescData []byte
+	file_perception_v1_perception_proto_rawDescOnce sync.Once
+	file_perception_v1_perception_proto_rawDescData []byte
 )
 
-func file_perception_proto_rawDescGZIP() []byte {
-	file_perception_proto_rawDescOnce.Do(func() {
-		file_perception_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_perception_proto_rawDesc), len(file_perception_proto_rawDesc)))
+func file_perception_v1_perception_proto_rawDescGZIP() []byte {
+	file_perception_v1_perception_proto_rawDescOnce.Do(func() {
+		file_perception_v1_perception_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_perception_v1_perception_proto_rawDesc), len(file_perception_v1_perception_proto_rawDesc)))
 	})
-	return file_perception_proto_rawDescData
+	return file_perception_v1_perception_proto_rawDescData
 }
 
-var file_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_perception_proto_goTypes = []any{
+var file_perception_v1_perception_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_perception_v1_perception_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_perception_v1_perception_proto_goTypes = []any{
 	(Handedness)(0),           // 0: aria.perception.v1.Handedness
 	(GestureType)(0),          // 1: aria.perception.v1.GestureType
 	(HandGestureType)(0),      // 2: aria.perception.v1.HandGestureType
@@ -1198,7 +1198,7 @@ var file_perception_proto_goTypes = []any{
 	(*PerceptionFrame)(nil),   // 11: aria.perception.v1.PerceptionFrame
 	(*StreamRequest)(nil),     // 12: aria.perception.v1.StreamRequest
 }
-var file_perception_proto_depIdxs = []int32{
+var file_perception_v1_perception_proto_depIdxs = []int32{
 	0,  // 0: aria.perception.v1.HandGestureEvent.hand:type_name -> aria.perception.v1.Handedness
 	4,  // 1: aria.perception.v1.HandGestureEvent.landmarks:type_name -> aria.perception.v1.Point3D
 	1,  // 2: aria.perception.v1.HandGestureEvent.gesture:type_name -> aria.perception.v1.GestureType
@@ -1221,12 +1221,12 @@ var file_perception_proto_depIdxs = []int32{
 	0,  // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_perception_proto_init() }
-func file_perception_proto_init() {
-	if File_perception_proto != nil {
+func init() { file_perception_v1_perception_proto_init() }
+func file_perception_v1_perception_proto_init() {
+	if File_perception_v1_perception_proto != nil {
 		return
 	}
-	file_perception_proto_msgTypes[4].OneofWrappers = []any{
+	file_perception_v1_perception_proto_msgTypes[4].OneofWrappers = []any{
 		(*CognitionRequest_GestureEvent)(nil),
 		(*CognitionRequest_TextInput)(nil),
 		(*CognitionRequest_InterruptSignal)(nil),
@@ -1235,18 +1235,18 @@ func file_perception_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_perception_proto_rawDesc), len(file_perception_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_perception_v1_perception_proto_rawDesc), len(file_perception_v1_perception_proto_rawDesc)),
 			NumEnums:      4,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
-		GoTypes:           file_perception_proto_goTypes,
-		DependencyIndexes: file_perception_proto_depIdxs,
-		EnumInfos:         file_perception_proto_enumTypes,
-		MessageInfos:      file_perception_proto_msgTypes,
+		GoTypes:           file_perception_v1_perception_proto_goTypes,
+		DependencyIndexes: file_perception_v1_perception_proto_depIdxs,
+		EnumInfos:         file_perception_v1_perception_proto_enumTypes,
+		MessageInfos:      file_perception_v1_perception_proto_msgTypes,
 	}.Build()
-	File_perception_proto = out.File
-	file_perception_proto_goTypes = nil
-	file_perception_proto_depIdxs = nil
+	File_perception_v1_perception_proto = out.File
+	file_perception_v1_perception_proto_goTypes = nil
+	file_perception_v1_perception_proto_depIdxs = nil
 }

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             (unknown)
-// source: perception.proto
+// source: perception/v1/perception.proto
 
 package perceptionv1
 
@@ -168,7 +168,7 @@ var CognitionService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "perception.proto",
+	Metadata: "perception/v1/perception.proto",
 }
 
 const (
@@ -285,5 +285,5 @@ var PerceptionService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "perception.proto",
+	Metadata: "perception/v1/perception.proto",
 }
