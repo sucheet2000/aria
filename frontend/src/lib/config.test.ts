@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   deriveWsUrl,
   deriveAudioWsUrl,
+  isBackendMisconfigured,
+  backendConfigured,
   API_BASE,
   WS_URL,
   AUDIO_WS_URL,
@@ -36,6 +38,28 @@ describe("deriveAudioWsUrl", () => {
     expect(deriveAudioWsUrl("wss://api.example.com/ws/")).toBe(
       "wss://api.example.com/ws/audio"
     );
+  });
+});
+
+describe("isBackendMisconfigured", () => {
+  it("treats local http dev with a localhost base as configured", () => {
+    expect(isBackendMisconfigured("http://localhost:8080", "http:")).toBe(false);
+  });
+
+  it("flags an https origin whose base still points at localhost", () => {
+    expect(isBackendMisconfigured("http://localhost:8080", "https:")).toBe(true);
+    expect(isBackendMisconfigured("https://localhost:8080", "https:")).toBe(true);
+    expect(isBackendMisconfigured("http://127.0.0.1:8080", "https:")).toBe(true);
+  });
+
+  it("treats an https origin with a real backend base as configured", () => {
+    expect(isBackendMisconfigured("https://api.example.com", "https:")).toBe(false);
+  });
+});
+
+describe("backendConfigured", () => {
+  it("is true in the local (http) test environment", () => {
+    expect(backendConfigured).toBe(true);
   });
 });
 

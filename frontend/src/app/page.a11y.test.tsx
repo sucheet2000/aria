@@ -48,4 +48,9 @@ describe("main page — icon-only controls have accessible names", () => {
     render(<Home />);
     expect(screen.getByRole("button", { name: /microphone/i })).toBeTruthy();
   });
+
+  it("labels the perception (Sense) group so the camera/mic controls are findable", () => {
+    render(<Home />);
+    expect(screen.getByText(/sense/i)).toBeTruthy();
+  });
 });
