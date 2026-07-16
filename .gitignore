@@ -81,6 +81,9 @@ mcp-servers-repo/
 backend/data/*.db
 .claude/*
 !.claude/agents/
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/team/
 .cursor/
 .mcp.json
 
