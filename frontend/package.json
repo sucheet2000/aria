@@ -20,7 +20,7 @@
     "next": "14.2.29",
     "react": "^18",
     "react-dom": "^18",
-    "three": "^0.165.0",
+    "three": "^0.185.1",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
@@ -28,7 +28,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@types/three": "^0.165.0",
+    "@types/three": "^0.185.1",
     "autoprefixer": "^10.4.19",
     "eslint": "^8",
     "eslint-config-next": "14.2.29",
