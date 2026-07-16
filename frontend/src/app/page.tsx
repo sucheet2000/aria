@@ -16,6 +16,7 @@ import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
 import { useVisionCapture } from "@/hooks/useVisionCapture";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
+import { backendConfigured } from "@/lib/config";
 
 type SidebarPanel = "chat" | "memory";
 
@@ -86,7 +87,7 @@ function AriaApp() {
   const isThinking = useAriaStore(s => s.isThinking);
   const { sendMessage } = useCognition();
   const { speak } = useTTS();
-  const { active: cameraActive, error: cameraError } = useVisionCapture(cameraEnabled);
+  const { active: cameraActive, loading: cameraLoading, error: cameraError } = useVisionCapture(cameraEnabled);
   const { active: micActive, error: micError } = useAudioCapture(micEnabled);
 
   useWebSocket();
@@ -177,6 +178,33 @@ function AriaApp() {
         <UserButton appearance={clerkAppearance} />
       </header>
 
+      {/* Backend misconfig banner — loud, not silent (deployed https + localhost base) */}
+      {!backendConfigured && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            top: 64,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+            maxWidth: "90vw",
+            padding: "8px 16px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            textAlign: "center",
+            color: "var(--danger, #f87171)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--danger, #f87171)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          Backend not configured — voice and chat are offline. Set NEXT_PUBLIC_API_BASE.
+        </div>
+      )}
+
       {/* Left icon sidebar */}
       <nav style={{
         position: "absolute",
@@ -218,6 +246,29 @@ function AriaApp() {
           <SpatialIcon />
         </button>
 
+        {/* Perception group break — makes the camera/mic controls findable */}
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <div style={{
+            width: 24,
+            height: 1,
+            background: "var(--outline-ghost)",
+          }} />
+          <span style={{
+            fontSize: 9,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontFamily: "var(--font-data)",
+            color: "var(--on-surface-muted)",
+          }}>
+            Sense
+          </span>
+        </div>
+
         {/* Camera perception toggle — opt-in, no auto-prompt on load */}
         <button
           type="button"
@@ -244,7 +295,7 @@ function AriaApp() {
       </nav>
 
       {/* Camera status — announced for assistive tech */}
-      {cameraEnabled && (cameraError || cameraActive) && (
+      {cameraEnabled && (cameraError || cameraActive || cameraLoading) && (
         <div
           role="status"
           aria-live="polite"
@@ -263,7 +314,7 @@ function AriaApp() {
             WebkitBackdropFilter: "blur(20px)",
           }}
         >
-          {cameraError ?? "Camera perception active"}
+          {cameraError ?? (cameraActive ? "Camera perception active" : "Starting camera…")}
         </div>
       )}
 

@@ -49,6 +49,7 @@ vi.mock("@mediapipe/tasks-vision", () => ({
   HandLandmarker: { createFromOptions: vi.fn().mockResolvedValue(handLandmarker) },
 }));
 
+import { FilesetResolver } from "@mediapipe/tasks-vision";
 import { useVisionCapture } from "./useVisionCapture";
 
 let rafCb: FrameRequestCallback | null = null;
@@ -121,6 +122,24 @@ describe("useVisionCapture", () => {
     expect(typeof frame!.timestamp).toBe("number");
   });
 
+  it("reports loading during init and clears it once active", async () => {
+    let resolveFileset!: (v: unknown) => void;
+    const pending = new Promise<unknown>((res) => {
+      resolveFileset = res;
+    });
+    vi.mocked(FilesetResolver.forVisionTasks).mockReturnValueOnce(pending as never);
+
+    const { result } = renderHook(() => useVisionCapture(true));
+
+    await vi.waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.active).toBe(false);
+
+    resolveFileset({});
+
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+    expect(result.current.loading).toBe(false);
+  });
+
   it("reports a permission error and does not become active when denied", async () => {
     stubMediaDevices(() =>
       Promise.reject(Object.assign(new Error("denied"), { name: "NotAllowedError" })),
@@ -130,6 +149,7 @@ describe("useVisionCapture", () => {
 
     await vi.waitFor(() => expect(result.current.error).toBe("Camera permission denied"));
     expect(result.current.active).toBe(false);
+    expect(result.current.loading).toBe(false);
     expect(visionCaptureActiveRef.current).toBe(false);
     expect(useAriaStore.getState().visionState).toBeNull();
   });

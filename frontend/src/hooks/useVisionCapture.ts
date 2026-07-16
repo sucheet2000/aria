@@ -23,6 +23,7 @@ const FACE_ABSENCE_THRESHOLD_S = 0.5;
 
 export interface UseVisionCaptureResult {
   active: boolean;
+  loading: boolean;
   error: string | null;
 }
 
@@ -76,6 +77,7 @@ function mapErrorMessage(err: unknown): string {
 
 export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
   const [active, setActive] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -160,6 +162,7 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
 
     async function start(): Promise<void> {
       try {
+        setLoading(true);
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Camera not supported in this browser");
         }
@@ -197,12 +200,14 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
 
         visionCaptureActiveRef.current = true;
         setActive(true);
+        setLoading(false);
         setError(null);
         rafId = requestAnimationFrame(processFrame);
       } catch (err) {
         if (cancelled) return;
         setError(mapErrorMessage(err));
         setActive(false);
+        setLoading(false);
         visionCaptureActiveRef.current = false;
       }
     }
@@ -218,8 +223,9 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
       handLandmarker?.close();
       visionCaptureActiveRef.current = false;
       setActive(false);
+      setLoading(false);
     };
   }, [enabled]);
 
-  return { active, error };
+  return { active, loading, error };
 }
