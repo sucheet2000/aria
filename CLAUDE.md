@@ -86,6 +86,21 @@ Delegate to these preloaded subagents so subsystem context isn't lost:
 - `aria-proto` — protobuf/buf contracts, Go+Python stub generation
 - `aria-security-reviewer` — read-only, audit-aware security review of changes
 
+**Team agents** (autonomous cycle via `/team` — see `docs/team/PROTOCOL.md`):
+- `aria-pm` — cycle owner: backlog, triage, approval package, build coordination, cycle report
+- `aria-lead` — file-by-file build plans + plan-conformance check
+- `aria-engineer` — TDD builds in `team/*` worktrees via the specialists
+- `aria-researcher` — research briefs with adversarial red-team
+- `aria-security-team` — threat-model pre-check + build-time review coordinator
+- `aria-ideas` — lens-based idea generation, backlog-aware
+- `aria-code-reviewer` — standards ratchet + minimal-diff + verified findings
+- `aria-debugger` — root-cause-first, smallest-fix-only debugging (also standalone)
+- `aria-qa` — in-browser verification with evidence, ≤5 paid API calls
+- `aria-scribe` — doc sync in the same PR; backlog + cycle records
+- `aria-devops` — one-push CI policy, CI diagnosis, deploy watch after merges
+
+Run a cycle: `/team` (two touchpoints: approve ideas after research; merge PRs).
+
 ## Startup Sequence (3 terminals)
 Terminal 1: export $(grep -v '^#' ~/aria/backend/.env | xargs)
             cd ~/aria/backend
