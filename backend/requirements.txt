@@ -1,4 +1,4 @@
-setuptools==80.10.2  # >=78.1.1 for CVEs; <81 so pkg_resources stays (webrtcvad 2.0.10 needs it)
+setuptools==83.0.0  # >=78.1.1 for CVEs; <81 so pkg_resources stays (webrtcvad 2.0.10 needs it)
 wheel                # left unpinned — pinning wheel forces packaging>=24, conflicts with deepfilternet<24
 fastapi==0.135.1
 uvicorn[standard]==0.42.0
