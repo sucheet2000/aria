@@ -8,7 +8,7 @@ from typing import Literal
 import structlog
 from anthropic import AsyncAnthropic
 
-from app.cognition.prompt import build_system_prompt
+from app.cognition.prompt import build_system_parts
 from app.config import settings
 from app.models.schemas import (
     CognitionResponse,
@@ -131,20 +131,25 @@ class LLMClient:
 
         # ── Tier 1 / 2: API call ────────────────────────────────────────────
         model = _MODEL_HAIKU if tier == 1 else _MODEL_SONNET
-        system_content = build_system_prompt(
+        soul_content, observation_content = build_system_parts(
             vision, message, working_memory, episodic_memory
         )
 
-        # Anthropic prompt caching: mark the static system prompt (SOUL.md content)
-        # with cache_control so repeated calls reuse the cached KV and save ~90% of
-        # system-prompt token cost. ephemeral cache TTL is 5 minutes.
-        system: list[dict] = [
-            {
-                "type": "text",
-                "text": system_content,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
+        # Anthropic prompt caching: put the stable SOUL.md prefix in its own
+        # cache_control block so repeated calls reuse the cached KV and save ~90%
+        # of system-prompt token cost (ephemeral cache TTL is 5 minutes). The
+        # per-turn observation goes in a SEPARATE uncached block so the cache
+        # breakpoint sits after the stable prefix and actually hits.
+        system: list[dict] = []
+        if soul_content:
+            system.append(
+                {
+                    "type": "text",
+                    "text": soul_content,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            )
+        system.append({"type": "text", "text": observation_content})
 
         messages = []
         for turn in conversation_history[-6:]:
