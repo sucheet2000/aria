@@ -12,7 +12,7 @@ authority: `docs/team/PROTOCOL.md` — read it before starting.
 ## 0. Preflight
 - Working tree must be clean-ish (no uncommitted changes in files the team
   may touch). Not on main.
-- **Shakedown:** if `docs/team/cycles/` does not exist or is empty, this is
+- **Shakedown:** if `docs/team/cycles/` has no cycle file marked `status: complete`, this is
   the first-ever cycle: lower caps to 2 ideas researched / 1 build, and
   tell Sucheet you're in shakedown mode.
 - **Resume:** if the newest `docs/team/cycles/*.md` contains the line
@@ -31,6 +31,7 @@ authority: `docs/team/PROTOCOL.md` — read it before starting.
      top 3–5 (or 2 in shakedown).
    - stage D: pipeline the chosen ideas → one `aria-researcher` each
      (parallel; each pulls its pre-check from `aria-security-team`).
+   (If the Workflow tool is unavailable in this session, run the same stages by spawning the agents directly in the order above.)
 3. Collect the approval package from `aria-pm`.
 4. Write the cycle file `docs/team/cycles/<YYYY-MM-DD>.md` with
    `status: incomplete` and the phase-1 results, so a dead session can

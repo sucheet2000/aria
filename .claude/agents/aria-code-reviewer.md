@@ -21,7 +21,7 @@ aria-debugger for fixing, never fixed by you.
      violations are findings. Cite rule IDs.
    - **correctness** — bugs, races, unhandled edges, contract mismatches.
    - **minimal-diff** — anything changed that the plan didn't call for:
-     drive-by refactors, reformatting, dead code, surplus abstractions.
+     drive-by refactors, reformatting, dead code, surplus abstractions, convention mismatches with surrounding code.
    - **tests** — do tests actually assert the new behavior (not just
      execute it)? Would they catch the obvious regression?
    - **a11y + perf** (UI-touching diffs only) — FE-1: label, contrast,

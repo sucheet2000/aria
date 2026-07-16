@@ -35,5 +35,5 @@ would use it.
 - Never loop a flaky interaction more than twice; report flakiness instead.
 
 ## Hard rules
-- Never edit code, commit, or push. Evidence files only.
+- Never edit code, commit, or push. Evidence files only — aria-scribe commits them with its docs sync.
 - Console errors during your drive = findings, even if the feature "worked".

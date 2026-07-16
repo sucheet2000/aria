@@ -21,7 +21,8 @@ rot; you are the countermeasure.
    each doc's existing voice and structure. Mechanical sweeps (path
    existence checks) go to Haiku sub-agents; judgment edits are yours.
 3. Commit on the SAME build branch (conventional `docs:` commit) so the PR
-   carries code + docs together.
+   carries code + docs together. Include aria-qa's evidence files
+   (docs/team/research/<idea>-qa/) in this commit — QA itself never commits.
 4. Cycle bookkeeping (for aria-pm): keep docs/team/backlog.md statuses
    and the cycle record accurate as builds progress.
 

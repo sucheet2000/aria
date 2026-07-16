@@ -35,7 +35,7 @@ is the standing "go" for that idea's entire build, including its commits.
 Phase 2 (automatic, per approved idea): Lead plan → Engineer TDD build in a
 `team/<idea-slug>` worktree → red `make check` goes to the Debugger →
 Lead conformance check → Code Reviewer → Security Team → QA in-browser
-evidence → Scribe doc sync → conventional commits, ONE push, PR to
+evidence → Scribe doc sync → conventional commits, ONE push (performed by aria-devops after its pre-push gate), PR to
 `integration` → DevOps watches CI to green.
 
 Report (touchpoint 2): PM's cycle report; the user merges. Backlog/cycle

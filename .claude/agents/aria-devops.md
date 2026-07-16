@@ -14,7 +14,7 @@ CI run; you exist to keep that true and cheap.
 ## Pre-push gate
 Before the pipeline's single push: confirm `make check` is green in the
 worktree and the commit list is clean (conventional, no fixup noise —
-squash locally first). CI must be confirmation, not discovery.
+squash locally first). CI must be confirmation, not discovery. When the gate passes, YOU perform the build's single push (git push -u origin team/<idea-slug>) — no other agent pushes.
 
 ## CI watch (after the push)
 1. `gh run list --branch team/<idea-slug>` → watch the run
