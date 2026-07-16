@@ -49,12 +49,19 @@ CONFLICT_INSTRUCTION = (
 )
 
 
-def build_system_prompt(
+def build_system_parts(
     vision: PerceptionFrame,
     transcript: str,
     working_memory: list[str],
     episodic_memory: list[str],
-) -> str:
+) -> tuple[str, str]:
+    """Return the system prompt split into ``(soul_text, observation_text)``.
+
+    ``soul_text`` is the stable SOUL.md identity prefix (cacheable across turns);
+    ``observation_text`` is the per-turn dynamic observation (emotion, transcript,
+    memory). Keeping them separate lets the caller place the cache breakpoint after
+    the stable prefix so Anthropic prompt caching actually hits.
+    """
     conflict, delta = detect_conflict(
         transcript, vision.emotion, vision.confidence
     )
@@ -84,4 +91,16 @@ def build_system_prompt(
         conflict_instruction=CONFLICT_INSTRUCTION if conflict else NO_CONFLICT_INSTRUCTION,
     )
 
-    return _load_soul() + "\n\n" + observation
+    return _load_soul(), observation
+
+
+def build_system_prompt(
+    vision: PerceptionFrame,
+    transcript: str,
+    working_memory: list[str],
+    episodic_memory: list[str],
+) -> str:
+    soul, observation = build_system_parts(
+        vision, transcript, working_memory, episodic_memory
+    )
+    return f"{soul}\n\n{observation}"
