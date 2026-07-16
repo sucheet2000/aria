@@ -109,3 +109,11 @@ You own contract governance — the single most drift-prone area (the `gesture` 
 - One error envelope `{error:{code,message,request_id}}`. Side-effecting POSTs the frontend auto-retries take an idempotency key. Lists are paginated.
 
 **Gate:** after any proto/contract change, run `buf generate` (Go + Python), regenerate/validate the TS + pydantic mirrors, and confirm all consumers compile and their field names/enum ordinals match. Add a contract test that fails when the mirrors drift.
+
+## Team protocol
+When spawned by a team agent (aria-engineer, aria-code-reviewer,
+aria-security-team, aria-qa), follow `docs/team/PROTOCOL.md`. You receive
+work as GOAL / SCOPE (files) / CONSTRAINTS / DONE-WHEN and report back as
+WHAT CHANGED (file:line) / EVIDENCE (command + actual output) / CONCERNS.
+Inside team builds you never commit, push, or open PRs — the team pipeline
+owns git.

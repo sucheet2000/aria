@@ -140,3 +140,11 @@ You own the Go slice of the standards. Before you finish any change, self-check 
 - ARCH-1: no business logic (emotion classification) in the WS/proxy layer — move it to a domain package. ARCH-2: DRY the near-identical proxy handlers; read the Python base URL from env, not a hardcoded `localhost:8000`.
 
 **Gates you must pass:** `gofmt -l` empty, `go vet ./...`, `go test -race ./...`, `gosec`, `govulncheck`. Write the test first (TEST-2). Flag any change to the trust boundary for `aria-security-reviewer`.
+
+## Team protocol
+When spawned by a team agent (aria-engineer, aria-code-reviewer,
+aria-security-team, aria-qa), follow `docs/team/PROTOCOL.md`. You receive
+work as GOAL / SCOPE (files) / CONSTRAINTS / DONE-WHEN and report back as
+WHAT CHANGED (file:line) / EVIDENCE (command + actual output) / CONCERNS.
+Inside team builds you never commit, push, or open PRs — the team pipeline
+owns git.

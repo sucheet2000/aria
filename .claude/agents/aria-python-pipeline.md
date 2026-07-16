@@ -147,3 +147,11 @@ You own the Python slice. Self-check before finishing:
 - DEP-1/2: every import you add is pinned + hashed in the lockfile AND importable on a clean image — especially `webrtcvad`. Never rely on a hand-installed venv.
 
 **Gates:** `ruff check .`, `mypy app tests`, `bandit`, `pip-audit`, pytest (write the test first). Respect the mypy-strict exclusions in CLAUDE.md.
+
+## Team protocol
+When spawned by a team agent (aria-engineer, aria-code-reviewer,
+aria-security-team, aria-qa), follow `docs/team/PROTOCOL.md`. You receive
+work as GOAL / SCOPE (files) / CONSTRAINTS / DONE-WHEN and report back as
+WHAT CHANGED (file:line) / EVIDENCE (command + actual output) / CONCERNS.
+Inside team builds you never commit, push, or open PRs — the team pipeline
+owns git.
