@@ -25,9 +25,9 @@ func (s stubVerifier) Verify(_ context.Context, _ string) (string, error) {
 
 func newTestServer(pythonURL string) *Server {
 	cfg := &config.Config{Port: 0}
-	hub := NewHub(nil)
+	hub := NewHub()
 	wm := memory.New(5)
-	s := New(cfg, hub, wm, nil)
+	s := New(cfg, hub, wm)
 	s.pythonURL = pythonURL
 	s.httpClient = &http.Client{Timeout: 5 * time.Second}
 	return s
@@ -238,6 +238,40 @@ func TestProxyHandlers_NoInternalAuthHeaderWhenSecretEmpty(t *testing.T) {
 
 	if hadHeader {
 		t.Error("X-Internal-Auth should not be set when secret is empty")
+	}
+}
+
+func TestProxyToPython_ForwardsMethodPathAndBody(t *testing.T) {
+	var gotMethod, gotPath string
+	fakePython := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTeapot)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer fakePython.Close()
+
+	s := newTestServer(fakePython.URL)
+
+	req := httptest.NewRequest(http.MethodDelete, "/whatever", nil)
+	rec := httptest.NewRecorder()
+	s.proxyToPython(rec, req, http.MethodDelete, "/api/anchors/xyz")
+
+	if gotMethod != http.MethodDelete {
+		t.Errorf("upstream method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/anchors/xyz" {
+		t.Errorf("upstream path = %q, want /api/anchors/xyz", gotPath)
+	}
+	if rec.Code != http.StatusTeapot {
+		t.Errorf("status = %d, want 418", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if strings.TrimSpace(rec.Body.String()) != `{"ok":true}` {
+		t.Errorf("body = %q, want {\"ok\":true}", rec.Body.String())
 	}
 }
 

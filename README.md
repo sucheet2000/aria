@@ -2,515 +2,263 @@
 
 # ARIA
 
-**Adaptive Realtime Intelligence Avatar — v3.0.0**
+### Adaptive Realtime Intelligence Avatar
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://golang.org)
+**A real-time AI companion that sees you, listens, thinks with Claude, remembers you, and talks back as a live 3D avatar.**
+
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/Tests-196%20Python%20%7C%2020%2B%20Go%20%7C%2020%20vitest-brightgreen?style=flat-square)](#testing)
-[![Platform](https://img.shields.io/badge/Platform-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white)](https://apple.com/mac)
-[![License](https://img.shields.io/badge/License-Private-red?style=flat-square)](#)
+[![Claude](https://img.shields.io/badge/Claude-cognition-D97757?style=flat-square&logo=anthropic&logoColor=white)](https://www.anthropic.com)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-Open-24292e?style=flat-square&logo=github)](https://codespaces.new/sucheet2000/aria?quickstart=1)
 
-A real-time multimodal AI companion. Sees you through your camera, hears you through your microphone, reasons about your emotional and cognitive state using a neurosymbolic architecture, and maintains a persistent world model of who you are across sessions — entirely on-device.
-> **[→ Interactive site](https://sucheet2000.github.io/aria)** — live demo of the architecture
-
+[**Live site**](https://sucheet2000.github.io/aria) · [Architecture](docs/architecture.md) · [Deploy runbook](docs/DEPLOY.md) · [Cloud dev (Codespaces)](.devcontainer/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
 ---
 
+## What is ARIA?
+
+ARIA is a multimodal voice companion. Your browser watches your face and hands with
+MediaPipe, your microphone is transcribed to text, Claude reasons about what you said
+and how you look, a three-tier memory keeps track of who you are across sessions, and a
+low-poly 3D avatar answers you out loud with an expression that matches the moment.
+
+It runs as three cooperating layers: a **Next.js browser app** that does all camera and
+microphone work locally, a **Go WebSocket server** that is the single authenticated edge,
+and a **Python service** that handles speech-to-text, Claude cognition, memory, and
+text-to-speech.
+
+### A note on privacy — the honest version
+
+ARIA is **not** a fully on-device system, and we do not claim it is:
+
+- **Camera frames never leave your browser.** Face and hand tracking (MediaPipe) runs
+  entirely in the browser. Only the small derived signal — an emotion label, head-pose
+  angles, and a few "face/hands detected" flags — is sent onward.
+- **Your microphone audio is streamed to the server** so faster-whisper can transcribe it.
+- **Your text reaches Claude** for the reasoning step, and the reply text is sent to
+  ElevenLabs to be spoken.
+
+So: video stays local; audio and text go to the server. That is the real posture.
+
+---
+
+## Features
+
+- **Browser-side perception.** Camera + microphone capture and MediaPipe face/hand
+  tracking, emotion, gesture, and head-pose estimation all run in the browser (WASM/WebGPU).
+- **Voice in, voice out.** Mic audio streams to the server over a WebSocket, is transcribed
+  by faster-whisper, and ARIA replies with ElevenLabs speech (with a browser-TTS fallback).
+- **Wake-word gated.** Say **"Hey ARIA"** to wake it; say **"that would be all"** to send it
+  back to sleep.
+- **Claude cognition.** Each turn blends your message, your current expression, recent
+  working memory, and long-term facts into a single prompt for Claude.
+- **Three-tier memory.** ChromaDB stores profile, episodic, and working memory so ARIA
+  remembers you between sessions.
+- **Emotion-aware avatar.** A low-poly three.js avatar reflects ARIA's response emotion and
+  your head pose in real time.
+- **Spatial canvas.** Place and recall anchored objects in a shared 3D space, persisted in
+  SQLite.
+- **Cloud-ready.** Authenticated with Clerk, deployable to Railway (backend) + Vercel
+  (frontend). See the [deploy runbook](docs/DEPLOY.md).
+
+---
+
 ## Architecture
 
-ARIA is a three-language stack with clean subprocess and gRPC boundaries.
+Camera and microphone capture, plus all vision inference, happen **in the browser**. The Go
+server is the only public process — it verifies the Clerk token, rate-limits, and proxies to
+a Python service that is never exposed to the internet.
 
-```
-  Browser (Next.js :3000)
-       |
-       | WebSocket  ws://localhost:8080/ws
-       | HTTP POST  /api/cognition
-       | HTTP POST  /api/tts
-       |
-  Go Server (:8080)
-       |-- gRPC stream --> Python Vision Worker (:50051)
-       |                    MediaPipe Tasks FaceLandmarker (478 points)
-       |                    Emotion classifier (7 classes, landmark geometry)
-       |                    Head pose via solvePnP (pitch / yaw / roll)
-       |                    Hand gesture classification (thumb_up, open_palm, pinch, point)
-       |                    CoreML acceleration (2.9x speedup on Apple Neural Engine)
-       |                    Typed proto frames via PerceptionService
-       |
-       |-- subprocess --> Python Audio Worker
-       |                    sounddevice microphone capture at 16 kHz
-       |                    webrtcvad voice activity detection
-       |                    DeepFilterNet noise isolation (--denoise flag)
-       |                    faster-whisper speech-to-text (CoreML backend)
-       |                    JSON to stdout on utterance end
-       |
-       |-- NATS --> Internal event bus
-       |                    Decoupled vision / audio / cognition events
-       |                    Reconnect backoff (prevents storm on disconnect)
-       |
-       |-- HTTP proxy --> Python FastAPI (:8000)
-                            Neurosymbolic prompt builder
-                            Conflict detection (speech vs visual sentiment)
-                            Claude Haiku / Sonnet tiered routing + prompt caching
-                            ChromaDB episodic memory + NetworkX graph memory
-                            SQLite spatial anchor registry
+```mermaid
+flowchart LR
+    subgraph B["Browser — Next.js + three.js (Vercel)"]
+        cap["Camera + Mic<br/>getUserMedia"]
+        mp["MediaPipe Face + Hand<br/>emotion · gesture · head-pose<br/>(WASM / WebGPU)"]
+        av["Low-poly 3D avatar<br/>+ spatial canvas"]
+        cap --> mp
+    end
+
+    subgraph G["Go WebSocket server — Railway (public edge)"]
+        edge["Clerk auth · rate-limit<br/>single trust boundary"]
+    end
+
+    subgraph P["Python FastAPI — 127.0.0.1:8000 (never public)"]
+        stt["faster-whisper STT"]
+        cog["Claude cognition"]
+        tts["ElevenLabs TTS"]
+        mem["ChromaDB 3-tier memory<br/>SQLite spatial anchors"]
+    end
+
+    mp -- "vision_state on POST /api/cognition" --> edge
+    cap -- "mic audio over /ws/audio" --> edge
+    edge --> stt
+    edge --> cog
+    edge --> tts
+    stt --> cog
+    cog --> mem
+    cog -- "response + emotion" --> av
+    tts -- "spoken audio" --> av
 ```
 
-**Design decisions:**
-
-| ADR | Decision | Rationale |
-|-----|----------|-----------|
-| 001 | Go for WebSocket, Python for ML | Goroutines handle concurrent connections; Python owns the ML ecosystem |
-| 002 | gRPC replacing stdout IPC for vision | Typed proto contract; bidirectional streaming; priority interrupt support |
-| 003 | webrtcvad over Silero VAD | No torch dependency; native ARM64; sub-1ms per 30ms chunk |
-| 004 | Native ARM64 Python via miniconda | Avoids Rosetta conflicts; unlocks Apple Neural Engine for ML inference |
-| 005 | MediaPipe Tasks API | Solutions API deprecated in 0.10.21+; Tasks API has Metal GPU acceleration |
-| 006 | NATS for async transport | Decoupled event bus; eliminates Go channel fan-out complexity |
-| 007 | Claude Haiku / Sonnet tiered routing | Cost-sensitive fast path (Haiku) with Sonnet escalation for complex turns |
-| 008 | NetworkX graph memory alongside ChromaDB | Relational traversal for memory anchoring not achievable in vector similarity |
+Full write-up in [`docs/architecture.md`](docs/architecture.md); the design decisions behind
+it are in [`docs/decisions.md`](docs/decisions.md).
 
 ---
 
-## Pipeline Timeline
-
-### Vision pipeline (gRPC, continuous)
-
-```
-Webcam frame
-  → MediaPipe FaceLandmarker       — 478 normalized landmarks (x, y, z)
-  → Emotion classifier             — 7 classes, 5-frame smoothing
-  → Head pose (solvePnP)           — pitch / yaw / roll in degrees
-  → Gesture classifier             — thumb_up, open_palm, pinch, point
-  → CoreML inference backend       — 2.9x speedup via Apple Neural Engine
-  → PerceptionService gRPC frame   — typed proto, streamed to Go server
-  → Go broadcasts to WebSocket clients
-  → Browser updates landmark overlay + emotion + gesture display
-```
-
-### Audio pipeline (per utterance)
-
-```
-Microphone (16 kHz)
-  → DeepFilterNet (optional)       — noise isolation
-  → webrtcvad (30ms chunks)        — voice activity boundary detection
-  → faster-whisper (CoreML)        — speech-to-text transcription
-  → JSON to stdout
-  → Go reads stdout → NATS publish
-  → Broadcast transcript over WebSocket
-  → Browser auto-sends to /api/cognition
-  → FastAPI builds neurosymbolic prompt
-  → Claude Haiku (fast path) or Sonnet (escalated) responds
-  → Browser calls /api/tts
-  → ElevenLabs streams audio → browser plays
-```
-
-### Neurosymbolic cognition loop
-
-```
-Each cognition turn:
-  ┌─ Current perceptual state      — emotion, head pose, hands, gesture, face_detected
-  ├─ Go working memory (circular)  — last 10 symbolic inferences, keyed by session UUID
-  ├─ ChromaDB retrieval            — relevant long-term profile + episodic facts
-  └─ NetworkX graph traversal      — relational memory anchors
-        ↓
-  FastAPI assembles structured prompt (with prompt caching)
-        ↓
-  Haiku / Sonnet tiered routing:
-    {
-      "symbolic_inference": "...",
-      "world_model_update": { "triple": {…}, "confidence": 0.85 },
-      "natural_language_response": "..."
-    }
-        ↓
-  Triple written back to ChromaDB + NetworkX — persistent world model updated
-  Spatial anchors persisted to SQLite
-```
-
-**Conflict detection:** if `|speech_sentiment − visual_sentiment| > 0.4`, ARIA responds to the observable affect via open invitation rather than validating the stated emotion.
-
-**Priority interrupt:** `FaceExitDetector → gRPC → StreamRegistry.CancelActive(session_id)` — concrete session IDs only, rejected at gRPC ingress if no matching session.
-
----
-
-## Version History
-
-<details>
-<summary><strong>v1.0.0</strong> — Voice companion (baseline)</summary>
-
-- Go WebSocket server, Python vision + audio workers
-- MediaPipe FaceLandmarker, emotion classifier (7 classes), head pose
-- faster-whisper STT, webrtcvad VAD, ElevenLabs TTS
-- Claude Haiku cognition, ChromaDB layered memory
-- Wake word: "Hey ARIA" — sleep: "That would be all"
-- Next.js 14 frontend with 3D avatar placeholder
-
-</details>
-
-<details>
-<summary><strong>v1.1.0</strong> — gRPC transport layer</summary>
-
-- Replaced stdout JSON IPC with typed gRPC stream (PerceptionService on :50051)
-- `proto/buf.gen.yaml` generates Go + Python stubs from `proto/perception/v1/perception.proto` via one `cd proto && buf generate`
-- `perception.proto`: Point3D, HandGestureEvent, SpatialAnchor, Handedness enum
-- Go server implements PerceptionService client; Python vision worker implements server
-- Proto tag budget reserved for all future weeks
-
-</details>
-
-<details>
-<summary><strong>v1.2.0</strong> — Bidirectional gRPC + priority interrupt</summary>
-
-- Bidirectional gRPC streaming between Go and Python vision worker
-- Priority interrupt path: FaceExitDetector → gRPC → StreamRegistry.CancelActive()
-- CognitionService gRPC interface defined
-- Interrupt scoped to concrete session UUIDs — no wildcard cancellation
-
-</details>
-
-<details>
-<summary><strong>v1.3.0</strong> — CoreML / ANE acceleration (2.9x)</summary>
-
-- CoreML inference backend for MediaPipe gesture and emotion models
-- Apple Neural Engine acceleration: 2.9x throughput on M1 Pro vs CPU baseline
-- Accuracy benchmarked before enabling — CoreML fallback safety guard retained
-- faster-whisper CoreML backend enabled for STT
-
-</details>
-
-<details>
-<summary><strong>v1.4.0</strong> — Codex hardening sprint</summary>
-
-- Codex adversarial review integrated into sprint workflow
-- All P0 findings fixed before merge
-- Session ID UUIDs enforced end-to-end; "default" wildcard removed
-- Pending cancel map bounded at 32 entries with 10s TTL eviction
-
-</details>
-
-<details>
-<summary><strong>v1.5.0</strong> — Security review (Codex-found fixes)</summary>
-
-- gRPC services rebound to 127.0.0.1 (were 0.0.0.0)
-- vision_grpc_server.py: loopback-only bind enforced
-- session_init sent on WebSocket open — no anonymous sessions
-- Worker replay attack surface closed
-- 12 Codex security findings resolved (see Security section)
-
-</details>
-
-<details>
-<summary><strong>v1.6.0</strong> — Session isolation</summary>
-
-- Full session UUID isolation across WebSocket hub, gRPC, and cognition
-- StreamRegistry enforces concrete session IDs at gRPC ingress
-- CancelActive() only cancels the caller's own session
-- Working memory keyed per session UUID
-
-</details>
-
-<details>
-<summary><strong>v1.7.0</strong> — NATS async transport</summary>
-
-- NATS replaces Go channel fan-out for vision / audio / cognition events
-- Reconnect backoff implemented in subscriber — prevents reconnect storm
-- All internal event buses decoupled via NATS subjects
-- NATS subscriber DisconnectErrHandler + ReconnectHandler wired
-
-</details>
-
-<details>
-<summary><strong>v1.8.0</strong> — LMCache + tiered Claude routing</summary>
-
-- Prompt caching enabled for neurosymbolic system prompt (stable prefix)
-- Claude Haiku / Sonnet tiered routing: Haiku for fast path, Sonnet for escalated turns
-- LMCache KV-cache reuse reduces cognition latency on repeated context
-- Cost per cognition turn reduced significantly on cached sessions
-
-</details>
-
-<details>
-<summary><strong>v1.9.0</strong> — Shannon memory graph</summary>
-
-- NetworkX graph memory alongside ChromaDB for relational traversal
-- `graph_memory.py`: node insertion, edge linking, traversal for anchor resolution
-- Episodic memory anchored to graph nodes for contextual retrieval
-- ChromaDB + NetworkX queried in parallel per cognition turn
-
-</details>
-
-<details>
-<summary><strong>v2.0.0-beta</strong> — Gesture classification</summary>
-
-- Gesture classifier: thumb_up, open_palm, pinch, point (21-point hand landmark geometry)
-- Magic constant documented: thumb_up classifier uses landmark distance threshold = 0.4
-- Gesture events streamed via PerceptionService proto (HandGestureEvent)
-- Gesture state included in cognition context
-
-</details>
-
-<details>
-<summary><strong>v2.0.0</strong> — Spatial anchoring</summary>
-
-- SQLite spatial anchor registry: anchors persisted by session + world position
-- SpatialAnchor proto message activated (Week 9 reserved tags)
-- Anchor creation via hand gesture + gaze direction
-- Anchor retrieval included in cognition context for object reference resolution
-
-</details>
-
-<details>
-<summary><strong>v2.1.0</strong> — Week 10 hardening</summary>
-
-- NATS subscriber reconnect Go unit test (embedded nats-server)
-- Anchor registry delete_anchor() and update_anchor() API
-- 172 Python tests (up from 160)
-
-</details>
-
-<details>
-<summary><strong>v3.0.0-alpha</strong> — Spatial canvas + two-hand gestures</summary>
-
-- Three.js spatial canvas (SpatialCanvas, AnchorMarker, useWorldModel)
-- Two-hand gesture primitives: HOLD, EXPAND, THROW, BOND
-- Multi-agent development workflow: spatial-builder + gesture-engine + reviewer agents
-- gitagent SOUL.md / DUTIES.md segregation of duties
-
-</details>
-
-<details>
-<summary><strong>v3.0.0-beta</strong> — Full gesture→spatial loop</summary>
-
-- SpatialCanvas mounted in main UI — 50/50 avatar split with toggle
-- BroadcastChannel multi-window sync — /spatial route for second monitor
-- GestureAnchorBridge — gesture events produce spatial_event in cognition response
-- spatial_event wired into frontend world model
-
-</details>
-
-<details>
-<summary><strong>v3.0.0</strong> — VRM avatar + observability + hardened</summary>
-
-- VRM avatar with emotion blendshapes (happy/sad/angry/surprised/neutral)
-- Head pose drives VRM head bone rotation
-- Breathing idle animation via useFrame
-- Structured observability: MetricsCollector, /metrics endpoint
-- THROW animation with velocity decay using refs (60fps safe)
-- 2 HIGH + 1 MEDIUM hardening fixes before tag
-- docs/KNOWN_ISSUES.md documents remaining low-severity items
-
-</details>
-
----
-
-## Quick Start
+## Quickstart
 
 ### Prerequisites
 
-- macOS Apple Silicon (M1/M2/M3) or Linux
-- Go 1.21+
-- Node.js 20+
-- Anthropic API key
-- ElevenLabs API key (optional — falls back to browser TTS)
+- **Go 1.26+**
+- **Node.js 20+**
+- **Python 3.13** (on Apple Silicon, use a native ARM64 build — e.g. miniconda-arm64)
+- An **Anthropic API key** (Claude)
+- An **ElevenLabs API key** (optional — falls back to browser text-to-speech)
 
-### 1. Clone
+### Install
 
 ```bash
 git clone https://github.com/sucheet2000/aria.git
 cd aria
-cp backend/.env.example backend/.env
-# Add your ANTHROPIC_API_KEY to backend/.env
+
+# Python deps
+pip install -r backend/requirements.txt
+
+# Go deps
+cd backend && go mod download && cd ..
+
+# Frontend deps
+cd frontend && npm install && cd ..
+
+# Config
+cp backend/.env.example backend/.env   # then add your ANTHROPIC_API_KEY
 ```
 
-### 2. Python environment (Apple Silicon)
+### Run (three terminals)
 
-```bash
-curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
-bash Miniconda3-latest-MacOSX-arm64.sh -b -p ~/miniconda-arm64
-source ~/miniconda-arm64/bin/activate
+**Terminal 1 — Python cognition, STT, memory, and TTS service**
 
-pip install mediapipe opencv-python torch faster-whisper webrtcvad \
-            sounddevice structlog pydantic pydantic-settings \
-            anthropic fastapi uvicorn chromadb deepfilternet networkx
-```
-
-Set in `backend/.env`:
-```
-PYTHON_BIN=/Users/YOUR_USERNAME/miniconda-arm64/bin/python3
-```
-
-> **Note:** Always use `/Users/sucheetboppana/miniconda-arm64/bin/python3` — never system Python or conda base.
-
-### 3. Backend dependencies
-
-```bash
-cd backend && go mod download
-```
-
-### 4. Frontend
-
-```bash
-cd frontend && npm install
-```
-
-### 5. Run (three terminals)
-
-**Terminal 1 — FastAPI cognition + memory service**
 ```bash
 cd backend
-PYTHONPATH=backend /Users/sucheetboppana/miniconda-arm64/bin/python3 \
-  -m uvicorn app.main:app --port 8000
+export $(grep -v '^#' .env | xargs)
+PYTHONPATH="$PWD" python3 -m uvicorn app.main:app --port 8000
 ```
 
-**Terminal 2 — Go server (manages gRPC vision worker + NATS)**
+> On Apple Silicon, point `python3` at your ARM64 interpreter (never system Python).
+
+**Terminal 2 — Go WebSocket server** (spawns the audio-worker STT process)
+
 ```bash
 cd backend
+pkill -f "audio_worker.py" 2>/dev/null   # clear any stale worker
 go run cmd/server/main.go
 ```
 
 **Terminal 3 — Frontend**
+
 ```bash
 cd frontend
 npm run dev
 ```
 
-Open `http://localhost:3000` and allow camera and microphone access.
+Open **http://localhost:3000** and allow camera + microphone access. Say **"Hey ARIA"** to
+start talking.
 
-### Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Required. Claude API key. |
-| `PYTHON_BIN` | `python3` | Path to ARM64 Python binary. |
-| `WHISPER_MODEL` | `base` | faster-whisper model size (`tiny` / `base` / `small`). |
-| `AUDIO_ENABLED` | `true` | Set `false` to disable the audio worker. |
-| `ELEVENLABS_API_KEY` | — | Optional. Falls back to browser TTS. |
-| `ELEVENLABS_VOICE_ID` | Rachel | ElevenLabs voice ID. |
-| `TTS_PROVIDER` | `elevenlabs` | Set `browser` for lower latency. |
-| `USE_OLLAMA` | `false` | Use local Ollama instead of Claude. |
-| `PORT` | `8080` | Go server port. |
-| `DEBUG` | `false` | Verbose server logging. |
-
-See `backend/.env.example` for the full list.
-
-### Testing
-
-```bash
-# Python — 196 tests
-PYTHONPATH=backend /Users/sucheetboppana/miniconda-arm64/bin/python3 \
-  -m pytest backend/tests/ -v
-
-# Go — 20+ tests
-cd backend && go build ./... && go vet ./... && go test ./...
-
-# Frontend (build + 20+ vitest)
-cd frontend && npm run build
-cd frontend && npm test
-```
-
-### Development commands
-
-| Command | Description |
-|---------|-------------|
-| `go run cmd/server/main.go` | Start Go server with gRPC vision worker + NATS |
-| `uvicorn app.main:app --port 8000` | Start FastAPI cognition + memory service |
-| `npm run dev` | Start Next.js frontend |
-| `PYTHONPATH=backend python3 -m pytest backend/tests/ -v` | Run Python test suite (196 tests) |
-| `cd backend && go test ./...` | Run Go test suite (20+ tests) |
-| `cd frontend && npm run build` | Type-check + build frontend |
-| `cd proto && buf generate` | Regenerate Go + Python proto stubs |
+For cloud deployment (Railway + Vercel), follow [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ---
 
-## Security
+## Project structure
 
-All 12 Codex adversarial review findings resolved in v1.5.0–v1.6.0:
+```
+aria/
+├── SOUL.md                  ARIA's runtime identity (loaded into every Claude prompt)
+├── proto/                   Protobuf contract + buf codegen  (see proto/README.md)
+├── backend/
+│   ├── cmd/server/          Go entrypoint
+│   ├── internal/            Go: hub/WS, auth, cognition + TTS proxy, audio worker mgmt, config
+│   ├── app/                 Python FastAPI
+│   │   ├── api/             HTTP routes (cognition, tts)
+│   │   ├── cognition/       Claude prompt building + memory
+│   │   ├── pipeline/        audio worker, VAD, transcriber, wake-word, TTS voice engine
+│   │   ├── spatial/         SQLite spatial-anchor registry
+│   │   └── observability/   metrics
+│   ├── gen/                 Generated proto stubs (Go + Python)
+│   └── tests/               Python test suite
+├── frontend/
+│   └── src/
+│       ├── app/             Next.js routes
+│       ├── components/      avatar, chat, status panels
+│       ├── hooks/           camera + mic capture, cognition, TTS, WebSocket
+│       ├── lib/perception/  ported emotion / gesture / head-pose (TypeScript)
+│       ├── spatial/         three.js spatial canvas + world model
+│       └── store/           Zustand state
+└── docs/                    architecture, decisions, deploy, standards, reference, archive
+```
 
-| # | Finding | Fix | Version |
-|---|---------|-----|---------|
-| 1 | gRPC PerceptionService bound to `0.0.0.0` | Rebound to `127.0.0.1:50051` | v1.5.0 |
-| 2 | gRPC CognitionService bound to `0.0.0.0` | Rebound to `127.0.0.1:50052` | v1.5.0 |
-| 3 | `vision_grpc_server.py` exposed on all interfaces | Loopback-only bind enforced | v1.5.0 |
-| 4 | Session IDs used `"default"` wildcard in working memory | UUIDs end-to-end, wildcard removed | v1.5.0 |
-| 5 | Interrupt path accepted any string as session ID | Rejected at gRPC ingress if no matching session | v1.5.0 |
-| 6 | `CancelActive()` had no session scope guard | Scoped to caller's concrete session UUID only | v1.6.0 |
-| 7 | Pending cancel map unbounded — OOM under load | Bounded at 32 entries, 10s TTL eviction | v1.5.0 |
-| 8 | WebSocket connections had no `session_init` handshake | `session_init` sent on WS open before any routing | v1.6.0 |
-| 9 | Audio worker replay: same utterance could trigger twice | Utterance dedup by timestamp + content hash | v1.6.0 |
-| 10 | NATS subscriber had no reconnect backoff | Exponential backoff in ReconnectHandler — prevents storm | v1.7.0 |
-| 11 | CoreML backend enabled without accuracy gate | Accuracy benchmarked vs CPU; fallback safety guard retained | v1.3.0 |
-| 12 | ANE acceleration not verified against CPU baseline | Benchmark required before enabling; 2.9x confirmed on M1 Pro | v1.3.0 |
+---
 
-**Ongoing constraints:**
-- All gRPC services: `127.0.0.1` only — never `0.0.0.0`
-- `backend/.env` is gitignored — never commit it
-- API keys never hardcoded — always from environment
-- Security findings from Codex adversarial review are P0 — fix before merging any sprint
+## Tech stack
+
+| Layer | Technology |
+|-------|-----------|
+| Browser perception | `@mediapipe/tasks-vision` (Face + Hand landmarker), WASM/WebGPU |
+| Frontend | Next.js 14, TypeScript, three.js (`@react-three/fiber` + `drei`), Tailwind, Zustand |
+| Auth | Clerk |
+| Edge server | Go 1.26, chi, gorilla/websocket, zerolog |
+| Cognition | Claude (Anthropic) |
+| Speech-to-text | faster-whisper, webrtcvad |
+| Text-to-speech | ElevenLabs (browser Web Speech API fallback) |
+| Memory | ChromaDB (profile / episodic / working) |
+| Spatial anchors | SQLite |
+| Contract | Protobuf via buf |
+| Deploy | Railway (backend) + Vercel (frontend) |
 
 ---
 
 ## Roadmap
 
-### Completed (Weeks 0–9)
+**Done** — real-time perception, voice loop, Claude cognition, three-tier memory,
+emotion-aware avatar, spatial canvas, Clerk auth, and browser-side perception (camera/mic
+moved fully client-side so ARIA runs in the cloud and per-user).
 
-| Week | Module | Deliverable | Status |
-|------|--------|-------------|--------|
-| 0 | Proto | Protobuf data contract (`perception.proto`) | Complete |
-| 1 | gRPC Transport | Typed gRPC stream replacing stdout IPC | Complete |
-| 2 | Session State | UUID session isolation across all subsystems | Complete |
-| 3 | Bidirectional gRPC + Priority Interrupt | FaceExitDetector → StreamRegistry interrupt path | Complete |
-| 4 | ANE Acceleration | CoreML backend, 2.9x speedup, accuracy gate | Complete |
-| 5 | NATS Async Transport | NATS event bus, reconnect backoff | Complete |
-| 6 | LMCache + Tiered Routing | Prompt caching, Haiku/Sonnet routing | Complete |
-| 7 | Shannon Memory Graph | NetworkX graph memory + ChromaDB integration | Complete |
-| 8 | Gesture Classification | thumb_up, open_palm, pinch, point via HandGestureEvent | Complete |
-| 9 | Spatial Anchoring | SQLite anchor registry, SpatialAnchor proto | Complete |
+**In progress** — the professionalization + cloud program: public-repo readiness, dead-code
+retirement, and the Railway + Vercel deployment. Tracked in
+[`docs/plans/2026-07-10-aria-restructure-design.md`](docs/plans/2026-07-10-aria-restructure-design.md).
 
-| 10 | Hardening | NATS reconnect Go unit tests, anchor delete/update API, observability | Complete |
+<details>
+<summary>Where the older weekly roadmap went</summary>
 
-### v3
+The v1–v3 weekly build history (gRPC transport, NATS, CoreML/ANE acceleration, and the
+server-side perception era) has been superseded by the browser-perception architecture and
+moved to [`docs/archive/`](docs/archive/). It is kept for history, not as current guidance.
 
-| Version | Scope | Status |
-|---------|-------|--------|
-| v3.0.0 | Spatial computing — VRM avatar, gesture-spatial bridge, multi-window, observability | Complete |
-
-### Future
-
-| Version | Scope |
-|---------|-------|
-| v4 | Autonomous agent — task router, auto-reviewer trigger, ARIA SOUL.md |
-
-**Hard constraints:**
-- Sub-100ms interrupt latency is non-negotiable
-- Proto tags 1–15 (1-byte wire cost) reserved for hot-path fields only
-- All timestamps as `int64` microseconds — no `Timestamp` sub-message
-- Backward compatibility is non-negotiable after Week 1
+</details>
 
 ---
 
-## Stack
+## Contributing
 
-### v3.0.0 full stack
+Contributions are welcome. Branch off `integration`, use
+[Conventional Commits](https://www.conventionalcommits.org/), and make the gates pass before
+opening a PR:
 
-| Layer | Technology |
-|-------|-----------|
-| WebSocket server | Go 1.21+, chi, gorilla/websocket, zerolog |
-| gRPC transport | Go + Python, buf, protobuf, PerceptionService + CognitionService |
-| Event bus | NATS (async vision / audio / cognition decoupling) |
-| Vision | Python 3.13, MediaPipe Tasks 0.10.32+, OpenCV, CoreML (ANE) |
-| Gesture | Python, 21-point hand landmark geometry classifier |
-| Two-hand gestures | GestureClassifier.classify_two_hand — HOLD, EXPAND, THROW, BOND |
-| Audio | Python 3.13, faster-whisper (CoreML), webrtcvad, sounddevice, DeepFilterNet |
-| Cognition | Claude Haiku (fast path) + Claude Sonnet (escalated), prompt caching |
-| Episodic memory | ChromaDB 1.5.5 (profile / episodic / working collections) |
-| Graph memory | NetworkX — relational traversal for memory anchor resolution |
-| Spatial anchors | SQLite — persistent anchor registry keyed by session + world position |
-| Spatial canvas | Three.js R3F, SpatialCanvas, AnchorMarker, useWorldModel (Zustand), BroadcastChannel |
-| VRM avatar | @pixiv/three-vrm, GLTFLoader, VRMLoaderPlugin, emotion blendshapes |
-| Observability | MetricsCollector singleton, /metrics endpoint, Histogram dataclass |
-| Multi-agent | gitagent (SOUL.md / DUTIES.md), worktrees, reviewer segregation |
-| Frontend | Next.js 14, TypeScript, Three.js, Tailwind CSS, Zustand |
-| TTS | ElevenLabs streaming (Web Speech API fallback) |
-| Proto codegen | buf (`cd proto && buf generate`) |
+- **Python** — `ruff check .`, `mypy app tests`, `pytest`
+- **Go** — `go build ./...`, `go vet ./...`, `go test ./...`
+- **Frontend** — `npm run lint`, `npm run type-check`, `npm run build`, `npm test`
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow and
+[`AGENTS.md`](AGENTS.md) for the cross-tool coding rules.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
+</content>
+</invoke>

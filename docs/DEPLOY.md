@@ -122,11 +122,11 @@ keeps writing to `backend/` exactly as before.
      the repo root so `SOUL.md` — which lives at the root, outside `backend/` — is
      copied into the image. `SOUL_PATH=/app/SOUL.md` is baked into the Dockerfile,
      so `prompt.py` loads ARIA's identity with no manual env var.
-   - **Builder:** Dockerfile. Set the **Dockerfile path** to `backend/Dockerfile`.
-   - The settings in `deploy/railway.json` mirror this (builder = Dockerfile,
-     `dockerfilePath: backend/Dockerfile`, health check `/health`, restart on
-     failure). To apply them as code, set the service's config-as-code path to
-     `deploy/railway.json`.
+   - **Builder:** Dockerfile → `backend/Dockerfile`. This is applied as code by
+     `railway.json` at the **repo root**, which Railway auto-detects when the root
+     directory is the repo root — so it uses the Dockerfile builder automatically
+     (health check `/health`, restart on failure) instead of falling back to
+     Railpack. No manual builder setting needed if the config is present.
 3. **Set the environment variables** from the backend table in section 3
    (Service → **Variables**). At minimum: `ANTHROPIC_API_KEY`,
    `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `CLERK_SECRET_KEY`,

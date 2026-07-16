@@ -31,15 +31,21 @@ architecture 5 · frontend 4.5 · dependencies 3.5 · api 3.5 · observability 3
 | `OBS-1/2/3/4/5` | Production observability blind — non-JSON logs, no request correlation, `/metrics` not through the edge, no failing readiness, unhandled 500s silent | **#75 + #76** — structlog/zerolog JSON on prod; `X-Request-ID` generated at the Go edge + forwarded + bound into Python logs; public `/ready` (Go pings Python + worker probes) + `/metrics` proxied through the edge; global error handler logs + increments an error metric |
 | `DEP-1` | Python deps non-deterministic — ~18/28 unpinned | **#79** — all direct deps pinned exact. *(Hash-locking deferred: needs a Linux-side lock step; can't generate Linux wheel hashes from macOS dev.)* |
 | `DEP-2` | `webrtcvad` imported but undeclared — audio worker hard-exits on a clean machine | **#79** — declared (`==2.0.10`, with `setuptools==80.10.2` so `pkg_resources` stays); CI import-smoke flipped from report-only to **gating** |
+| `SEC-1` | Clerk session JWT carried in the WebSocket URL query string (leakage) | **#83** — token moved to the `Sec-WebSocket-Protocol` subprotocol; server echoes only the `aria-ws` marker; a `?token=` URL is now rejected. *(Prod promotion held for a live signed-in WS check.)* |
+| `FE-1` | WCAG 2.1 AA: contrast + labels/focus/reduced-motion + no error boundary | **#69 + #82** — error boundary on the live Canvas; icon labels, visible focus, reduced-motion; faint-text contrast raised to AA (`#4a4957→#828193`, 2.1:1→5.06:1) |
+| `SCALE-1` | Perception read the container's physical camera/mic — dead in the cloud, un-multi-tenant | **A.2 (#85, #86, #87, #89)** — vision (MediaPipe) + mic capture moved **browser-side**; server vision worker + dead gRPC/NATS transports deleted; server `/ws/audio` feeds the existing STT pipeline (STT stays server). *(Prod-held for a live camera+mic test + a MediaPipe binary-provisioning choice.)* |
+| `ARCH-1/2/3` | Emotion logic in the transport layer; duplicated `broadcastFrame` + 3 near-identical proxy handlers + `localhost:8000` in 3 places | **A.2a-2 + #88** — broadcastFrame/vision dup deleted with the dead transports; emotion classification went with the vision path; one `PythonBaseURL` config + a shared `proxyToPython` helper. *(ARCH-3, the 4-way emotion enum, left as a small follow-up.)* |
 
 ## Open debt
 
-| Rule | Item | Severity | Where | Target |
-|------|------|----------|-------|--------|
-| `SCALE-1` | Perception reads the **container's physical camera/mic** — the headline feature cannot run in the cloud; capture must move browser-side | critical | `backend/app/pipeline` vision/audio workers | **Phase A.2** (browser-side perception rewrite) |
-| `SEC-1` | Clerk session JWT carried in the **WebSocket URL query string** (token leakage → account takeover) | medium | frontend WS URL + Go | Phase E |
-| `FE-1` | **Partial (#69):** icon-button labels, visible focus, reduced-motion **done**; **contrast** violations still open (need palette review — `--on-surface-faint` on `--void` ≈ 2.1:1 in placeholders/empty states/timestamps) | medium | `frontend/src` (CSS palette) | Phase E (contrast) |
-| `ARCH-1/2/3` | Business logic (emotion) in the transport layer; duplicated `broadcastFrame` + 3 near-identical proxy handlers + `localhost:8000` in 3 files; 4 divergent emotion enums | low–med | Go + frontend | Phase E / v2 |
+_All audit findings are addressed._ Two items are **code-complete on `integration` but held from prod** pending your action:
+
+| Item | What's needed |
+|------|----------------|
+| `SCALE-1` (A.2) | A **live camera+mic test** (headless CI can't exercise the real pipeline) + a **MediaPipe binary-provisioning** choice (git-lfs / build-step / asset host) before it promotes to prod. |
+| `SEC-1` | A **live signed-in WS check** before its prod promotion. |
+
+Deferred/known gaps (none block current prod): dependency **hash-locking** (needs a Linux CI lock step), a formal **backup/restore** path (DATA-4), **end-to-end tests**, `ARCH-3` (emotion-enum consolidation), and orphaned tooling (`scripts/benchmark_nats.py`).
 
 ---
 
