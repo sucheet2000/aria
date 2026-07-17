@@ -25,21 +25,23 @@ type Server struct {
 	hub           *Hub
 	cfg           *config.Config
 	workingMemory *memory.WorkingMemory
+	registry      *cognition.StreamRegistry
 	httpServer    *http.Server
 	httpClient    *http.Client
 	pythonURL     string
 	readyChecks   []readyCheck
 }
 
-// New creates a new Server with the given configuration, hub, and working memory.
-func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory) *Server {
+// New creates a new Server with the given configuration, hub, working memory, and stream registry.
+func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory, registry *cognition.StreamRegistry) *Server {
 	s := &Server{
 		router:        chi.NewRouter(),
 		hub:           hub,
 		cfg:           cfg,
 		workingMemory: wm,
+		registry:      registry,
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
-		pythonURL:     cfg.PythonBaseURL,
+		pythonURL:     "http://localhost:8000",
 	}
 	s.httpServer = &http.Server{
 		Addr:         cfg.Addr(),
@@ -77,16 +79,12 @@ func (s *Server) Start(ctx context.Context) error {
 	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
 		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
 	})
-	s.router.Get("/ws/audio", func(w http.ResponseWriter, r *http.Request) {
-		ServeAudioWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
-	})
 
-	cogClient := cognition.NewWithLogger(s.pythonURL+"/api/cognition", s.workingMemory, log.Logger)
+	cogClient := cognition.NewWithLogger("http://localhost:8000/api/cognition", s.workingMemory, log.Logger)
 	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
-	cogHandler := cognition.NewHandler(cogClient, log.Logger)
+	cogHandler := cognition.NewHandler(cogClient, s.registry, log.Logger)
 
 	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
-	ttsClient.SetPythonURL(s.pythonURL + "/api/tts")
 	ttsClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
 	ttsHandler := tts.NewHandler(ttsClient)
 
@@ -165,24 +163,49 @@ func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
-	s.proxyToPython(w, r, http.MethodGet, "/api/memory/profile")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/memory/profile", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	reqid.SetHeader(req, r.Context())
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
 func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
-	s.proxyToPython(w, r, http.MethodGet, "/api/anchors")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.pythonURL+"/api/anchors", nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	setOwnerHeader(req, r)
+	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
+	reqid.SetHeader(req, r.Context())
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		http.Error(w, `{"error":"python service unavailable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
 func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request) {
 	anchorID := chi.URLParam(r, "anchor_id")
-	s.proxyToPython(w, r, http.MethodDelete, "/api/anchors/"+anchorID)
-}
-
-// proxyToPython forwards the inbound request to the internal Python service at
-// path (relative to the Python base URL) using method, attaching the
-// authenticated owner, the internal-auth secret, and the request id. It streams
-// the upstream status and JSON body straight back to the caller.
-func (s *Server) proxyToPython(w http.ResponseWriter, r *http.Request, method, path string) {
-	req, err := http.NewRequestWithContext(r.Context(), method, s.pythonURL+path, nil)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodDelete,
+		s.pythonURL+"/api/anchors/"+anchorID, nil)
 	if err != nil {
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return

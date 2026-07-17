@@ -75,13 +75,14 @@ type errorResponse struct {
 
 // Handler handles POST /api/cognition.
 type Handler struct {
-	client *Client
-	log    zerolog.Logger
+	client   *Client
+	registry *StreamRegistry
+	log      zerolog.Logger
 }
 
-// NewHandler creates a Handler with the given cognition client.
-func NewHandler(client *Client, log zerolog.Logger) *Handler {
-	return &Handler{client: client, log: log}
+// NewHandler creates a Handler with the given cognition client and stream registry.
+func NewHandler(client *Client, registry *StreamRegistry, log zerolog.Logger) *Handler {
+	return &Handler{client: client, registry: registry, log: log}
 }
 
 // ServeHTTP implements http.Handler.
@@ -121,6 +122,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	h.registry.Register(sessionID, cancel)
+	defer h.registry.Unregister(sessionID)
 
 	result, err := h.client.Complete(ctx, req)
 	if err != nil {

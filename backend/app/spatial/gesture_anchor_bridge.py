@@ -1,8 +1,8 @@
 """
 v3 gesture-anchor bridge.
 
-Translates raw gesture events from the browser perception layer into spatial
-anchor operations on AnchorRegistry. Called by cognition_route when a request
+Translates raw gesture events from vision_worker into spatial anchor
+operations on AnchorRegistry. Called by cognition_route when a request
 carries gesture or two_hand_gesture data.
 
 Gesture priority (single-hand takes precedence for POINT):
@@ -39,7 +39,7 @@ class GestureAnchorBridge:
         """Translate a gesture event into a spatial action dict.
 
         Args:
-            gesture: Single-hand gesture name from the browser perception layer
+            gesture: Single-hand gesture name from vision_worker
                      ("point", "stop", "confirm", "cancel", "none").
             two_hand_gesture: Two-hand gesture type
                               ("HOLD", "EXPAND", "THROW", "BOND", "NONE").

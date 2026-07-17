@@ -41,7 +41,7 @@ class VADProcessor:
         # Energy gate only applies when not already tracking speech.
         # During speech, we let low-energy chunks through so silence
         # can be measured and the utterance can be finalized.
-        if not self._in_speech and rms < 0.006:
+        if not self._in_speech and rms < 0.002:
             return False, None
 
         pcm = np.clip(chunk * 32768, -32768, 32767).astype(np.int16).tobytes()

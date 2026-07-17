@@ -3,6 +3,8 @@ wheel                # left unpinned — pinning wheel forces packaging>=24, con
 fastapi==0.135.1
 uvicorn[standard]==0.42.0
 websockets==16.0
+mediapipe==0.10.32
+opencv-python==4.11.0.86
 anthropic==0.85.0
 chromadb==1.5.5
 torch==2.10.0
@@ -20,5 +22,7 @@ mypy==1.20.0
 faster-whisper==1.2.1
 ctranslate2==4.7.1
 onnxruntime==1.24.4
+sounddevice==0.5.5
 deepfilternet==0.5.6  # noise suppression; ONNX path preferred, falls back to native df backend
+nats-py==2.14.0
 webrtcvad==2.0.10  # VAD for audio worker (DEP-2: was imported but undeclared)

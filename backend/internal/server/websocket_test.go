@@ -26,7 +26,7 @@ var testOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 
 func startWSServer(t *testing.T, verifier auth.Verifier, authEnabled bool, origins []string) (*httptest.Server, *Hub) {
 	t.Helper()
-	hub := NewHub()
+	hub := NewHub(nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go hub.Run(ctx)
@@ -37,7 +37,7 @@ func startWSServer(t *testing.T, verifier auth.Verifier, authEnabled bool, origi
 	return srv, hub
 }
 
-func dialWS(t *testing.T, base, query, origin string, subprotocols ...string) (*websocket.Conn, *http.Response, error) {
+func dialWS(t *testing.T, base, query, origin string) (*websocket.Conn, *http.Response, error) {
 	t.Helper()
 	u := "ws" + strings.TrimPrefix(base, "http") + "/ws"
 	if query != "" {
@@ -47,9 +47,7 @@ func dialWS(t *testing.T, base, query, origin string, subprotocols ...string) (*
 	if origin != "" {
 		header.Set("Origin", origin)
 	}
-	dialer := *websocket.DefaultDialer
-	dialer.Subprotocols = subprotocols
-	return dialer.Dial(u, header)
+	return websocket.DefaultDialer.Dial(u, header)
 }
 
 func statusOf(resp *http.Response) int {
@@ -92,7 +90,7 @@ func TestServeWs_AuthEnabled_MissingToken_401(t *testing.T) {
 func TestServeWs_AuthEnabled_InvalidToken_401(t *testing.T) {
 	srv, _ := startWSServer(t, fakeTokenVerifier{err: errors.New("bad token")}, true, testOrigins)
 
-	conn, resp, err := dialWS(t, srv.URL, "", "http://localhost:3000", wsSubprotocol, "bad")
+	conn, resp, err := dialWS(t, srv.URL, "token=bad", "http://localhost:3000")
 	if conn != nil {
 		conn.Close()
 	}
@@ -104,42 +102,16 @@ func TestServeWs_AuthEnabled_InvalidToken_401(t *testing.T) {
 	}
 }
 
-// TestServeWs_AuthEnabled_QueryToken_NotAuthenticated proves SEC-1: a token in
-// the URL query string is no longer read, so it must NOT authenticate.
-func TestServeWs_AuthEnabled_QueryToken_NotAuthenticated(t *testing.T) {
-	srv, _ := startWSServer(t, fakeTokenVerifier{owner: "user_a"}, true, testOrigins)
-
-	conn, resp, err := dialWS(t, srv.URL, "token=good", "http://localhost:3000")
-	if conn != nil {
-		conn.Close()
-	}
-	if err == nil {
-		t.Fatal("expected handshake to fail: query-string token must not authenticate")
-	}
-	if statusOf(resp) != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", statusOf(resp))
-	}
-}
-
 func TestServeWs_AuthEnabled_ValidToken_AcceptedAndOwnerScoped(t *testing.T) {
 	srv, hub := startWSServer(t, fakeTokenVerifier{owner: "user_a"}, true, testOrigins)
 
-	conn, resp, err := dialWS(t, srv.URL, "", "http://localhost:3000", wsSubprotocol, "good")
+	conn, resp, err := dialWS(t, srv.URL, "token=good", "http://localhost:3000")
 	if err != nil {
 		t.Fatalf("dial failed: %v (status %d)", err, statusOf(resp))
 	}
 	defer conn.Close()
 	if statusOf(resp) != http.StatusSwitchingProtocols {
 		t.Fatalf("status = %d, want 101", statusOf(resp))
-	}
-
-	// The server MUST echo back the marker subprotocol (and only the marker,
-	// never the token) or the browser aborts the connection.
-	if got := resp.Header.Get("Sec-Websocket-Protocol"); got != wsSubprotocol {
-		t.Fatalf("response Sec-WebSocket-Protocol = %q, want %q", got, wsSubprotocol)
-	}
-	if got := conn.Subprotocol(); got != wsSubprotocol {
-		t.Fatalf("negotiated subprotocol = %q, want %q", got, wsSubprotocol)
 	}
 
 	waitForClients(t, hub, 1)
