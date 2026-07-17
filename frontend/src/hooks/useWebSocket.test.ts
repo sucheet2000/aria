@@ -80,3 +80,42 @@ describe("useWebSocket subprotocol auth (SEC-1)", () => {
     unmount();
   });
 });
+
+describe("useWebSocket frame validation (FE-3)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    MockWebSocket.instances = [];
+    mockGetToken.mockReset();
+    vi.stubGlobal("WebSocket", MockWebSocket);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("logs and drops a malformed frame without leaking payload contents", async () => {
+    mockGetToken.mockResolvedValue("jwt.header.token");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { unmount } = renderHook(() => useWebSocket());
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const ws = MockWebSocket.instances.at(-1);
+    expect(ws).toBeDefined();
+    expect(ws!.onmessage).toBeTypeOf("function");
+
+    ws!.onmessage!({
+      data: JSON.stringify({
+        type: "aria_response",
+        payload: { transcript: "SECRET_PII_XYZ" },
+      }),
+    } as MessageEvent);
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("SECRET_PII_XYZ");
+
+    warnSpy.mockRestore();
+    unmount();
+  });
+});

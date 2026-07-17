@@ -4,6 +4,7 @@ import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
 import { visionCaptureActiveRef } from "@/hooks/visionCaptureState";
 import { WS_URL } from "@/lib/config";
+import { parseWsFrame } from "@/lib/wsMessages";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
 
@@ -80,32 +81,30 @@ export function useWebSocket() {
       };
 
       ws.onmessage = (event: MessageEvent) => {
-        try {
-          const msg = JSON.parse(event.data as string);
+        const msg = parseWsFrame(event.data as string);
+        if (!msg) return; // parseWsFrame already logged the drop
 
-          if (msg.type === "aria_sleep") {
+        switch (msg.type) {
+          case "aria_sleep":
             useAriaStore.getState().setIsListening(false);
             useAriaStore.getState().setIsSpeaking(false);
             return;
-          }
 
-          if (msg.type === "wake_word") {
+          case "wake_word":
             useAriaStore.getState().setIsListening(true);
             setTimeout(() => useAriaStore.getState().setIsListening(false), 2000);
             return;
-          }
 
-          if (msg.type === "vision_state" || !msg.type) {
+          case "vision_state":
             // Once the browser produces PerceptionFrames locally (Phase A.2a),
             // the local producer is the source of truth — drop server frames.
             if (visionCaptureActiveRef.current) return;
-            useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
+            useAriaStore.getState().setVisionFrame(msg.frame);
             return;
-          }
 
-          if (msg.type === "aria_interrupt") {
+          case "aria_interrupt": {
             const currentSessionId = useAriaStore.getState().sessionId;
-            if (msg.session_id === currentSessionId) {
+            if (msg.sessionId === currentSessionId) {
               abortCognitionRef.current?.();
               window.dispatchEvent(new CustomEvent("aria:interrupt"));
               useAriaStore.getState().setIsSpeaking(false);
@@ -114,7 +113,7 @@ export function useWebSocket() {
             return;
           }
 
-          if (msg.type === "transcript") {
+          case "transcript": {
             const t = msg.payload;
             if (t.is_final && t.transcript) {
               useAriaStore.getState().setVoiceTranscript(t.transcript);
@@ -130,14 +129,11 @@ export function useWebSocket() {
             return;
           }
 
-          if (msg.type === "anchor_registered") {
+          case "anchor_registered":
             window.dispatchEvent(
-              new CustomEvent("aria:anchor_registered", { detail: msg.payload ?? msg })
+              new CustomEvent("aria:anchor_registered", { detail: msg.anchor })
             );
             return;
-          }
-        } catch {
-          // malformed message -- ignore
         }
       };
 
