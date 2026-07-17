@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # The ``backend/`` directory. Used as the default DATA_DIR so durable stores
 # land exactly where they do today (backend/data/anchors.db, backend/memory).
@@ -69,6 +71,28 @@ class Settings(BaseSettings):
     # X-Internal-Auth; when set, this service rejects API requests that do not
     # match. Empty (default) disables enforcement so local dev works without Go.
     INTERNAL_AUTH_SECRET: str = ""
+
+    # ── Single-page reader (native Anthropic web_fetch server tool) ──────────
+    # Master switch. OFF by default so merging is inert: cognition behaves
+    # exactly as today until this is explicitly turned on.
+    WEB_FETCH_ENABLED: bool = False
+    # Deny-by-default allow-list of fetchable domains (comma-separated in env,
+    # e.g. "example.com,docs.python.org"). Empty => no domains allowed => the
+    # web_fetch tool is never attached, so an empty list keeps the feature off.
+    WEB_FETCH_ALLOWED_DOMAINS: Annotated[list[str], NoDecode] = []
+    # Max number of fetches Claude may perform in a single cognition turn.
+    WEB_FETCH_MAX_USES: int = 2
+    # Cap on fetched-content tokens injected into the model context per turn.
+    WEB_FETCH_MAX_CONTENT_TOKENS: int = 10000
+
+    @field_validator("WEB_FETCH_ALLOWED_DOMAINS", mode="before")
+    @classmethod
+    def _split_allowed_domains(cls, value: object) -> object:
+        # Parse the comma-separated env string into a clean list; a real list
+        # (e.g. the default) passes straight through.
+        if isinstance(value, str):
+            return [d.strip() for d in value.split(",") if d.strip()]
+        return value
 
 
 settings = Settings()
