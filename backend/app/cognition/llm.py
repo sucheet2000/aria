@@ -17,6 +17,7 @@ from app.models.schemas import (
     WorldModelTriple,
     WorldModelUpdate,
 )
+from app.observability.metrics import MetricsCollector
 
 logger = structlog.get_logger()
 
@@ -83,6 +84,28 @@ def _handle_local(utterance: str, last_response: str) -> str:
         from datetime import datetime
         return f"It's {datetime.now().strftime('%H:%M')}."
     return ""
+
+
+def _record_token_usage(model: str, response: object) -> None:
+    """Record input-token usage into the metrics recorder, defensively.
+
+    A metrics failure must never crash the cognition hot path, so a missing
+    or malformed ``usage`` is a silent no-op. Cache reads go to the ``cached``
+    bucket; fresh input plus cache-write tokens go to ``uncached`` — making
+    cached/(cached+uncached) a direct input-token cache-hit ratio.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    try:
+        cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_creation = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    except (TypeError, ValueError):
+        return
+    collector = MetricsCollector()
+    collector.record_token_cost(model, cached=True, tokens=cache_read)
+    collector.record_token_cost(model, cached=False, tokens=input_tokens + cache_creation)
 
 
 # ── LLMClient ─────────────────────────────────────────────────────────────────
@@ -166,6 +189,8 @@ class LLMClient:
         )
         elapsed_ms = int((time.time() - start) * 1000)
         logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
+
+        _record_token_usage(model, response)
 
         first_block = response.content[0] if response.content else None
         text = getattr(first_block, "text", None)
