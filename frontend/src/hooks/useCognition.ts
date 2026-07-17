@@ -97,7 +97,7 @@ export function useCognition() {
 
   async function sendMessage(
     text: string,
-    onResponse?: (responseText: string) => void
+    onResponse?: (responseText: string, emotion?: string) => void
   ): Promise<void> {
     if (!text.trim() || isLoading) return;
 
@@ -165,7 +165,7 @@ export function useCognition() {
       handleSpatialEvent(data.spatial_event);
       window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
-        onResponse(data.natural_language_response);
+        onResponse(data.natural_language_response, data.avatar_emotion);
       }
     } catch (err) {
       if (interruptedRef.current) {
