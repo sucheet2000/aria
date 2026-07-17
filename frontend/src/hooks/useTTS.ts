@@ -10,7 +10,9 @@ export const ttsAudioRef: { current: HTMLAudioElement | null } = {
   current: null,
 };
 
-export const speakRef: { current: ((text: string) => Promise<void>) | null } = {
+export const speakRef: {
+  current: ((text: string, emotion?: string) => Promise<void>) | null;
+} = {
   current: null,
 };
 
@@ -36,7 +38,7 @@ export function useTTS() {
 
   const setIsSpeaking = useAriaStore((s) => s.setIsSpeaking);
 
-  async function speak(text: string): Promise<void> {
+  async function speak(text: string, emotion?: string): Promise<void> {
     if (!text || isPlaying) return;
 
     setIsPlaying(true);
@@ -50,7 +52,7 @@ export function useTTS() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(emotion ? { text, emotion } : { text }),
         signal: AbortSignal.timeout(15000),
       });
 

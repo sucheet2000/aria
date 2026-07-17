@@ -41,7 +41,7 @@ You own the ARIA Python backend under `backend/app`: the FastAPI HTTP + cognitio
 - `backend/app/pipeline/transcriber.py` — `Transcriber` wraps faster-whisper (int8/cpu); domain initial-prompt (`_build_initial_prompt`) + dynamic-keyword injection hook.
 - `backend/app/pipeline/vad.py` — `VADProcessor`: webrtcvad + RMS energy gate; emits completed utterances; `mute/unmute/clear`.
 - `backend/app/pipeline/denoiser.py` — `Denoiser` (DeepFilterNet, optional); passthrough when unavailable.
-- `backend/app/pipeline/voice_engine.py` — `voice_engine` singleton (`voice_engine = VoiceEngine()`): emotion → ElevenLabs `voice_settings` + v3 prosody tags; `build_request_payload`.
+- `backend/app/pipeline/voice_engine.py` — `voice_engine` singleton (`voice_engine = VoiceEngine()`): emotion → ElevenLabs `voice_settings` via `build_request_payload` (a v3 prosody-tag helper exists but is unused on the currently configured turbo/fallback models).
 - `backend/app/pipeline/whisper_coreml.py` — optional macOS CoreML whisper backend (deferred/optional import).
 
 ## 3. How it works

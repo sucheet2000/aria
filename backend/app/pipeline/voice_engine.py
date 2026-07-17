@@ -176,6 +176,9 @@ class VoiceEngine:
         Wrap text in ElevenLabs v3 audio tags based on emotion.
         Only applies tags when using eleven_turbo_v2_5 or newer.
 
+        Note: not currently called by build_request_payload — neither configured
+        model renders v3 tags. Retained as a re-enable hook for a v3-capable model.
+
         Rules:
         - Prefix tag sets the emotional register for the whole response
         - Thoughtful pause added before questions to create natural pacing
@@ -213,25 +216,25 @@ class VoiceEngine:
     ) -> dict:
         """
         Build the complete ElevenLabs API request payload.
-        Applies prosody tags and voice settings based on emotion.
+        The emotion drives voice_settings; v3 audio tags are not applied on
+        the currently configured turbo/fallback models (spoken text stays raw).
 
         Args:
             text: The natural language response from Claude
             voice_id: ElevenLabs voice ID
             emotion: Emotion label from symbolic_inference or avatar_emotion
-            use_turbo: If True, uses eleven_turbo_v2_5 with audio tags.
-                       If False, falls back to eleven_monolingual_v1 (no tags).
+            use_turbo: If True, uses eleven_turbo_v2_5. If False, falls back
+                       to eleven_monolingual_v1. Neither model renders v3
+                       audio tags; emotion is expressed via voice_settings.
 
         Returns dict ready to be JSON-serialized as the request body.
         """
         model_id = self.MODEL_ID if use_turbo else self.FALLBACK_MODEL_ID
         voice_settings = self.get_voice_settings(emotion)
 
-        # Only apply prosody tags on turbo model (v3 tags not supported on v1)
-        if use_turbo:
-            spoken_text = self.apply_prosody_tags(text, emotion)
-        else:
-            spoken_text = text
+        # Neither configured model renders v3 audio tags aloud correctly, so
+        # spoken text stays raw for both; emotion still drives voice_settings.
+        spoken_text = text
 
         return {
             "text": spoken_text,

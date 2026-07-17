@@ -136,12 +136,17 @@ class TestBuildRequestPayload:
         )
         assert payload["text"] == text
 
-    def test_use_turbo_true_applies_prosody_tags_for_distressed(self) -> None:
+    def test_use_turbo_true_skips_prosody_tags(self) -> None:
         text = "I am feeling overwhelmed and need your assistance here."
         payload = voice_engine.build_request_payload(
             text=text, voice_id="abc", emotion="distressed", use_turbo=True
         )
-        assert payload["text"].startswith("[softly]")
+        assert payload["text"] == text
+
+        idle_payload = voice_engine.build_request_payload(
+            text=text, voice_id="abc", emotion="idle", use_turbo=True
+        )
+        assert payload["voice_settings"]["style"] != idle_payload["voice_settings"]["style"]
 
     def test_emotion_passed_to_voice_settings(self) -> None:
         angry_payload = voice_engine.build_request_payload(
