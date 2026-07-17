@@ -346,7 +346,7 @@ class LLMClient:
                 world_model_update=wmu,
                 natural_language_response=data.get("natural_language_response", ""),
             )
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.warning("failed to parse llm json", error=str(e))
             return CognitionResponse(
                 symbolic_inference="parse error",

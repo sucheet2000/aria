@@ -8,6 +8,7 @@ fact-write so a hostile page cannot poison owner memory.
 """
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -387,6 +388,55 @@ class TestFactWriteSuppression:
     def test_fact_write_persists_on_normal_turn(self) -> None:
         mem = _run_cognition(used_web_fetch=False)
         mem.store_triple.assert_awaited_once()
+
+
+# ── (g) malformed envelope → graceful fallback, never a 500 ───────────────────
+
+
+class TestMalformedEnvelopeDegrades:
+    """A hostile/garbled response envelope must degrade to the safe raw-text
+    fallback, not raise. Reachable once web_fetch is enabled (attacker-influenced
+    page content), so we close it as defense-in-depth."""
+
+    def test_non_numeric_confidence_degrades(self) -> None:
+        client = LLMClient(api_key="test-key")
+        raw = json.dumps(
+            {
+                "symbolic_inference": "grounded",
+                "natural_language_response": "The page says X.",
+                "world_model_update": {
+                    "triple": {"subject": "user", "predicate": "likes", "object": "cats"},
+                    "confidence": "very high",
+                },
+            }
+        )
+
+        result = client._parse_response(raw)
+
+        assert isinstance(result, CognitionResponse)
+        assert result.world_model_update is None
+        assert result.symbolic_inference == "parse error"
+        assert result.natural_language_response == raw
+
+    def test_non_dict_triple_degrades(self) -> None:
+        client = LLMClient(api_key="test-key")
+        raw = json.dumps(
+            {
+                "symbolic_inference": "grounded",
+                "natural_language_response": "The page says X.",
+                "world_model_update": {
+                    "triple": "not-a-dict",
+                    "confidence": 0.9,
+                },
+            }
+        )
+
+        result = client._parse_response(raw)
+
+        assert isinstance(result, CognitionResponse)
+        assert result.world_model_update is None
+        assert result.symbolic_inference == "parse error"
+        assert result.natural_language_response == raw
 
 
 # ── config: INERT-by-default + comma-separated env parsing ────────────────────
