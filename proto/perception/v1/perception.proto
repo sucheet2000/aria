@@ -118,7 +118,7 @@ enum TwoHandGestureType {
 // │    │                  │ active stream when concurrent sessions exist.   │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
 // │ 10 │ stream_id        │ Exact gRPC stream identifier carried by the     │
-// │    │                  │ interrupt payload so StreamRegistry.Cancel()    │
+// │    │                  │ interrupt payload so the cancel routing path    │
 // │    │                  │ can be surgically precise.                      │
 // ├────┼──────────────────┼────────────────────────────────────────────────┤
 // │11–12│ RESERVED        │ Week 5 NATS async transport headers.           │
@@ -168,97 +168,4 @@ message SpatialAnchor {
   Point3D position    = 3;
   float radius        = 4; // interaction/collision radius in metres
   int64 created_at_us = 5; // microseconds since Unix epoch (consistent with HandGestureEvent)
-}
-
-// ─── Spatial Events ───────────────────────────────────────────────────────────
-
-// SpatialEvent describes a discrete spatial action produced by the gesture-anchor
-// bridge in response to a single- or two-hand gesture. Returned in the HTTP
-// cognition API response under the "spatial_event" key.
-//
-// event_type values (canonical):
-//   "anchor_registered" — anchor_id populated; a new anchor was registered
-//   "anchors_bonded"    — anchor_ids populated; two nearest anchors were bonded
-//   "anchor_thrown"     — anchor_id + velocity populated; anchor given momentum
-//   "world_expand"      — factor populated; scale the world model
-message SpatialEvent {
-  string event_type          = 1; // canonical event type string (see above)
-  string anchor_id           = 2; // primary anchor (anchor_registered, anchor_thrown)
-  repeated string anchor_ids = 3; // anchors involved in bond events
-  repeated float velocity    = 4; // throw direction vector [x, y, z]
-  float factor               = 5; // scale factor for world_expand events
-}
-
-// ─── gRPC Bi-directional Service ─────────────────────────────────────────────
-
-// CognitionRequest is the client→server message in the StreamCognition RPC.
-// The oneof payload ensures exactly one event type is encoded per message,
-// keeping the interrupt signal wire-size to a single varint field.
-message CognitionRequest {
-  string session_id = 1;
-  oneof payload {
-    HandGestureEvent gesture_event = 2;
-    string text_input              = 3;
-    bool interrupt_signal          = 4; // Sub-100ms Priority Interrupt (Week 3)
-  }
-}
-
-// CognitionResponse is the server→client message in the StreamCognition RPC.
-message CognitionResponse {
-  string session_id              = 1;
-  string natural_language_output = 2;
-  string symbolic_inference      = 3;
-  bool stream_complete           = 4;
-}
-
-// CognitionService is the primary gRPC interface between the Python perception
-// layer and the Go backend. Bi-directional streaming enables the Priority
-// Interrupt Pattern required by the sub-100ms latency constraint.
-service CognitionService {
-  // StreamCognition: perception events flow in, cognitive responses flow out.
-  // The interrupt_signal payload in CognitionRequest kills the active cognitive
-  // stream in <100ms when a visual state change is detected (e.g. user exits frame).
-  rpc StreamCognition(stream CognitionRequest) returns (stream CognitionResponse);
-
-  // RegisterAnchor: persists a physical object as a 3D spatial anchor.
-  // Used by Week 9 pointing-vector logic to "register" real-world objects.
-  rpc RegisterAnchor(SpatialAnchor) returns (SpatialAnchor);
-}
-
-// ─── PerceptionService (Week 1 gRPC Transport) ───────────────────────────────
-
-// HandData carries the 21 MediaPipe landmarks for a single detected hand.
-// Separated from HandGestureEvent so the raw transport layer (PerceptionService)
-// can stream all landmark data without requiring a gesture classification.
-message HandData {
-  Handedness hand            = 1;
-  repeated Point3D landmarks = 2; // exactly 21 per MediaPipe standard
-}
-
-// PerceptionFrame is the per-frame payload streamed from the Python vision worker
-// to the Go backend over PerceptionService.StreamFrames.
-// It replaces the stdout JSON pipe introduced in Week 0.
-//
-// Tag budget (mirrors HandGestureEvent discipline):
-//   1 : hands         — repeated HandData; primary payload, lowest tag = 1-byte header
-//   2 : timestamp_us  — int64 µs; consistent with HandGestureEvent.timestamp_us
-//   3 : session_id    — string; session re-hydration key (Week 2)
-message PerceptionFrame {
-  repeated HandData hands = 1;
-  int64 timestamp_us      = 2;
-  string session_id       = 3;
-}
-
-// StreamRequest is sent by the Go client when opening a StreamFrames call.
-message StreamRequest {
-  string session_id = 1;
-}
-
-// PerceptionService is the simple one-directional transport between the Python
-// vision layer and the Go backend. Frames flow Python → Go.
-// Week 3 will extend this to bidirectional via CognitionService.
-service PerceptionService {
-  // StreamFrames opens a server-streaming RPC. The Python server yields one
-  // PerceptionFrame per processed camera frame; Go reads and broadcasts them.
-  rpc StreamFrames(StreamRequest) returns (stream PerceptionFrame);
 }

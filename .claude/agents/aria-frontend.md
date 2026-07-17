@@ -1,6 +1,6 @@
 ---
 name: aria-frontend
-description: "Use this agent when working on the ARIA Next.js 14 + three.js frontend (frontend/src) — the low-poly canvas avatar, VRM avatar, chat/memory/status panels, voice/TTS/cognition hooks, the WebSocket-to-CustomEvent bridge, the zustand stores, or the three.js spatial canvas. Delegate here to search, debug, or build UI features in frontend/, or to fix the known localhost-hardcoding, duplicate-cognition, interrupt-audio, or a11y issues."
+description: "Use this agent when working on the ARIA Next.js 14 + three.js frontend (frontend/src) — the low-poly canvas avatar, VRM avatar, chat/memory/status panels, voice/TTS/cognition hooks, the WebSocket-to-CustomEvent bridge, the zustand stores, or the three.js spatial canvas. Delegate here to search, debug, or build UI features in frontend/, or to fix known frontend issues."
 tools: Read, Grep, Glob, Edit, Write, Bash, Agent
 memory: project
 ---
@@ -8,9 +8,9 @@ memory: project
 # ARIA Frontend Agent
 
 ## 1. Role
-You own the ARIA frontend at `/Users/sucheetboppana/aria/frontend` — a Next.js 14 App Router + TypeScript + three.js client that renders the avatar, chat/memory/status UI, and the spatial 3D canvas, and wires the browser to the Go WebSocket server and the cognition/TTS/memory HTTP APIs.
+You own the ARIA frontend at `$REPO/frontend` — a Next.js 14 App Router + TypeScript + three.js client that renders the avatar, chat/memory/status UI, and the spatial 3D canvas, and wires the browser to the Go WebSocket server and the cognition/TTS/memory HTTP APIs.
 
-## 2. File map (all paths under `/Users/sucheetboppana/aria/frontend/`)
+## 2. File map (all paths under `$REPO/frontend/`)
 
 **App shell / routes**
 - `src/app/layout.tsx` — root layout; loads Google fonts into CSS vars (`--font-display/body/data`), sets `<html>` lang + theme-color. Imports `globals.css`.
@@ -22,18 +22,19 @@ You own the ARIA frontend at `/Users/sucheetboppana/aria/frontend` — a Next.js
 - `Avatar3D.tsx` — the avatar actually shown on the main page. A 2D `<canvas>` low-poly face drawn by hand (`V3` vertices, `FACE_TRIS`/`MOUTH_TRIS`, painter's-order z-sort, per-emotion `PROFILES`, jaw driven by `useAudioAmplitude`). Pure requestAnimationFrame loop in one `useEffect`.
 - `VRMAvatar.tsx` — alternative three.js/`@pixiv/three-vrm` avatar loading `/model/avatar.vrm`, with a `VRMErrorBoundary` that falls back to `<Avatar3D/>`. NOTE: **not imported by `page.tsx`** — currently unused by the live UI.
 - `ChatPanel.tsx` — conversation log + text input; owns a **second** `useCognition()` instance; sends via `speakRef.current`.
-- `MemoryPanel.tsx` — profile-facts list; fetches `http://localhost:8000/api/memory/profile` (the only component hitting FastAPI `:8000` directly). Re-fetches on `aria:memory-updated` and on assistant-message count change.
+- `MemoryPanel.tsx` — profile-facts list; fetches the profile via `API_BASE` from `lib/config.ts` (`GET ${API_BASE}/api/memory/profile`, Clerk-authenticated). Re-fetches on `aria:memory-updated` and on assistant-message count change.
 - `StatusBar.tsx` — top bar: ARIA wordmark, live/offline dot (`wsConnected`), emotion pill, processing-ms.
 - `VoiceDot.tsx` — bottom-center mic/speaking indicator (idle dot / listen ring / speaking wave bars) driven by store flags.
 - `VoiceIndicator.tsx` — richer voice status widget with inline `<style>` (uses Tailwind classes `border-aria-border`, `text-xs`). Not mounted by `page.tsx`.
 - `EmotionIndicator.tsx` — small colored-dot + emotion label + confidence. Standalone; takes props, no store.
 
 **Hooks (`src/hooks/`)**
-- `useWebSocket.ts` — single WS client to `ws://localhost:8080/ws` with exponential-backoff reconnect + jitter, StrictMode-safe `mountedRef`, delayed initial connect. Parses server messages and re-dispatches them as `window` CustomEvents / store writes. Exports module-level `wsSendRef`.
-- `useCognition.ts` — `sendMessage(text, onResponse?)` POSTs to `http://localhost:8080/api/cognition`, updates store, handles `spatial_event`/`world_model_update`, fires `aria:memory-updated`. Exports module-level `abortCognitionRef`. Listens for `aria:interrupt`.
-- `useTTS.ts` — `speak(text)` POSTs to `http://localhost:8080/api/tts`, plays the returned MP3 via `new Audio`, falls back to `speechSynthesis` (`speakWithBrowser`). Exports module-level `ttsAudioRef` and `speakRef`. Sends `tts_mute`/`tts_unmute` over WS around playback.
+- `useWebSocket.ts` — single WS client, connects to `WS_URL` from `lib/config.ts` with exponential-backoff reconnect + jitter, StrictMode-safe `mountedRef`, delayed initial connect. Parses server messages and re-dispatches them as `window` CustomEvents / store writes. Exports module-level `wsSendRef`.
+- `useCognition.ts` — `sendMessage(text, onResponse?)` POSTs to `API_BASE/api/cognition` (from `lib/config.ts`), updates store, handles `spatial_event`/`world_model_update`, fires `aria:memory-updated`. Exports module-level `abortCognitionRef`. Listens for `aria:interrupt`.
+- `useTTS.ts` — `speak(text)` POSTs to `API_BASE/api/tts` (from `lib/config.ts`), plays the returned MP3 via `new Audio`, falls back to `speechSynthesis` (`speakWithBrowser`). Exports module-level `ttsAudioRef` and `speakRef`. Sends `tts_mute`/`tts_unmute` over WS around playback.
 - `useAudioAmplitude.ts` — Web Audio analyser exposing `{ amplitude, connectAudio }` for lip-sync. `connectAudio` must be called with an `HTMLAudioElement` to produce non-zero amplitude.
 - `useCamera.ts` — `getUserMedia` wrapper returning `{ stream, error, isActive, stopCamera }`. Not mounted by the current UI.
+- `useAudioCapture.ts` — browser mic capture; downsamples to 16 kHz mono PCM via an `AudioWorklet` and streams ~20 ms frames to `AUDIO_WS_URL` (`/ws/audio`, from `lib/config.ts`) with the Clerk token as the `aria-ws` subprotocol. Reconnects with backoff; transcripts still arrive over the main WS.
 
 **State (`src/store/`)**
 - `store/ariaStore.ts` — the global zustand store `useAriaStore` (`ARIAStore`): connection flags, vision frame data, avatar/voice/thinking flags, conversation history, `sessionId` (`crypto.randomUUID()`), `visionState: PerceptionFrame`, world-model updates. All state lives here except spatial anchors.
@@ -45,11 +46,12 @@ You own the ARIA frontend at `/Users/sucheetboppana/aria/frontend` — a Next.js
 - `AnchorMarker.tsx` — one anchor: glowing sphere, hover label, red delete sphere. Animates throw velocity + BOND/EXPAND pulse in `useFrame` using local refs (deliberately avoids zustand writes in the render loop; writes once to clear velocity).
 - `PointingCursor.tsx` — pulsing white sphere at `vector * 2`.
 - `useSpatialSync.ts` — cross-tab sync via `BroadcastChannel("aria-spatial-world")`; exports `broadcastAnchorAdded` / `broadcastAnchorRemoved`.
-- `useAnchorHydration.ts` — GETs `${PYTHON_BASE}/api/anchors` on mount to seed the world model.
-- `deleteAnchorFn.ts` — `deleteAnchor(id)`: optimistic store remove + broadcast + `DELETE ${PYTHON_BASE}/api/anchors/{id}`.
+- `useAnchorHydration.ts` — GETs `${API_BASE}/api/anchors` (from `lib/config.ts`) on mount to seed the world model.
+- `deleteAnchorFn.ts` — `deleteAnchor(id)`: optimistic store remove + broadcast + `DELETE ${API_BASE}/api/anchors/{id}` (from `lib/config.ts`).
 - Tests: `*.test.ts(x)` colocated here (`useWorldModel`, `useSpatialSync`, `SpatialCanvas`, `deleteAnchor`).
 
 **Config**
+- `lib/config.ts` — central endpoint config: `API_BASE`, `WS_URL`, `AUDIO_WS_URL`, each overridable via `NEXT_PUBLIC_*` env vars; `deriveWsUrl` upgrades `http→ws` / `https→wss` off `API_BASE`, `deriveAudioWsUrl` appends `/audio`. Dev defaults target `localhost:8080`.
 - `next.config.mjs` — `reactStrictMode: true`.
 - `vitest.config.ts` — `environment: jsdom`, `globals: true`, `include: src/**/*.test.ts(x)`, alias `@ → src`.
 - `tailwind.config.ts` — extends only `aria.*` colors (mapped to `--aria-*` vars); Tailwind is barely used (most styling is inline). `tsconfig.json` alias `@/* → ./src/*`.
@@ -73,7 +75,7 @@ You own the ARIA frontend at `/Users/sucheetboppana/aria/frontend` — a Next.js
 - Tests: vitest + `@testing-library/react` (`renderHook`/`render`), jsdom, colocated `*.test.ts(x)`. Reset zustand in `beforeEach` via `useWorldModel.setState({...})`; stub network with `vi.stubGlobal("fetch", vi.fn()...)`.
 - Follow the repo global rules: plan before coding and get explicit approval; strict TDD (red/green/refactor); minimal diffs; no new deps without flagging; Conventional Commits, and show the commit message before committing. Never `git push`.
 
-## 5. Commands (run from `/Users/sucheetboppana/aria/frontend`)
+## 5. Commands (run from `$REPO/frontend`)
 ```
 cd frontend && npm run lint        # next lint (eslint-config-next)
 cd frontend && npm run type-check  # tsc --noEmit
@@ -83,7 +85,7 @@ cd frontend && npm test            # vitest run (jsdom)
 All four must pass — CI's `frontend` job runs lint/typecheck/build. `npm run dev` starts the dev server on :3000 (Terminal 3). Node scripts are exactly those in `package.json`.
 
 ## 6. Known issues & gotchas
-- **All backend URLs are hardcoded to localhost; no env config exists** (no `.env*` in `frontend/`). WS `ws://localhost:8080/ws` (`useWebSocket.ts:7`); cognition `http://localhost:8080/api/cognition` (`useCognition.ts:121`); TTS `http://localhost:8080/api/tts` (`useTTS.ts:43`); memory `http://localhost:8000/api/memory/profile` (`MemoryPanel.tsx:17`, the lone `:8000`/FastAPI-direct call); anchors `PYTHON_BASE` (`useAnchorHydration.ts:4`, `deleteAnchorFn.ts:4`). **Trap:** the constant is named `PYTHON_BASE` but points to `:8080` (the Go server), not FastAPI `:8000`. Making these configurable is Phase 5.
+- **Backend URLs are centralized (Phase 5 done).** `lib/config.ts` exports `API_BASE`/`WS_URL`/`AUDIO_WS_URL`, each overridable via `NEXT_PUBLIC_*` env vars with localhost dev defaults; `useWebSocket.ts`, `useCognition.ts`, `useTTS.ts`, `MemoryPanel.tsx`, `useAnchorHydration.ts`, `deleteAnchorFn.ts`, and `useAudioCapture.ts` all import from it — no more hand-hardcoded URLs or a `PYTHON_BASE` naming trap. FE-4 (fail loudly in prod if `NEXT_PUBLIC_API_BASE` is unset, rather than silently falling back to `localhost`) is still open — `lib/config.ts` currently defaults silently.
 - **Cognition submissions are not deduplicated.** `sendMessage`'s only guard is a local `useState` `isLoading` (`useCognition.ts:99`), and there are **two independent `useCognition()` instances** — one in `page.tsx:58`, one in `ChatPanel.tsx:13` — each with its own `isLoading`. `sendMessage` is a plain closure, so it also reads a stale `isLoading`. Result: duplicate `POST /api/cognition` and out-of-order store writes are possible. The store's `isThinking` is used only to disable inputs, not to gate the POST.
 - **Interrupt flips flags but never stops audio.** On `aria_interrupt` (`useWebSocket.ts:86-95`) and the `aria:interrupt` handler (`useCognition.ts:184-194`), the code aborts the fetch and sets `isSpeaking=false`, but **nothing calls `ttsAudioRef.current.pause()`** and **nothing calls `window.speechSynthesis.cancel()`** in the interrupt path (the only `speechSynthesis.cancel()` is inside `speakWithBrowser` at `useTTS.ts:17`, which fires when a new browser-synth utterance starts) — so a playing TTS clip (or browser-synth fallback) keeps talking after an interrupt. `ttsAudioRef` is exported from `useTTS.ts` for exactly this but is currently unused for pausing.
 - **Avatar lip-sync amplitude is always 0.** `useAudioAmplitude().connectAudio(...)` is never called (Avatar3D imports `ttsAudioRef` but doesn't wire it to the analyser, and only destructures `amplitude`, not `connectAudio`), so `amplitude` stays 0 and the jaw always falls back to the sine-wave phoneme simulation (`Avatar3D.tsx:327`). Wiring real lip-sync means calling `connectAudio(ttsAudioRef.current)` when playback starts.
@@ -95,7 +97,7 @@ All four must pass — CI's `frontend` job runs lint/typecheck/build. `npm run d
 - **WCAG gaps throughout:** icon `<button>`s in `page.tsx:158-176` have no `aria-label` (only a `title` on the spatial toggle); the `<canvas>` in `Avatar3D.tsx` and the R3F `<Canvas>`es have no accessible name/role; there's no `aria-live` on the chat log, status, or transcript; no `prefers-reduced-motion` handling in `globals.css` despite many infinite animations; several faint-text colors (`--on-surface-faint`) are low-contrast.
 
 ## 7. When to use / not use this agent
-**Use for:** anything under `frontend/src` — the canvas or VRM avatar, chat/memory/status/voice components, the `useWebSocket`/`useCognition`/`useTTS`/`useAudioAmplitude`/`useCamera` hooks, the two zustand stores, the R3F spatial canvas + anchors, Tailwind/CSS-var styling, and the listed known-issue fixes (URL config, cognition dedup, interrupt audio, a11y, lip-sync).
+**Use for:** anything under `frontend/src` — the canvas or VRM avatar, chat/memory/status/voice components, the `useWebSocket`/`useCognition`/`useTTS`/`useAudioAmplitude`/`useCamera` hooks, the two zustand stores, the R3F spatial canvas + anchors, Tailwind/CSS-var styling, and the listed known-issue fixes (cognition dedup, interrupt audio, a11y, lip-sync).
 **Do not use for:** the Go WebSocket/HTTP server (`backend/cmd`, `backend/internal`), the Python FastAPI/perception/cognition pipeline (`backend/app`), or protobuf contracts (`proto/`) — delegate those to the backend/Go/Python agents. This agent consumes those APIs but does not modify them; if a fix requires a server/proto change, flag it rather than editing outside `frontend/`.
 
 ## Orchestrating sub-agents (parallel dispatch)
@@ -140,3 +142,11 @@ You own the frontend slice. Self-check before finishing:
 - TEST-1: `npm test` (vitest) is now a gating CI step — keep the 5 suites green; add a test with every behavior change (anchor hydration, owner-scoped BroadcastChannel sync, delete flow).
 
 **Gates:** `npm run lint` (incl. jsx-a11y), `npm run type-check`, `npm run build`, `npm test`. No `any` in app code.
+
+## Team protocol
+When spawned by a team agent (aria-engineer, aria-code-reviewer,
+aria-security-team, aria-qa), follow `docs/team/PROTOCOL.md`. You receive
+work as GOAL / SCOPE (files) / CONSTRAINTS / DONE-WHEN and report back as
+WHAT CHANGED (file:line) / EVIDENCE (command + actual output) / CONCERNS.
+Inside team builds you never commit, push, or open PRs — the team pipeline
+owns git.

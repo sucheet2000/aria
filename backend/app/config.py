@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     PYTHON_BIN: str = "python3"
-    VISION_SCRIPT: str = "app/pipeline/vision_worker.py"
     USE_OLLAMA: bool = False
     OLLAMA_MODEL: str = "llama3.2"
     AUDIO_ENABLED: bool = True
