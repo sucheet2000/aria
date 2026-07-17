@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     # this from the authenticated identity so the data model is multi-user-ready.
     DEFAULT_OWNER: str = "local"
 
+    # Maximum ChromaDB distance a recalled fact may have before it is dropped
+    # from the prompt. Distances are always >= 0 (measured against chromadb
+    # 1.5.5's default L2 space + MiniLM embedding, 2026-07), so a value <= 0
+    # DISABLES the cutoff and recall behaves exactly as before. Default 0.0 is
+    # deliberately a no-op: this ships the plumbing + distance logging so the
+    # real distribution can be observed first; tighten only once the data shows
+    # a value that separates relevant facts from noise.
+    RECALL_MAX_DISTANCE: float = 0.0
+
     # Base directory for all durable user data (ChromaDB memory + SQLite
     # anchors). Defaults to backend/ so local dev is unchanged; in the cloud set
     # it to a mounted volume path (e.g. /data) so data survives redeploys.
