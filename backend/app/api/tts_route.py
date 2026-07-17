@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import random
+import time
 
 import httpx
 import structlog
@@ -17,10 +20,36 @@ router = APIRouter()
 VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 TTS_URL = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
 
+_BACKOFF_BASE = 0.4
+_BACKOFF_CAP = 0.75
+_RETRY_BUDGET_SECONDS = 14.0  # hard ceiling; must stay under the frontend 15s AbortSignal
+
 
 class TTSRequest(BaseModel):
     text: str
     emotion: str | None = None
+
+
+def _worst_case_budget_seconds() -> float:
+    return (
+        settings.ELEVENLABS_TIMEOUT_SECONDS * (settings.ELEVENLABS_MAX_RETRIES + 1)
+        + _BACKOFF_CAP * settings.ELEVENLABS_MAX_RETRIES
+    )
+
+
+def _retryable(status: int) -> bool:
+    return status == 429 or 500 <= status < 600
+
+
+def _compute_delay(attempt: int, resp: httpx.Response) -> float:
+    retry_after = resp.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+    delay = min(_BACKOFF_CAP, _BACKOFF_BASE * 2**attempt)
+    return delay / 2 + random.uniform(0, delay / 2)
 
 
 @router.post("/api/tts")
@@ -41,28 +70,45 @@ async def tts(req: TTSRequest) -> Response:
         "Accept": "audio/mpeg",
     }
 
+    deadline = time.monotonic() + _RETRY_BUDGET_SECONDS
+    timeout = settings.ELEVENLABS_TIMEOUT_SECONDS
+    max_retries = settings.ELEVENLABS_MAX_RETRIES
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(TTS_URL, json=payload, headers=headers)
-            if resp.status_code != 200:
-                logger.error(
-                    "elevenlabs error",
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            attempt = 0
+            while True:
+                resp = await client.post(TTS_URL, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    return Response(content=resp.content, media_type="audio/mpeg")
+                if not _retryable(resp.status_code) or attempt >= max_retries:
+                    break
+                delay = _compute_delay(attempt, resp)
+                if time.monotonic() + delay + timeout > deadline:
+                    break
+                logger.warning(
+                    "elevenlabs retry",
                     status=resp.status_code,
-                    body=resp.text[:200],
+                    attempt=attempt + 1,
+                    delay=round(delay, 3),
                 )
-                if resp.status_code == 402:
-                    logger.warning(
-                        "ElevenLabs 402: voice ID may be a paid library voice. "
-                        "Go to elevenlabs.io -> Voice Lab -> Create Voice, "
-                        "copy the voice ID, and set ELEVENLABS_VOICE_ID env var. "
-                        "Falling back to browser TTS."
-                    )
-                    return Response(status_code=503, content=b"")
-                return Response(status_code=resp.status_code)
-            return Response(
-                content=resp.content,
-                media_type="audio/mpeg",
+                await asyncio.sleep(delay)
+                attempt += 1
+
+            logger.error(
+                "elevenlabs error",
+                status=resp.status_code,
+                body=resp.text[:200],
             )
+            if resp.status_code == 402:
+                logger.warning(
+                    "ElevenLabs 402: voice ID may be a paid library voice. "
+                    "Go to elevenlabs.io -> Voice Lab -> Create Voice, "
+                    "copy the voice ID, and set ELEVENLABS_VOICE_ID env var. "
+                    "Falling back to browser TTS."
+                )
+                return Response(status_code=503, content=b"")
+            return Response(status_code=resp.status_code)
     except Exception as e:
         logger.error("tts request failed", error=str(e))
         return Response(status_code=500)

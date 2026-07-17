@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     ANTHROPIC_TIMEOUT_SECONDS: float = 30.0
     # Bounded SDK retries on transient (408/409/429/>=500) Anthropic errors.
     ANTHROPIC_MAX_RETRIES: int = 3
+    # Per-request timeout (seconds) for outbound ElevenLabs TTS calls. Small so a
+    # bounded retry still fits inside the frontend's 15s AbortSignal.
+    ELEVENLABS_TIMEOUT_SECONDS: float = 4.0
+    # Bounded retries on transient (429/5xx) ElevenLabs errors, honoring Retry-After.
+    ELEVENLABS_MAX_RETRIES: int = 2
     ELEVENLABS_API_KEY: str = ""
     HOST: str = "127.0.0.1"
     PORT: int = 8000
