@@ -84,6 +84,10 @@ class CognitionResponse(BaseModel):
     symbolic_inference: str
     world_model_update: WorldModelUpdate | None = None
     natural_language_response: str
+    # Internal signal (never serialized to the wire): True when the native
+    # web_fetch server tool actually ran on this turn. The cognition route uses
+    # it to suppress the fact-write so a fetched page cannot poison owner memory.
+    used_web_fetch: bool = False
 
 
 @dataclass

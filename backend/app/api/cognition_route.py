@@ -1,6 +1,7 @@
 import dataclasses
 import time
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -16,6 +17,8 @@ from app.models.schemas import (
 from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
 from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -69,7 +72,11 @@ async def cognition(
     processing_ms = int((time.time() - start) * 1000)
     MetricsCollector().record_cognition_latency(processing_ms)
 
-    if result.world_model_update:
+    if result.world_model_update and result.used_web_fetch:
+        # Memory-poisoning guard: never persist a fact inferred on a turn where
+        # web_fetch ran, so a hostile page cannot write into owner memory.
+        logger.info("fact-write suppressed on web_fetch turn", owner=owner)
+    elif result.world_model_update:
         wmu = result.world_model_update
         await memory.store_triple(
             subject=wmu.triple.subject,

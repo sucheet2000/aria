@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Literal
+from typing import Any, Literal
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -44,6 +44,69 @@ _TIER2_KEYWORDS = frozenset(
 )
 
 _TIER2_WORD_THRESHOLD = 15  # queries longer than this default to Tier 2
+
+# Native web_fetch server tool (GA, no beta header). Cap on how many times a
+# paused turn may be resumed so a stuck pause_turn can never loop unboundedly.
+_WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
+_MAX_TURN_CONTINUATIONS = 3
+_URL_RE = re.compile(r"https?://[^\s<>\"'\]\)]+", re.IGNORECASE)
+
+
+def _first_url(text: str) -> str | None:
+    """Return the first http(s) URL in ``text``, or None (bare domains ignored)."""
+    match = _URL_RE.search(text)
+    return match.group(0) if match else None
+
+
+def _web_fetch_error_code(block: object) -> str | None:
+    """Extract an Anthropic web_fetch error code from a result block, if present.
+
+    A failed fetch is returned as a ``web_fetch_tool_result`` block whose inner
+    content carries an ``error_code`` (e.g. ``url_not_allowed``); a successful
+    fetch carries the fetched document instead.
+    """
+    inner = getattr(block, "content", None)
+    if inner is None:
+        return None
+    if isinstance(inner, dict):
+        code = inner.get("error_code")
+    else:
+        code = getattr(inner, "error_code", None)
+    return code if isinstance(code, str) else None
+
+
+def _extract_text_and_fetch(response: object) -> tuple[str | None, bool, str | None]:
+    """Collapse a (possibly multi-block) response into cognition inputs.
+
+    Iterates ``response.content`` and returns
+    ``(last_text, used_web_fetch, fetch_error_code)``:
+
+    - ``last_text`` — the LAST text block's text (the model's final answer),
+      or None if there is no text block. For the no-tool path this is a single
+      text block, so behaviour is identical to reading ``content[0]``.
+    - ``used_web_fetch`` — True if a ``server_tool_use`` / ``web_fetch_tool_result``
+      block is present, i.e. a fetch actually ran on this turn.
+    - ``fetch_error_code`` — the error code of a failed fetch, else None.
+    """
+    content = getattr(response, "content", None) or []
+    last_text: str | None = None
+    used_web_fetch = False
+    fetch_error: str | None = None
+    for block in content:
+        btype = getattr(block, "type", None)
+        if btype == "server_tool_use":
+            used_web_fetch = True
+            continue
+        if btype == "web_fetch_tool_result":
+            used_web_fetch = True
+            err = _web_fetch_error_code(block)
+            if err is not None:
+                fetch_error = err
+            continue
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            last_text = text
+    return last_text, used_web_fetch, fetch_error
 
 
 def classify_tier(utterance: str) -> Tier:
@@ -179,35 +242,78 @@ class LLMClient:
             messages.append({"role": turn.role, "content": turn.content})
         messages.append({"role": "user", "content": message})
 
+        # Attach the native web_fetch server tool ONLY when it is enabled, an
+        # allow-list is configured, AND the message actually contains a URL.
+        # When any of those is false the call is byte-for-byte as today (no
+        # `tools` kwarg), so the feature is inert by default.
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": self.MAX_TOKENS,
+            "system": system,
+            "messages": messages,
+            "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
+        }
+        if (
+            settings.WEB_FETCH_ENABLED
+            and settings.WEB_FETCH_ALLOWED_DOMAINS
+            and _first_url(message) is not None
+        ):
+            create_kwargs["tools"] = [
+                {
+                    "type": _WEB_FETCH_TOOL_TYPE,
+                    "name": "web_fetch",
+                    "max_uses": settings.WEB_FETCH_MAX_USES,
+                    "allowed_domains": list(settings.WEB_FETCH_ALLOWED_DOMAINS),
+                    "max_content_tokens": settings.WEB_FETCH_MAX_CONTENT_TOKENS,
+                }
+            ]
+
         start = time.time()
-        response = await self._client.messages.create(
-            model=model,
-            max_tokens=self.MAX_TOKENS,
-            system=system,  # type: ignore[arg-type]
-            messages=messages,  # type: ignore[arg-type]
-            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-        )
+        response = await self._client.messages.create(**create_kwargs)
+        _record_token_usage(model, response)
+        # A server-tool turn may pause; resume it a bounded number of times by
+        # feeding the paused content back, so a stuck pause_turn cannot hang.
+        continuations = 0
+        while (
+            getattr(response, "stop_reason", None) == "pause_turn"
+            and continuations < _MAX_TURN_CONTINUATIONS
+        ):
+            continuations += 1
+            create_kwargs["messages"] = [
+                *create_kwargs["messages"],
+                {"role": "assistant", "content": response.content},
+            ]
+            response = await self._client.messages.create(**create_kwargs)
+            _record_token_usage(model, response)
         elapsed_ms = int((time.time() - start) * 1000)
         logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
 
-        _record_token_usage(model, response)
+        text, used_web_fetch, fetch_error = _extract_text_and_fetch(response)
 
-        first_block = response.content[0] if response.content else None
-        text = getattr(first_block, "text", None)
+        if used_web_fetch:
+            # URL is owner-supplied and safe to log; fetched page content is not.
+            logger.info(
+                "web_fetch turn",
+                tier=tier,
+                model=model,
+                url=_first_url(message),
+                outcome=fetch_error or "ok",
+            )
+
         if text is None:
             logger.warning(
                 "llm empty or non-text completion, falling back",
                 tier=tier,
                 model=model,
             )
-            return CognitionResponse(
+            result = CognitionResponse(
                 symbolic_inference="empty completion",
                 world_model_update=None,
                 natural_language_response="",
             )
-
-        raw = text.strip()
-        result = self._parse_response(raw)
+        else:
+            result = self._parse_response(text.strip())
+        result.used_web_fetch = used_web_fetch
         return result
 
     def _parse_response(self, raw: str) -> CognitionResponse:
