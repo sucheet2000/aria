@@ -186,8 +186,10 @@ class MemoryStore:
         return await run_in_threadpool(self._query_relevant_sync, context, owner, n_results)
 
     def _query_relevant_sync(self, context: str, owner: str, n_results: int) -> list[str]:
-        results = []
+        results: list[str] = []
+        observed: list[dict[str, object]] = []
         now = time.time()
+        cutoff = settings.RECALL_MAX_DISTANCE
         try:
             for collection in [self._profile, self._episodic]:
                 count = collection.count()
@@ -198,17 +200,34 @@ class MemoryStore:
                     query_texts=[context],
                     n_results=n_results_capped,
                     where={"owner": owner},
+                    include=["documents", "metadatas", "distances"],
                 )
-                for doc, meta in zip(
-                    response["documents"][0],
-                    response["metadatas"][0],
-                ):
+                docs = response["documents"][0]
+                metas = response["metadatas"][0]
+                ids = response["ids"][0]
+                distances_raw = response.get("distances")
+                distances = distances_raw[0] if distances_raw else [None] * len(docs)
+                for doc_id, doc, meta, distance in zip(ids, docs, metas, distances):
                     expires = meta.get("expires_at")
                     if expires and expires < now:
+                        continue
+                    # Fail open: only drop when a cutoff is active AND a real
+                    # distance exceeds it. A missing/None distance keeps the fact.
+                    dropped = (
+                        cutoff > 0 and distance is not None and distance > cutoff
+                    )
+                    observed.append(
+                        {"id": doc_id, "distance": distance, "kept": not dropped}
+                    )
+                    if dropped:
                         continue
                     results.append(doc)
         except Exception as e:
             logger.error("query_relevant failed", error=str(e))
+        if observed:
+            logger.debug(
+                "recall distances", owner=owner, cutoff=cutoff, facts=observed
+            )
         return results[:n_results]
 
     async def sweep_expired(self) -> int:
