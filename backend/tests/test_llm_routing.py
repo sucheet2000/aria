@@ -148,7 +148,13 @@ class TestSoulCache:
 
 # ── REL-2: timeout, bounded retry, empty-completion guard ─────────────────────
 
-def _fake_response(text: str | None) -> MagicMock:
+def _fake_response(
+    text: str | None,
+    *,
+    cache_read: int = 0,
+    cache_creation: int = 0,
+    input_tokens: int = 100,
+) -> MagicMock:
     """Build a stand-in Anthropic message response.
 
     ``text=None`` yields an empty ``content`` list (empty completion).
@@ -160,6 +166,11 @@ def _fake_response(text: str | None) -> MagicMock:
         block = MagicMock()
         block.text = text
         response.content = [block]
+    usage = MagicMock()
+    usage.cache_read_input_tokens = cache_read
+    usage.cache_creation_input_tokens = cache_creation
+    usage.input_tokens = input_tokens
+    response.usage = usage
     return response
 
 
@@ -296,3 +307,113 @@ class TestPromptCachingBreakpoint:
         assert "Current observation" in obs_block["text"]
         assert transcript in obs_block["text"]
         assert "cache_control" not in obs_block
+
+
+# ── OBS-3: token-usage → cost metrics recording ───────────────────────────────
+
+
+class TestTokenUsageRecording:
+    @pytest.mark.asyncio
+    async def test_cache_hit_records_to_cached_and_uncached_buckets(self) -> None:
+        """A cache-hit completion splits usage into cached vs uncached buckets."""
+        from app.cognition.llm import _MODEL_HAIKU
+        from app.models.schemas import PerceptionFrame
+        from app.observability.metrics import MetricsCollector
+
+        MetricsCollector()._token_cost = {}
+
+        client = LLMClient(api_key="test-key")
+        payload = (
+            '{"symbolic_inference": "ok", "natural_language_response": "hi"}'
+        )
+        client._client.messages.create = AsyncMock(
+            return_value=_fake_response(
+                payload, cache_read=900, cache_creation=100, input_tokens=20
+            )
+        )
+
+        await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        snap = MetricsCollector().snapshot()
+        assert snap["token_cost"][_MODEL_HAIKU] == {"cached": 900, "uncached": 120}
+
+    @pytest.mark.asyncio
+    async def test_missing_usage_is_silent_noop(self) -> None:
+        """A response with ``usage=None`` records nothing and never raises."""
+        from app.models.schemas import PerceptionFrame
+        from app.observability.metrics import MetricsCollector
+
+        MetricsCollector()._token_cost = {}
+
+        client = LLMClient(api_key="test-key")
+        payload = (
+            '{"symbolic_inference": "ok", "natural_language_response": "hi"}'
+        )
+        response = _fake_response(payload)
+        response.usage = None
+        client._client.messages.create = AsyncMock(return_value=response)
+
+        result = await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert result.natural_language_response == "hi"
+        assert MetricsCollector().snapshot()["token_cost"] == {}
+
+    @pytest.mark.asyncio
+    async def test_non_int_usage_field_is_silent_noop(self) -> None:
+        """A non-integer usage field records nothing (no partial record, no raise)."""
+        from app.models.schemas import PerceptionFrame
+        from app.observability.metrics import MetricsCollector
+
+        MetricsCollector()._token_cost = {}
+
+        client = LLMClient(api_key="test-key")
+        payload = (
+            '{"symbolic_inference": "ok", "natural_language_response": "hi"}'
+        )
+        response = _fake_response(payload)
+        response.usage.cache_read_input_tokens = "not-a-number"
+        client._client.messages.create = AsyncMock(return_value=response)
+
+        result = await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=[],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert result.natural_language_response == "hi"
+        assert MetricsCollector().snapshot()["token_cost"] == {}
+
+    @pytest.mark.asyncio
+    async def test_tier0_records_no_token_cost(self) -> None:
+        """Tier 0 makes no API call, so nothing is recorded."""
+        from app.models.schemas import ConversationTurn, PerceptionFrame
+        from app.observability.metrics import MetricsCollector
+
+        MetricsCollector()._token_cost = {}
+
+        client = LLMClient(api_key="test-key")
+        client._client.messages.create = AsyncMock()
+
+        await client.complete(
+            message="repeat that",
+            vision=PerceptionFrame(),
+            conversation_history=[ConversationTurn(role="assistant", content="prior")],
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        assert MetricsCollector().snapshot()["token_cost"] == {}

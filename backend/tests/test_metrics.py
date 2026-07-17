@@ -87,6 +87,28 @@ def test_gesture_events_new_type_starts_at_one():
     assert m.snapshot()["gesture_events"]["THROW"] == 1
 
 
+# --- record_token_cost ---
+
+def test_token_cost_two_bucket_accumulation():
+    m = MetricsCollector()
+    m.record_token_cost("claude-haiku", cached=True, tokens=900)
+    m.record_token_cost("claude-haiku", cached=False, tokens=120)
+    m.record_token_cost("claude-haiku", cached=True, tokens=100)
+    snap = m.snapshot()
+    assert snap["token_cost"]["claude-haiku"] == {"cached": 1000, "uncached": 120}
+
+
+def test_token_cost_per_model_isolation():
+    m = MetricsCollector()
+    m.record_token_cost("claude-haiku", cached=True, tokens=900)
+    m.record_token_cost("claude-haiku", cached=False, tokens=120)
+    m.record_token_cost("claude-sonnet", cached=True, tokens=50)
+    m.record_token_cost("claude-sonnet", cached=False, tokens=200)
+    snap = m.snapshot()
+    assert snap["token_cost"]["claude-haiku"] == {"cached": 900, "uncached": 120}
+    assert snap["token_cost"]["claude-sonnet"] == {"cached": 50, "uncached": 200}
+
+
 # --- record_anchor_created ---
 
 def test_anchor_created_increments():
