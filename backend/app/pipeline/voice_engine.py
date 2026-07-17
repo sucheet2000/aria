@@ -176,6 +176,9 @@ class VoiceEngine:
         Wrap text in ElevenLabs v3 audio tags based on emotion.
         Only applies tags when using eleven_turbo_v2_5 or newer.
 
+        Note: not currently called by build_request_payload — neither configured
+        model renders v3 tags. Retained as a re-enable hook for a v3-capable model.
+
         Rules:
         - Prefix tag sets the emotional register for the whole response
         - Thoughtful pause added before questions to create natural pacing
@@ -213,7 +216,8 @@ class VoiceEngine:
     ) -> dict:
         """
         Build the complete ElevenLabs API request payload.
-        Applies prosody tags and voice settings based on emotion.
+        The emotion drives voice_settings; v3 audio tags are not applied on
+        the currently configured turbo/fallback models (spoken text stays raw).
 
         Args:
             text: The natural language response from Claude
