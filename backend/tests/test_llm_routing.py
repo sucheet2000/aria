@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.cognition.llm import LLMClient, _handle_local, classify_tier
+from app.models.schemas import ConversationTurn
 
 # ── tier classification ───────────────────────────────────────────────────────
 
@@ -417,3 +418,76 @@ class TestTokenUsageRecording:
         )
 
         assert MetricsCollector().snapshot()["token_cost"] == {}
+
+
+# ── conversation-history window: keep the last 16 verbatim role-entries ────────
+
+
+class TestConversationHistoryWindow:
+    @staticmethod
+    def _history(n: int) -> list[ConversationTurn]:
+        return [
+            ConversationTurn(
+                role="user" if i % 2 == 0 else "assistant",
+                content=f"turn-{i}",
+            )
+            for i in range(n)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_more_than_16_entries_keeps_only_last_16(self) -> None:
+        """With >16 prior role-entries, only the last 16 are sent verbatim
+        (plus the current user message appended)."""
+        from app.models.schemas import PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        payload = '{"symbolic_inference": "ok", "natural_language_response": "hi"}'
+        mock_create = AsyncMock(return_value=_fake_response(payload))
+        client._client.messages.create = mock_create
+
+        history = self._history(20)  # 20 > 16
+        await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=history,
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        messages = mock_create.call_args.kwargs["messages"]
+        # last 16 history turns + the current user message
+        assert len(messages) == 17
+        assert messages[:-1] == [
+            {"role": t.role, "content": t.content} for t in history[-16:]
+        ]
+        # oldest kept entry is turn-4 (indices 4..19); turn-3 is dropped
+        assert messages[0] == {"role": "user", "content": "turn-4"}
+        assert {"role": "assistant", "content": "turn-3"} not in messages
+        # the current user message is appended last
+        assert messages[-1] == {"role": "user", "content": "hello"}
+
+    @pytest.mark.asyncio
+    async def test_16_or_fewer_entries_all_kept(self) -> None:
+        """With ≤16 prior role-entries, all are sent verbatim."""
+        from app.models.schemas import PerceptionFrame
+
+        client = LLMClient(api_key="test-key")
+        payload = '{"symbolic_inference": "ok", "natural_language_response": "hi"}'
+        mock_create = AsyncMock(return_value=_fake_response(payload))
+        client._client.messages.create = mock_create
+
+        history = self._history(10)  # 10 <= 16
+        await client.complete(
+            message="hello",
+            vision=PerceptionFrame(),
+            conversation_history=history,
+            working_memory=[],
+            episodic_memory=[],
+        )
+
+        messages = mock_create.call_args.kwargs["messages"]
+        assert len(messages) == 11
+        assert messages[:-1] == [
+            {"role": t.role, "content": t.content} for t in history
+        ]
+        assert messages[-1] == {"role": "user", "content": "hello"}

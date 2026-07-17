@@ -45,6 +45,11 @@ _TIER2_KEYWORDS = frozenset(
 
 _TIER2_WORD_THRESHOLD = 15  # queries longer than this default to Tier 2
 
+# Verbatim conversation-history window: the last N role-entries (~N/2 exchanges)
+# replayed word-for-word into each API call. Lives in the uncached message region,
+# so widening it does not affect the cached SOUL prefix.
+_MAX_HISTORY_TURNS = 16
+
 
 def classify_tier(utterance: str) -> Tier:
     """Classify utterance into a routing tier using pure heuristics (no LLM call).
@@ -175,7 +180,7 @@ class LLMClient:
         system.append({"type": "text", "text": observation_content})
 
         messages = []
-        for turn in conversation_history[-6:]:
+        for turn in conversation_history[-_MAX_HISTORY_TURNS:]:
             messages.append({"role": turn.role, "content": turn.content})
         messages.append({"role": "user", "content": message})
 
