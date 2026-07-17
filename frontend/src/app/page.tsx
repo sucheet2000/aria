@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { SignedIn, SignedOut, SignIn, UserButton } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerkAppearance";
-import Avatar3D from "@/components/Avatar3D";
+import SkullAvatar from "@/components/SkullAvatar";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
 import StatusBar from "@/components/StatusBar";
@@ -139,7 +139,7 @@ function AriaApp() {
           transition: "flex 0.3s ease",
         }}>
           <ErrorBoundary label="Avatar unavailable">
-            <Avatar3D />
+            <SkullAvatar />
           </ErrorBoundary>
         </div>
 
