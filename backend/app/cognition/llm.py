@@ -45,6 +45,11 @@ _TIER2_KEYWORDS = frozenset(
 
 _TIER2_WORD_THRESHOLD = 15  # queries longer than this default to Tier 2
 
+# Verbatim conversation-history window: the last N role-entries (~N/2 exchanges)
+# replayed word-for-word into each API call. Lives in the uncached message region,
+# so widening it does not affect the cached SOUL prefix.
+_MAX_HISTORY_TURNS = 16
+
 # Native web_fetch server tool (GA, no beta header). Cap on how many times a
 # paused turn may be resumed so a stuck pause_turn can never loop unboundedly.
 _WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
