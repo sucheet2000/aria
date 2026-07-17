@@ -14,9 +14,16 @@ import { EmotionClassifier } from "@/lib/perception/emotion";
 import { GestureClassifier, gestureName } from "@/lib/perception/gesture";
 import { headPoseFromMatrix } from "@/lib/perception/headPose";
 
-const WASM_PATH = "/mediapipe/wasm";
-const FACE_MODEL_PATH = "/mediapipe/face_landmarker.task";
-const HAND_MODEL_PATH = "/mediapipe/hand_landmarker.task";
+// MediaPipe WASM + models load from the official CDN (jsDelivr for the WASM
+// runtime pinned to the installed @mediapipe/tasks-vision version; Google Cloud
+// Storage for the float16/1 .task models). Same-origin provisioning did not work
+// on Vercel — the large binaries 404 — so we use the vendor CDN directly.
+const WASM_PATH =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+const FACE_MODEL_PATH =
+  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const HAND_MODEL_PATH =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 const TARGET_FPS = 15;
 const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
 const FACE_ABSENCE_THRESHOLD_S = 0.5;

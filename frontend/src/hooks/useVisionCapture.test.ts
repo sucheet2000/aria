@@ -49,8 +49,15 @@ vi.mock("@mediapipe/tasks-vision", () => ({
   HandLandmarker: { createFromOptions: vi.fn().mockResolvedValue(handLandmarker) },
 }));
 
-import { FilesetResolver } from "@mediapipe/tasks-vision";
+import { FilesetResolver, FaceLandmarker, HandLandmarker } from "@mediapipe/tasks-vision";
 import { useVisionCapture } from "./useVisionCapture";
+
+const CDN_WASM_PATH =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+const CDN_FACE_MODEL_PATH =
+  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const CDN_HAND_MODEL_PATH =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 let rafCb: FrameRequestCallback | null = null;
 let getUserMedia: ReturnType<typeof vi.fn>;
@@ -120,6 +127,26 @@ describe("useVisionCapture", () => {
     expect(frame!.head_pose).toEqual({ pitch: 0, yaw: 0, roll: 0 });
     expect(frame!.pointing_vector).toBeNull();
     expect(typeof frame!.timestamp).toBe("number");
+  });
+
+  it("loads the WASM runtime and models from the official MediaPipe CDN", async () => {
+    const { result } = renderHook(() => useVisionCapture(true));
+
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    expect(FilesetResolver.forVisionTasks).toHaveBeenCalledWith(CDN_WASM_PATH);
+    expect(FaceLandmarker.createFromOptions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: { modelAssetPath: CDN_FACE_MODEL_PATH },
+      }),
+    );
+    expect(HandLandmarker.createFromOptions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: { modelAssetPath: CDN_HAND_MODEL_PATH },
+      }),
+    );
   });
 
   it("reports loading during init and clears it once active", async () => {

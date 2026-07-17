@@ -55,12 +55,6 @@ backend/models/
 !backend/app/models/
 backend/server
 
-# MediaPipe browser-perception assets: commit the models (needed at runtime on
-# Vercel/prod), but the WASM runtime is build-copied from node_modules — don't commit it.
-!frontend/public/mediapipe/face_landmarker.task
-!frontend/public/mediapipe/hand_landmarker.task
-frontend/public/mediapipe/wasm/
-
 # Installers
 Miniconda*.sh
 backend/Miniconda*.sh
