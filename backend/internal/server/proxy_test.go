@@ -157,6 +157,12 @@ func TestProxyHandlers_SetOwnerHeader(t *testing.T) {
 			mount:  func(r chi.Router, s *Server) { r.Get("/memory/profile", s.handleMemoryProfileProxy) },
 		},
 		{
+			name:   "memory episodic get",
+			method: http.MethodGet,
+			path:   "/api/memory/episodic",
+			mount:  func(r chi.Router, s *Server) { r.Get("/memory/episodic", s.handleMemoryEpisodicProxy) },
+		},
+		{
 			name:   "anchor delete",
 			method: http.MethodDelete,
 			path:   "/api/anchors/abc-123",

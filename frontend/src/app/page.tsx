@@ -6,6 +6,7 @@ import { clerkAppearance } from "@/lib/clerkAppearance";
 import SkullAvatar from "@/components/SkullAvatar";
 import ChatPanel from "@/components/ChatPanel";
 import MemoryPanel from "@/components/MemoryPanel";
+import EpisodicPanel from "@/components/EpisodicPanel";
 import StatusBar from "@/components/StatusBar";
 import VoiceDot from "@/components/VoiceDot";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -18,7 +19,7 @@ import { useVisionCapture } from "@/hooks/useVisionCapture";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import { backendConfigured } from "@/lib/config";
 
-type SidebarPanel = "chat" | "memory";
+type SidebarPanel = "chat" | "memory" | "episodic";
 
 function ChatIcon() {
   return (
@@ -36,6 +37,16 @@ function MemoryIcon() {
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  );
+}
+
+function EpisodicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
     </svg>
   );
 }
@@ -75,6 +86,7 @@ function MicIcon() {
 const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.Element }> = [
   { id: "chat", label: "chat", icon: ChatIcon },
   { id: "memory", label: "memory", icon: MemoryIcon },
+  { id: "episodic", label: "episodic", icon: EpisodicIcon },
 ];
 
 function AriaApp() {
@@ -370,6 +382,18 @@ function AriaApp() {
           zIndex: 20,
         }}>
           <MemoryPanel assistantMessageCount={assistantMessageCount} />
+        </div>
+      )}
+
+      {/* Slide-out episodic memory panel */}
+      {activePanel === "episodic" && (
+        <div style={{
+          position: "absolute",
+          left: 60, top: 56, bottom: 0,
+          width: 280,
+          zIndex: 20,
+        }}>
+          <EpisodicPanel assistantMessageCount={assistantMessageCount} />
         </div>
       )}
 
