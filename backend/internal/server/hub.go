@@ -17,16 +17,10 @@ const (
 	maxMessageSize = 65536
 )
 
-// VisionController is implemented by the vision worker.
-type VisionController interface {
-	Start(ctx context.Context) error
-	Stop()
-	SetActiveSession(id string)
-}
-
 // AudioController is implemented by the audio worker.
 type AudioController interface {
 	Mute(muted bool)
+	WriteAudio(pcm []byte)
 }
 
 // broadcastMsg is a queued broadcast. When scoped is true the message is only
@@ -44,10 +38,8 @@ type Hub struct {
 	register    chan *Client
 	unregister  chan *Client
 	mu          sync.RWMutex
-	vision      VisionController
 	audio       AudioController
 	activeOwner string
-	ctx         context.Context
 }
 
 // Client represents a single WebSocket connection.
@@ -59,20 +51,13 @@ type Client struct {
 }
 
 // NewHub creates and returns a new Hub.
-func NewHub(v VisionController) *Hub {
+func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan broadcastMsg, 2048),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		vision:     v,
 	}
-}
-
-// SetVision wires a VisionController into a hub that was created with nil.
-// Must be called before Run.
-func (h *Hub) SetVision(v VisionController) {
-	h.vision = v
 }
 
 // SetAudio wires an AudioController into the hub.
@@ -82,23 +67,14 @@ func (h *Hub) SetAudio(a AudioController) {
 }
 
 // Run processes hub events: register, unregister, and broadcast.
-func (h *Hub) Run(ctx context.Context) {
-	h.ctx = ctx
+func (h *Hub) Run(_ context.Context) {
 	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			wasEmpty := len(h.clients) == 0
 			h.clients[client] = true
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client connected")
-			if wasEmpty && h.vision != nil {
-				go func() {
-					if err := h.vision.Start(h.ctx); err != nil {
-						log.Error().Err(err).Msg("vision worker exited with error")
-					}
-				}()
-			}
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -111,20 +87,8 @@ func (h *Hub) Run(ctx context.Context) {
 			if h.activeOwner != "" && !h.hasOwnerLocked(h.activeOwner) {
 				h.activeOwner = ""
 			}
-			nowEmpty := len(h.clients) == 0
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client disconnected")
-			if nowEmpty && h.vision != nil {
-				go func() {
-					time.Sleep(3000 * time.Millisecond)
-					h.mu.RLock()
-					stillEmpty := len(h.clients) == 0
-					h.mu.RUnlock()
-					if stillEmpty {
-						h.vision.Stop()
-					}
-				}()
-			}
 
 		case bm := <-h.broadcast:
 			h.mu.RLock()
@@ -236,8 +200,7 @@ func (c *Client) readPump() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		var msg struct {
-			Type      string `json:"type"`
-			SessionID string `json:"session_id"`
+			Type string `json:"type"`
 		}
 		if json.Unmarshal(message, &msg) == nil {
 			switch msg.Type {
@@ -251,11 +214,8 @@ func (c *Client) readPump() {
 				}
 			case MsgTypeSessionInit:
 				// The initializing client claims the local perception stream, so
-				// scoped vision_state / transcript frames go only to its owner.
+				// scoped transcript frames go only to its owner.
 				c.hub.setActiveOwner(c.owner)
-				if c.hub.vision != nil && msg.SessionID != "" {
-					c.hub.vision.SetActiveSession(msg.SessionID)
-				}
 			}
 		}
 		if err != nil {

@@ -2,9 +2,9 @@
 
 ## What This Project Is
 ARIA (Adaptive Realtime Intelligence Avatar) — a real-time multimodal
-AI voice companion. Go WebSocket server, Python perception pipeline
-(MediaPipe, faster-whisper, ElevenLabs), Next.js frontend with a
-low-poly 3D avatar.
+AI voice companion. Go WebSocket server, Python audio + cognition pipeline
+(faster-whisper STT, ElevenLabs TTS, Claude cognition), Next.js frontend
+with browser-side perception (MediaPipe WASM) and a low-poly 3D avatar.
 
 ## Active Initiative — Professionalization & Restructure
 The repo is being professionalized and moved to cloud (Railway backend +
@@ -63,28 +63,43 @@ Pre-existing violations live in `docs/STANDARDS_DEBT.md` (tracked, not blocking 
 7. Open PR to `integration` (never push to dev/prod without an explicit instruction).
 
 ## Tech Stack
-- Backend: Go 1.26, Python 3.13, FastAPI, gRPC (buf), protobuf
+- Backend: Go 1.26, Python 3.13, FastAPI, protobuf via buf (message contracts)
 - Frontend: Next.js 14, TypeScript, Three.js, Tailwind
 - AI: Claude API (Haiku for cognition), ElevenLabs TTS, faster-whisper STT
 - Data: ChromaDB (3-tier memory), SQLite (spatial anchors), WebSocket hub
 - Tools: buf (proto codegen), pytest, Go test
 
 ## Repo Layout
-- `backend/cmd`, `backend/internal` — Go server (hub, cognition, tts, vision, nats, memory)
-- `backend/app` — Python FastAPI + perception/cognition pipeline
-- `backend/tests` — Python tests · `backend/gen` — generated proto stubs
-- `frontend/src` — Next.js app (components, hooks, spatial, store)
-- `proto/` — protobuf contracts · `docs/` — architecture, decisions, plans, reference docs
+- `backend/cmd`, `backend/internal` — Go server (server/hub + WS, cognition & tts proxies to Python, audio worker, auth, reqid, memory, config)
+- `backend/app` — Python FastAPI: cognition/LLM, ChromaDB memory, spatial anchors, and the audio STT pipeline worker
+- `backend/tests` — Python tests · `backend/gen` — generated protobuf stubs (Go + Python)
+- `frontend/src` — Next.js app: browser perception (`lib/perception`, `hooks/useVisionCapture`), mic capture (`hooks/useAudioCapture` → `/ws/audio`), components, spatial canvas, store
+- `proto/` — message-only protobuf contract · `docs/` — architecture, decisions, plans, reference docs
 - `.claude/agents/` — project-specific subagents (below); `.claude/skills/` — project skills
 - `SOUL.md` (repo root) — ARIA's runtime identity; **do not move** (loaded by `backend/app/cognition/prompt.py`)
 
 ## Project Agents (`.claude/agents/`)
 Delegate to these preloaded subagents so subsystem context isn't lost:
-- `aria-go-backend` — Go server: hub/WS, gRPC cognition, tts/vision/audio workers, NATS, config
-- `aria-python-pipeline` — FastAPI + perception/cognition/memory pipeline (Python)
+- `aria-go-backend` — Go server: server/hub + WS, cognition/tts HTTP proxies, audio worker, auth, reqid, config
+- `aria-python-pipeline` — FastAPI + cognition/memory/spatial + audio STT pipeline (Python)
 - `aria-frontend` — Next.js, three.js avatar, zustand store, spatial canvas
 - `aria-proto` — protobuf/buf contracts, Go+Python stub generation
 - `aria-security-reviewer` — read-only, audit-aware security review of changes
+
+**Team agents** (autonomous cycle via `/team` — see `docs/team/PROTOCOL.md`):
+- `aria-pm` — cycle owner: backlog, triage, approval package, build coordination, cycle report
+- `aria-lead` — file-by-file build plans + plan-conformance check
+- `aria-engineer` — TDD builds in `team/*` worktrees via the specialists
+- `aria-researcher` — research briefs with adversarial red-team
+- `aria-security-team` — threat-model pre-check + build-time review coordinator
+- `aria-ideas` — lens-based idea generation, backlog-aware
+- `aria-code-reviewer` — standards ratchet + minimal-diff + verified findings
+- `aria-debugger` — root-cause-first, smallest-fix-only debugging (also standalone)
+- `aria-qa` — in-browser verification with evidence, ≤5 paid API calls
+- `aria-scribe` — doc sync in the same PR; backlog + cycle records
+- `aria-devops` — one-push CI policy, CI diagnosis, deploy watch after merges
+
+Run a cycle: `/team` (two touchpoints: approve ideas after research; merge PRs).
 
 ## Startup Sequence (3 terminals)
 Terminal 1: export $(grep -v '^#' ~/aria/backend/.env | xargs)
@@ -128,24 +143,26 @@ requirements.txt is unchanged so local macOS dev is unaffected.
 - Always push to integration, merge to main after each week
 
 ## Code Generation
-Proto contract: proto/perception/v1/perception.proto (package aria.perception.v1)
+Proto contract: proto/perception/v1/perception.proto (package aria.perception.v1) —
+message-only (HandGestureEvent, SpatialAnchor, Point3D, enums; no gRPC services).
 Stubs (Go + Python): cd proto && buf generate
 One command generates both Go (backend/gen/go/perception/v1) and self-contained
 nested Python (backend/gen/python/perception/v1). No separate grpc_tools step.
 
 ## Architecture Decisions
-- Session IDs: UUIDs generated per client, stored in ariaStore (a per-user `owner` key is added in Phase 3)
-- gRPC ports: 127.0.0.1:50051 (PerceptionService), 127.0.0.1:50052 (CognitionService)
-- Interrupt path: FaceExitDetector → gRPC → StreamRegistry.CancelActive() → WebSocket aria_interrupt
-- Spatial anchors: SQLite via app/spatial/anchor_registry.py (create/get/list/update/delete)
+- Session IDs: UUIDs generated per client, stored in ariaStore; requests are owner-scoped via the verified Clerk identity (Go sets `X-Aria-Owner` on internal calls to Python)
+- Perception is browser-side: MediaPipe (WASM) runs in the browser (`frontend/src/hooks/useVisionCapture.ts`, `lib/perception/*`); mic capture is browser-side too (`useAudioCapture.ts`), streaming 16 kHz PCM to the server over `/ws/audio`
+- Audio pipeline: the Go server spawns `app/pipeline/audio_worker.py`, which reads PCM from stdin (fed from the browser via `/ws/audio`) → VAD → faster-whisper STT → transcript over the WS. TTS-mute is Go-edge gating (drops PCM frames while ARIA speaks)
+- Cognition/interrupts: cognition is HTTP `POST /api/cognition` (Go → Python); interrupts are browser-side (the browser aborts its own in-flight cognition request) — there is no server-side gRPC path
+- Spatial anchors: SQLite via app/spatial/anchor_registry.py (register/get/list/update/delete)
 - SOUL.md: ARIA's identity loaded at runtime by backend/app/cognition/prompt.py
 - Wake word: "Hey ARIA" — sleep: "that would be all"
 
 ## Roadmap
-Weeks 0–11 complete (through NATS async transport and the spatial canvas).
-Current work is the professionalization program — see
-`docs/plans/2026-07-10-aria-restructure-design.md`,
-`docs/IMPROVEMENT_SCHEME.md`, and `docs/ARIA_V4_VISION.md`.
+Weeks 0–11 complete (through the spatial canvas); the weekly roadmap is archived at
+`docs/archive/roadmap-weekly.md`. Since then, perception moved browser-side and the
+gRPC/NATS transport was retired. Current work is the professionalization &
+restructure program — see `docs/plans/2026-07-10-aria-restructure-design.md`.
 
 ## Config & Rules Files
 - `AGENTS.md` is the canonical cross-tool agent ruleset.
@@ -155,15 +172,14 @@ Current work is the professionalization program — see
 ## Do Not
 - Never commit backend/.env
 - Never hardcode API keys
-- Never use 0.0.0.0 for gRPC binds (use 127.0.0.1)
+- Never bind the server to 0.0.0.0 without Clerk auth enabled — the edge fail-closes on a non-loopback bind when auth is off (set ALLOW_INSECURE_NO_AUTH=1 only for deliberate local testing)
 - Never skip tests before committing
-- Never add --grpc or --coreml to default startup without benchmarking
+- Never add --coreml to default startup without benchmarking
 - Never use unpinned heavy deps (torch, chromadb, faster-whisper) — pip backtracking breaks CI
 - Never add code that fails ruff check . in backend/
 - Do not attempt to make mypy strict across the full codebase — this is v3 scope.
   app.cognition.memory and app.observability.* use ignore_errors=true (chromadb
   and metrics singleton patterns are not mypy-compatible without major refactoring).
-  vision_worker uses deferred imports inside try blocks — noqa: F821 is intentional.
   coremltools and openai-whisper are macOS-only — use mock.patch.dict(sys.modules)
   NOT sys.modules.setdefault() in tests.
 
@@ -200,7 +216,3 @@ that file scanning cannot. (If the graph is empty/unbuilt, fall back to Grep/Glo
 - Max 3 Codex rounds per sprint
 - Document architectural findings as v2 scope instead of looping
 - Start a fresh Claude Code session for each sprint to keep Codex skill enabled
-
-## Known Test Gaps (tracked)
-- NATS subscriber reconnect path (DisconnectErrHandler, ReconnectHandler)
-  has no Go unit test. Follow-up: add embedded nats-server test.

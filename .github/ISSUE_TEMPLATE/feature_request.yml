@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest an idea or enhancement for ARIA.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please describe the problem you are
+        trying to solve, not only the solution you have in mind — it helps us find
+        the best fit for the project.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The motivation or use case behind the request.
+      placeholder: I'm always frustrated when ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to see happen.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of ARIA would this touch?
+      options:
+        - Go server (WebSocket hub / HTTP / cognition & TTS proxy)
+        - Python pipeline (FastAPI / cognition / memory / audio worker)
+        - Frontend (Next.js / avatar / spatial canvas)
+        - Build / CI / tooling
+        - Cross-cutting / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about, and why you set them aside.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, links, or anything else that helps explain the idea.
+    validations:
+      required: false

@@ -14,6 +14,9 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAriaStore } from "@/store/ariaStore";
 import { useCognition } from "@/hooks/useCognition";
 import { useTTS } from "@/hooks/useTTS";
+import { useVisionCapture } from "@/hooks/useVisionCapture";
+import { useAudioCapture } from "@/hooks/useAudioCapture";
+import { backendConfigured } from "@/lib/config";
 
 type SidebarPanel = "chat" | "memory";
 
@@ -47,6 +50,28 @@ function SpatialIcon() {
   );
 }
 
+function CameraIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.Element }> = [
   { id: "chat", label: "chat", icon: ChatIcon },
   { id: "memory", label: "memory", icon: MemoryIcon },
@@ -55,11 +80,15 @@ const SIDEBAR_ITEMS: Array<{ id: SidebarPanel; label: string; icon: () => JSX.El
 function AriaApp() {
   const [activePanel, setActivePanel] = useState<SidebarPanel | null>(null);
   const [showSpatial, setShowSpatial] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
   const conversationHistory = useAriaStore(s => s.conversationHistory);
   const assistantMessageCount = conversationHistory.filter(m => m.role === "assistant").length;
   const isThinking = useAriaStore(s => s.isThinking);
   const { sendMessage } = useCognition();
   const { speak } = useTTS();
+  const { active: cameraActive, loading: cameraLoading, error: cameraError } = useVisionCapture(cameraEnabled);
+  const { active: micActive, error: micError } = useAudioCapture(micEnabled);
 
   useWebSocket();
 
@@ -149,6 +178,33 @@ function AriaApp() {
         <UserButton appearance={clerkAppearance} />
       </header>
 
+      {/* Backend misconfig banner — loud, not silent (deployed https + localhost base) */}
+      {!backendConfigured && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            top: 64,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+            maxWidth: "90vw",
+            padding: "8px 16px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            textAlign: "center",
+            color: "var(--danger, #f87171)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--danger, #f87171)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          Backend not configured — voice and chat are offline. Set NEXT_PUBLIC_API_BASE.
+        </div>
+      )}
+
       {/* Left icon sidebar */}
       <nav style={{
         position: "absolute",
@@ -189,7 +245,102 @@ function AriaApp() {
         >
           <SpatialIcon />
         </button>
+
+        {/* Perception group break — makes the camera/mic controls findable */}
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+        }}>
+          <div style={{
+            width: 24,
+            height: 1,
+            background: "var(--outline-ghost)",
+          }} />
+          <span style={{
+            fontSize: 9,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontFamily: "var(--font-data)",
+            color: "var(--on-surface-muted)",
+          }}>
+            Sense
+          </span>
+        </div>
+
+        {/* Camera perception toggle — opt-in, no auto-prompt on load */}
+        <button
+          type="button"
+          onClick={() => setCameraEnabled(prev => !prev)}
+          className={`sidebar-btn${cameraEnabled ? " sidebar-btn-active" : ""}`}
+          aria-label={cameraEnabled ? "Disable camera perception" : "Enable camera perception"}
+          aria-pressed={cameraEnabled}
+          title={cameraError ?? (cameraActive ? "Camera perception on" : "Enable camera perception")}
+        >
+          <CameraIcon />
+        </button>
+
+        {/* Microphone streaming toggle — opt-in, no auto-prompt on load */}
+        <button
+          type="button"
+          onClick={() => setMicEnabled(prev => !prev)}
+          className={`sidebar-btn${micEnabled ? " sidebar-btn-active" : ""}`}
+          aria-label={micEnabled ? "Disable microphone streaming" : "Enable microphone streaming"}
+          aria-pressed={micEnabled}
+          title={micError ?? (micActive ? "Microphone streaming on" : "Enable microphone streaming")}
+        >
+          <MicIcon />
+        </button>
       </nav>
+
+      {/* Camera status — announced for assistive tech */}
+      {cameraEnabled && (cameraError || cameraActive || cameraLoading) && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            left: 72, bottom: 24,
+            zIndex: 10,
+            padding: "6px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            color: cameraError ? "var(--danger, #f87171)" : "var(--on-surface)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--outline-ghost)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          {cameraError ?? (cameraActive ? "Camera perception active" : "Starting camera…")}
+        </div>
+      )}
+
+      {/* Microphone status — announced for assistive tech */}
+      {micEnabled && (micError || micActive) && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            left: 72, bottom: 64,
+            zIndex: 10,
+            padding: "6px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-data)",
+            color: micError ? "var(--danger, #f87171)" : "var(--on-surface)",
+            background: "var(--glass-bg)",
+            border: "1px solid var(--outline-ghost)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          {micError ?? "Microphone streaming active"}
+        </div>
+      )}
 
       {/* Slide-out log panel — chat */}
       {activePanel === "chat" && (

@@ -36,7 +36,7 @@ func expectNoReceive(t *testing.T, c *Client) {
 }
 
 func TestBroadcastToOwner_OnlyMatchingOwner(t *testing.T) {
-	hub := NewHub(nil)
+	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -51,7 +51,7 @@ func TestBroadcastToOwner_OnlyMatchingOwner(t *testing.T) {
 }
 
 func TestBroadcastScoped_HonorsActiveOwner(t *testing.T) {
-	hub := NewHub(nil)
+	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -67,7 +67,7 @@ func TestBroadcastScoped_HonorsActiveOwner(t *testing.T) {
 }
 
 func TestBroadcastScoped_EmptyActiveOwnerReachesAll(t *testing.T) {
-	hub := NewHub(nil)
+	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
@@ -83,7 +83,7 @@ func TestBroadcastScoped_EmptyActiveOwnerReachesAll(t *testing.T) {
 }
 
 func TestBroadcast_UnscopedReachesAll(t *testing.T) {
-	hub := NewHub(nil)
+	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)

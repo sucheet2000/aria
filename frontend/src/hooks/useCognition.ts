@@ -142,7 +142,6 @@ export function useCognition() {
           },
           conversation_history: conversationHistory,
           gesture: visionState?.gesture_name ?? "none",
-          two_hand_gesture: visionState?.two_hand_gesture ?? "NONE",
           pointing_vector: visionState?.pointing_vector ?? null,
         }),
       });
