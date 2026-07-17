@@ -44,6 +44,11 @@ describe("main page — icon-only controls have accessible names", () => {
     expect(screen.getByRole("button", { name: /spatial/i })).toBeTruthy();
   });
 
+  it("exposes an accessible name on the episodic memory toggle button", () => {
+    render(<Home />);
+    expect(screen.getByRole("button", { name: /episodic/i })).toBeTruthy();
+  });
+
   it("exposes an accessible name on the microphone toggle button", () => {
     render(<Home />);
     expect(screen.getByRole("button", { name: /microphone/i })).toBeTruthy();

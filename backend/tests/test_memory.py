@@ -258,6 +258,110 @@ async def test_store_triple_throttles_sweep(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_recall_drops_facts_beyond_max_distance(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition import memory as mem_mod
+    store = mem_mod.MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    # Seed two profile facts so profile.count() > 0 and the query path runs.
+    # (explicit_statement routes to profile; episodic stays empty and is skipped.)
+    await store.store_triple("sucheet", "prefers", "Go", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "lives in", "Tokyo", 0.9, "explicit_statement", owner="local")
+
+    # Active cutoff between the two facts' distances.
+    monkeypatch.setattr(mem_mod.settings, "RECALL_MAX_DISTANCE", 1.0)
+
+    fake_response = {
+        "ids": [["id-near", "id-far"]],
+        "documents": [["sucheet prefers Go", "sucheet lives in Tokyo"]],
+        "metadatas": [[{"owner": "local"}, {"owner": "local"}]],
+        "distances": [[0.5, 1.5]],
+    }
+    with mock.patch.object(store._profile, "query", return_value=fake_response):
+        results = await store.query_relevant("anything", owner="local")
+
+    assert "sucheet prefers Go" in results  # near (0.5 <= 1.0) kept
+    assert "sucheet lives in Tokyo" not in results  # far (1.5 > 1.0) dropped
+
+
+@pytest.mark.asyncio
+async def test_recall_fail_open_on_missing_distance(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition import memory as mem_mod
+    store = mem_mod.MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    await store.store_triple("sucheet", "prefers", "Go", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "lives in", "Tokyo", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "drinks", "coffee", 0.9, "explicit_statement", owner="local")
+
+    # Cutoff is active, yet a fact with a None distance must NOT be dropped.
+    monkeypatch.setattr(mem_mod.settings, "RECALL_MAX_DISTANCE", 1.0)
+
+    # One near fact, one with an unknown (None) distance, one genuinely far.
+    per_element = {
+        "ids": [["id-near", "id-unknown", "id-far"]],
+        "documents": [["sucheet prefers Go", "sucheet lives in Tokyo", "sucheet drinks coffee"]],
+        "metadatas": [[{"owner": "local"}, {"owner": "local"}, {"owner": "local"}]],
+        "distances": [[0.5, None, 9.0]],
+    }
+    with mock.patch.object(store._profile, "query", return_value=per_element):
+        results = await store.query_relevant("anything", owner="local")
+
+    assert "sucheet prefers Go" in results  # near kept
+    assert "sucheet lives in Tokyo" in results  # None distance -> fail open, kept
+    assert "sucheet drinks coffee" not in results  # far dropped
+
+    # The whole distances array being absent must also keep every fact, not crash.
+    array_missing = {
+        "ids": [["id-near", "id-far"]],
+        "documents": [["sucheet prefers Go", "sucheet lives in Tokyo"]],
+        "metadatas": [[{"owner": "local"}, {"owner": "local"}]],
+        "distances": None,
+    }
+    with mock.patch.object(store._profile, "query", return_value=array_missing):
+        results = await store.query_relevant("anything", owner="local")
+
+    assert "sucheet prefers Go" in results
+    assert "sucheet lives in Tokyo" in results
+
+
+@pytest.mark.asyncio
+async def test_recall_default_is_noop_keeps_all_in_order(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+
+    from app.cognition import memory as mem_mod
+    store = mem_mod.MemoryStore(persist_dir=str(tmp_path))
+    store.load()
+
+    # The shipped default disables the cutoff (distances are always >= 0).
+    assert mem_mod.settings.RECALL_MAX_DISTANCE <= 0
+
+    await store.store_triple("sucheet", "prefers", "Go", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "lives in", "Tokyo", 0.9, "explicit_statement", owner="local")
+    await store.store_triple("sucheet", "drinks", "coffee", 0.9, "explicit_statement", owner="local")
+
+    # Even absurd distances must survive the default (regression: recall unchanged).
+    fake_response = {
+        "ids": [["id1", "id2", "id3"]],
+        "documents": [["sucheet prefers Go", "sucheet lives in Tokyo", "sucheet drinks coffee"]],
+        "metadatas": [[{"owner": "local"}, {"owner": "local"}, {"owner": "local"}]],
+        "distances": [[1.5, 99.0, 1234.5]],
+    }
+    with mock.patch.object(store._profile, "query", return_value=fake_response):
+        results = await store.query_relevant("anything", owner="local")
+
+    assert results == [
+        "sucheet prefers Go",
+        "sucheet lives in Tokyo",
+        "sucheet drinks coffee",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_backfill_assigns_local_owner(tmp_path) -> None:
     pytest.importorskip("chromadb")
 

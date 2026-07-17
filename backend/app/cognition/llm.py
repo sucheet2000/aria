@@ -238,7 +238,7 @@ class LLMClient:
         system.append({"type": "text", "text": observation_content})
 
         messages = []
-        for turn in conversation_history[-6:]:
+        for turn in conversation_history[-_MAX_HISTORY_TURNS:]:
             messages.append({"role": turn.role, "content": turn.content})
         messages.append({"role": "user", "content": message})
 

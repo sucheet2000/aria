@@ -110,6 +110,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 		r.Get("/memory/working", s.handleWorkingMemory)
 		r.Get("/memory/profile", s.handleMemoryProfileProxy)
+		r.Get("/memory/episodic", s.handleMemoryEpisodicProxy)
 		r.Get("/anchors", s.handleAnchorsProxy)
 		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
 	})
@@ -166,6 +167,10 @@ func (s *Server) handleWorkingMemory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMemoryProfileProxy(w http.ResponseWriter, r *http.Request) {
 	s.proxyToPython(w, r, http.MethodGet, "/api/memory/profile")
+}
+
+func (s *Server) handleMemoryEpisodicProxy(w http.ResponseWriter, r *http.Request) {
+	s.proxyToPython(w, r, http.MethodGet, "/api/memory/episodic")
 }
 
 func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
