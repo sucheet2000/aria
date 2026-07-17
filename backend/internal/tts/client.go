@@ -18,6 +18,8 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/reqid"
 )
 
+const pythonTTSURL = "http://localhost:8000/api/tts"
+
 // maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
 // into the returned error, so a large error page cannot bloat the message.
 const maxErrorBodyBytes = 4 << 10
@@ -35,19 +37,14 @@ type Client struct {
 // New creates a new TTS client with the given API key and voice ID.
 func New(apiKey, voiceID string) *Client {
 	return &Client{
-		apiKey:  apiKey,
-		voiceID: voiceID,
+		apiKey:    apiKey,
+		voiceID:   voiceID,
+		pythonURL: pythonTTSURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		log: log.With().Str("component", "tts-client").Logger(),
 	}
-}
-
-// SetPythonURL sets the Python TTS proxy endpoint. The composition root wires
-// this from config so the Python base URL has a single source of truth.
-func (c *Client) SetPythonURL(url string) {
-	c.pythonURL = url
 }
 
 // SetInternalAuthSecret sets the shared secret sent as X-Internal-Auth on
@@ -62,7 +59,7 @@ type proxyRequest struct {
 }
 
 // Stream synthesizes text and writes the resulting audio to w.
-// Proxies to the Python voice engine's TTS endpoint.
+// Proxies to the Python voice engine at localhost:8000/api/tts.
 // Falls back to the macOS say command when Python is unavailable.
 func (c *Client) Stream(ctx context.Context, text string, emotion string, w io.Writer) error {
 	if err := c.streamProxy(ctx, text, emotion, w); err != nil {

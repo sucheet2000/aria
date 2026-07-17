@@ -29,23 +29,31 @@ func TestLoad_HostDefaultsToLoopback(t *testing.T) {
 	}
 }
 
-func TestLoad_PythonBaseURLDefault(t *testing.T) {
-	t.Setenv("PYTHON_BASE_URL", "")
+// TestLoad_CognitionGRPCAddrDefaultsToLoopback guards issue #3: the CognitionService
+// gRPC port must never bind to all interfaces. A regression to ":50052" / "0.0.0.0"
+// would let any network-reachable client force-cancel active cognition (interrupt_signal).
+func TestLoad_CognitionGRPCAddrDefaultsToLoopback(t *testing.T) {
+	t.Setenv("COGNITION_GRPC_ADDR", "")
 
 	cfg := Load()
 
-	if cfg.PythonBaseURL != "http://127.0.0.1:8000" {
-		t.Errorf("PythonBaseURL = %q, want http://127.0.0.1:8000", cfg.PythonBaseURL)
+	if cfg.CognitionGRPCAddr != "127.0.0.1:50052" {
+		t.Errorf("CognitionGRPCAddr = %q, want 127.0.0.1:50052", cfg.CognitionGRPCAddr)
+	}
+	for _, bad := range []string{":50052", "0.0.0.0:50052", "[::]:50052"} {
+		if cfg.CognitionGRPCAddr == bad {
+			t.Errorf("CognitionGRPCAddr = %q binds all interfaces (issue #3)", bad)
+		}
 	}
 }
 
-func TestLoad_PythonBaseURLEnvOverride(t *testing.T) {
-	t.Setenv("PYTHON_BASE_URL", "http://python.internal:9000")
+func TestLoad_CognitionGRPCAddrEnvOverride(t *testing.T) {
+	t.Setenv("COGNITION_GRPC_ADDR", "127.0.0.1:60052")
 
 	cfg := Load()
 
-	if cfg.PythonBaseURL != "http://python.internal:9000" {
-		t.Errorf("PythonBaseURL = %q, want http://python.internal:9000", cfg.PythonBaseURL)
+	if cfg.CognitionGRPCAddr != "127.0.0.1:60052" {
+		t.Errorf("CognitionGRPCAddr = %q, want 127.0.0.1:60052", cfg.CognitionGRPCAddr)
 	}
 }
 

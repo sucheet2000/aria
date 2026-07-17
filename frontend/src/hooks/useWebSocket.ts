@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
-import { visionCaptureActiveRef } from "@/hooks/visionCaptureState";
 import { WS_URL } from "@/lib/config";
 
 export const wsSendRef: { current: ((data: object) => void) | null } = { current: null };
@@ -55,17 +54,13 @@ export function useWebSocket() {
       }
 
       // Browsers can't set headers on a WS handshake, so the Clerk session token
-      // travels in the Sec-WebSocket-Protocol header via the subprotocol list
-      // (SEC-1: never in the URL, where it leaks into logs/history). The Go
-      // server reads the token from the subprotocol and echoes back only the
-      // "aria-ws" marker before upgrading.
+      // goes in the query param; the Go server verifies it before upgrading.
       const token = await getTokenRef.current?.();
       if (!mountedRef.current) return;
+      const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
 
       console.log(`[useWebSocket] connecting to ${WS_URL}`);
-      const ws = token
-        ? new WebSocket(WS_URL, ["aria-ws", token])
-        : new WebSocket(WS_URL);
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -96,9 +91,6 @@ export function useWebSocket() {
           }
 
           if (msg.type === "vision_state" || !msg.type) {
-            // Once the browser produces PerceptionFrames locally (Phase A.2a),
-            // the local producer is the source of truth — drop server frames.
-            if (visionCaptureActiveRef.current) return;
             useAriaStore.getState().setVisionFrame(msg.payload ?? msg);
             return;
           }

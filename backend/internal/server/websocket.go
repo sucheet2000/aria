@@ -24,49 +24,28 @@ func originAllowed(origin string, allowed []string) bool {
 	return false
 }
 
-// wsSubprotocol is the fixed marker subprotocol the client sends alongside the
-// Clerk session token (as `["aria-ws", token]`). The server negotiates and
-// echoes back only this marker so the browser accepts the handshake; the token
-// is never echoed.
-const wsSubprotocol = "aria-ws"
-
 func newUpgrader(allowedOrigins []string) websocket.Upgrader {
 	return websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 4096,
-		Subprotocols:    []string{wsSubprotocol},
 		CheckOrigin: func(r *http.Request) bool {
 			return originAllowed(r.Header.Get("Origin"), allowedOrigins)
 		},
 	}
 }
 
-// tokenFromSubprotocols returns the auth token offered in the client's
-// Sec-WebSocket-Protocol header: the first entry that is not the marker
-// subprotocol. It returns "" when only the marker (or nothing) is present.
-func tokenFromSubprotocols(protocols []string) string {
-	for _, p := range protocols {
-		if p != wsSubprotocol {
-			return p
-		}
-	}
-	return ""
-}
-
 // ServeWs authenticates and upgrades the HTTP connection to a WebSocket, then
 // registers the client with the hub.
 //
-// When authEnabled is true it requires a valid Clerk session token carried in
-// the `Sec-WebSocket-Protocol` request header (as the non-marker entry of
-// `aria-ws, <token>`) — browsers cannot set the Authorization header on a
-// WebSocket handshake, and a query-string token would leak into logs/history
-// (SEC-1). It rejects a missing/invalid token with HTTP 401. When authEnabled
-// is false (local dev, no Clerk secret), token verification is skipped and the
-// client's owner is empty.
+// When authEnabled is true it requires a valid Clerk session token in the
+// `token` query parameter (browsers cannot set the Authorization header on a
+// WebSocket handshake) and rejects a missing/invalid token with HTTP 401. When
+// authEnabled is false (local dev, no Clerk secret), token verification is
+// skipped and the client's owner is empty.
 func ServeWs(hub *Hub, verifier auth.Verifier, authEnabled bool, allowedOrigins []string, w http.ResponseWriter, r *http.Request) {
 	owner := ""
 	if authEnabled {
-		token := tokenFromSubprotocols(websocket.Subprotocols(r))
+		token := r.URL.Query().Get("token")
 		if token == "" {
 			writeWSUnauthorized(w)
 			return

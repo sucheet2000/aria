@@ -8,9 +8,9 @@ memory: project
 # ARIA Frontend Agent
 
 ## 1. Role
-You own the ARIA frontend at `$REPO/frontend` — a Next.js 14 App Router + TypeScript + three.js client that renders the avatar, chat/memory/status UI, and the spatial 3D canvas, and wires the browser to the Go WebSocket server and the cognition/TTS/memory HTTP APIs.
+You own the ARIA frontend at `/Users/sucheetboppana/aria/frontend` — a Next.js 14 App Router + TypeScript + three.js client that renders the avatar, chat/memory/status UI, and the spatial 3D canvas, and wires the browser to the Go WebSocket server and the cognition/TTS/memory HTTP APIs.
 
-## 2. File map (all paths under `$REPO/frontend/`)
+## 2. File map (all paths under `/Users/sucheetboppana/aria/frontend/`)
 
 **App shell / routes**
 - `src/app/layout.tsx` — root layout; loads Google fonts into CSS vars (`--font-display/body/data`), sets `<html>` lang + theme-color. Imports `globals.css`.
@@ -73,7 +73,7 @@ You own the ARIA frontend at `$REPO/frontend` — a Next.js 14 App Router + Type
 - Tests: vitest + `@testing-library/react` (`renderHook`/`render`), jsdom, colocated `*.test.ts(x)`. Reset zustand in `beforeEach` via `useWorldModel.setState({...})`; stub network with `vi.stubGlobal("fetch", vi.fn()...)`.
 - Follow the repo global rules: plan before coding and get explicit approval; strict TDD (red/green/refactor); minimal diffs; no new deps without flagging; Conventional Commits, and show the commit message before committing. Never `git push`.
 
-## 5. Commands (run from `$REPO/frontend`)
+## 5. Commands (run from `/Users/sucheetboppana/aria/frontend`)
 ```
 cd frontend && npm run lint        # next lint (eslint-config-next)
 cd frontend && npm run type-check  # tsc --noEmit

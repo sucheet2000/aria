@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,10 +12,15 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	perceptionv1 "github.com/sucheet2000/aria/backend/gen/go/perception/v1"
 	"github.com/sucheet2000/aria/backend/internal/audio"
+	"github.com/sucheet2000/aria/backend/internal/cognition"
 	"github.com/sucheet2000/aria/backend/internal/config"
 	"github.com/sucheet2000/aria/backend/internal/memory"
+	arianats "github.com/sucheet2000/aria/backend/internal/nats"
 	"github.com/sucheet2000/aria/backend/internal/server"
+	"github.com/sucheet2000/aria/backend/internal/vision"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -61,11 +67,39 @@ func main() {
 		workDir, _ = os.Getwd()
 	}
 
-	// The hub fans out broadcasts to connected WebSocket clients. Vision capture
-	// now runs in the browser (A.2a), so the server no longer spawns a vision worker.
-	// Interrupts are handled browser-side (the browser aborts its own in-flight
-	// cognition request), so there is no server-side gRPC cognition path.
-	hub := server.NewHub()
+	// Create hub first (nil vision) so the vision worker can reference it as a broadcaster.
+	hub := server.NewHub(nil)
+
+	// Create vision worker with hub as broadcaster, then wire it back into hub.
+	worker := vision.New(cfg.PythonBin, cfg.VisionScript, workDir, hub)
+	hub.SetVision(worker)
+
+	// StreamRegistry bridges the CognitionService gRPC interrupt path and the HTTP handler.
+	registry := cognition.NewStreamRegistry()
+
+	// CognitionService gRPC server on :50052 — Python vision worker connects here.
+	grpcSrv := grpc.NewServer()
+	cognitionGRPC := cognition.NewCognitionGRPCServer(registry, hub, log.Logger)
+	perceptionv1.RegisterCognitionServiceServer(grpcSrv, cognitionGRPC)
+	lis, err := net.Listen("tcp", cfg.CognitionGRPCAddr)
+	if err != nil {
+		log.Fatal().Err(err).Str("addr", cfg.CognitionGRPCAddr).Msg("failed to bind CognitionService gRPC port")
+	}
+	go func() {
+		log.Info().Str("addr", cfg.CognitionGRPCAddr).Msg("CognitionService gRPC server started")
+		if err := grpcSrv.Serve(lis); err != nil {
+			log.Error().Err(err).Msg("CognitionService gRPC server error")
+		}
+	}()
+
+	// NATS subscriber: receives PerceptionFrames from Python vision worker (--nats mode).
+	// Replaces GRPCClient for high-frequency landmark stream; gRPC retained for interrupts.
+	natsSub := arianats.NewSubscriber(cfg.NatsURL, hub)
+	if err := natsSub.Connect(); err != nil {
+		log.Warn().Err(err).Str("url", cfg.NatsURL).Msg("NATS subscriber connect failed — vision frames will fall back to stdout")
+	} else {
+		defer natsSub.Close()
+	}
 
 	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
 	hub.SetAudio(audioWorker)
@@ -85,12 +119,7 @@ func main() {
 
 	// The server waits for FastAPI readiness (bounded, non-fatal) before it
 	// begins serving so the first cognition request does not 500.
-	srv := server.New(cfg, hub, wm)
-
-	// Gate /ready on the always-on audio worker.
-	if cfg.AudioEnabled {
-		srv.AddReadyCheck("audio", audioWorker.Running)
-	}
+	srv := server.New(cfg, hub, wm, registry)
 
 	// Gate /ready on the always-on audio worker; the vision worker is on-demand
 	// (lazily started per client) and so is not a readiness signal.
@@ -114,7 +143,7 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), server.ShutdownTimeout)
 	defer shutdownCancel()
 
-	server.GracefulShutdown(shutdownCtx, cancel, srv, audioWorker)
+	server.GracefulShutdown(shutdownCtx, cancel, srv, grpcSrv, audioWorker, worker)
 
 	log.Info().Msg("server stopped")
 }
