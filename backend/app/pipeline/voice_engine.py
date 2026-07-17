@@ -219,19 +219,18 @@ class VoiceEngine:
             text: The natural language response from Claude
             voice_id: ElevenLabs voice ID
             emotion: Emotion label from symbolic_inference or avatar_emotion
-            use_turbo: If True, uses eleven_turbo_v2_5 with audio tags.
-                       If False, falls back to eleven_monolingual_v1 (no tags).
+            use_turbo: If True, uses eleven_turbo_v2_5. If False, falls back
+                       to eleven_monolingual_v1. Neither model renders v3
+                       audio tags; emotion is expressed via voice_settings.
 
         Returns dict ready to be JSON-serialized as the request body.
         """
         model_id = self.MODEL_ID if use_turbo else self.FALLBACK_MODEL_ID
         voice_settings = self.get_voice_settings(emotion)
 
-        # Only apply prosody tags on turbo model (v3 tags not supported on v1)
-        if use_turbo:
-            spoken_text = self.apply_prosody_tags(text, emotion)
-        else:
-            spoken_text = text
+        # Neither configured model renders v3 audio tags aloud correctly, so
+        # spoken text stays raw for both; emotion still drives voice_settings.
+        spoken_text = text
 
         return {
             "text": spoken_text,
