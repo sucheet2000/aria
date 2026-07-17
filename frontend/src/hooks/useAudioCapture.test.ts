@@ -65,14 +65,43 @@ class MockAudioContext {
 }
 
 let getUserMedia: ReturnType<typeof vi.fn>;
+let deviceChangeListeners: Set<() => void>;
+let mediaDevicesTarget: {
+  getUserMedia: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+};
 const stopTrack = vi.fn();
+
+function makeTrack() {
+  return { stop: stopTrack, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+}
+
+function defaultStream(): unknown {
+  const track = makeTrack();
+  return { getTracks: () => [track], getAudioTracks: () => [track] };
+}
 
 function stubMediaDevices(impl: () => Promise<unknown>): void {
   getUserMedia = vi.fn().mockImplementation(impl);
+  deviceChangeListeners = new Set();
+  mediaDevicesTarget = {
+    getUserMedia,
+    addEventListener: vi.fn((type: string, cb: () => void) => {
+      if (type === "devicechange") deviceChangeListeners.add(cb);
+    }),
+    removeEventListener: vi.fn((type: string, cb: () => void) => {
+      if (type === "devicechange") deviceChangeListeners.delete(cb);
+    }),
+  };
   Object.defineProperty(navigator, "mediaDevices", {
-    value: { getUserMedia },
+    value: mediaDevicesTarget,
     configurable: true,
   });
+}
+
+function fireDeviceChange(): void {
+  deviceChangeListeners.forEach((cb) => cb());
 }
 
 beforeEach(() => {
@@ -85,9 +114,7 @@ beforeEach(() => {
   vi.stubGlobal("AudioContext", MockAudioContext);
   vi.stubGlobal("AudioWorkletNode", MockAudioWorkletNode);
 
-  stubMediaDevices(() =>
-    Promise.resolve({ getTracks: () => [{ stop: stopTrack }] })
-  );
+  stubMediaDevices(() => Promise.resolve(defaultStream()));
 });
 
 afterEach(() => {
@@ -195,5 +222,68 @@ describe("useAudioCapture", () => {
     expect(node.disconnect).toHaveBeenCalled();
     expect(ctx.close).toHaveBeenCalled();
     expect(ws.close).toHaveBeenCalled();
+  });
+
+  it("follows the OS default mic when the input device changes", async () => {
+    const { result, unmount } = renderHook(() => useAudioCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+
+    const ctx = MockAudioContext.instances.at(-1)!;
+    const firstSource = ctx.createMediaStreamSource.mock.results[0].value;
+
+    // User unplugs earphones mid-session: the OS default input device changes.
+    fireDeviceChange();
+
+    // The hook must re-acquire the new default, release the dead device, and
+    // wire a fresh source into the SAME worklet/context (no context leak).
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(stopTrack).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(ctx.createMediaStreamSource).toHaveBeenCalledTimes(2)
+    );
+    expect(firstSource.disconnect).toHaveBeenCalled();
+    const secondSource = ctx.createMediaStreamSource.mock.results[1].value;
+    expect(secondSource.connect).toHaveBeenCalledWith(
+      MockAudioWorkletNode.instances.at(-1)
+    );
+    expect(MockAudioContext.instances.length).toBe(1);
+
+    unmount();
+  });
+
+  it("re-acquires when the active track ends (device removed mid-session)", async () => {
+    const { result, unmount } = renderHook(() => useAudioCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
+
+    const stream0 = await getUserMedia.mock.results[0].value;
+    const track = stream0.getAudioTracks()[0];
+    const endedCall = track.addEventListener.mock.calls.find(
+      (c: [string, () => void]) => c[0] === "ended"
+    );
+    expect(endedCall).toBeDefined();
+    endedCall![1]();
+
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+
+    unmount();
+  });
+
+  it("registers and cleans up the devicechange listener", async () => {
+    const { result, unmount } = renderHook(() => useAudioCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    expect(mediaDevicesTarget.addEventListener).toHaveBeenCalledWith(
+      "devicechange",
+      expect.any(Function)
+    );
+
+    unmount();
+
+    expect(mediaDevicesTarget.removeEventListener).toHaveBeenCalledWith(
+      "devicechange",
+      expect.any(Function)
+    );
   });
 });

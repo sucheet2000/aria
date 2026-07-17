@@ -67,7 +67,7 @@ Vercel (Next.js) ──> Railway Go URL
 | `RATE_LIMIT_BURST` | No | no | Per-user burst. Default `10`. |
 | `RATE_LIMIT_GLOBAL_RPS` | No | no | Global ceiling requests/sec. Default `50`. |
 | `RATE_LIMIT_GLOBAL_BURST` | No | no | Global burst. Default `100`. |
-| `AUDIO_ENABLED` | Recommended | no | Set `false` in the cloud — there is no microphone on the server. |
+| `AUDIO_ENABLED` | **Yes** | no | Set `true` in the cloud. Capture is browser-side (A.2): the audio worker consumes PCM streamed from the browser over `/ws/audio` — it does **not** use a server mic. With `false`, the STT worker never starts and voice input is **silently dropped** (health stays green). |
 | `DATA_DIR` | **Yes** | no | Base dir for durable user data (memory + anchors). **Must** point at a mounted volume, e.g. `/data`. See "Persistent storage" below. Unset defaults to `backend/` (local dev only). |
 | `DEBUG` | No | no | `false` in production. |
 
@@ -131,7 +131,7 @@ keeps writing to `backend/` exactly as before.
    (Service → **Variables**). At minimum: `ANTHROPIC_API_KEY`,
    `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `CLERK_SECRET_KEY`,
    `CLERK_JWT_ISSUER`, `INTERNAL_AUTH_SECRET`, `ALLOWED_ORIGINS`,
-   `AUDIO_ENABLED=false`. Do **not** set `PORT` — Railway provides it.
+   `AUDIO_ENABLED=true` (browser-side capture — required for voice). Do **not** set `PORT` — Railway provides it.
 4. **Deploy.** Railway builds the Dockerfile (heavy — several minutes for the ML
    deps) and starts the container. Health check hits `GET /health` on `$PORT`.
 5. **Get the URL.** Service → **Settings → Networking → Generate Domain**. Copy the
@@ -181,9 +181,10 @@ These are outside "deploy config" scope (they are Go/Python/frontend code) but
    That path does not exist in the container, so the vision subprocess won't start.
    Change it to the container working directory (`/app`) or an env var. Graceful:
    the Go server keeps running; only vision is dead. **Go backend agent's task.**
-3. **Server-local vision/audio capture.** The workers capture the *server's*
-   camera/mic. A Railway container has neither, so live perception is effectively
-   off in the cloud until capture moves client-side. Set `AUDIO_ENABLED=false`.
+3. **✅ Resolved — capture is browser-side (A.2).** Vision + mic capture moved to
+   the browser; the audio worker consumes PCM streamed over `/ws/audio` (no server
+   mic). Set **`AUDIO_ENABLED=true`** in the cloud — with `false` the STT worker
+   never starts and voice input is silently dropped while health stays green.
 4. **✅ Resolved.** `SOUL.md` now ships in the image. The backend is built from a
    **repo-root context** (`docker build -f backend/Dockerfile .`), the Dockerfile
    does `COPY SOUL.md /app/SOUL.md`, and it bakes `SOUL_PATH=/app/SOUL.md` so

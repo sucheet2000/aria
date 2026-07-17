@@ -18,6 +18,15 @@ const MAX_DELAY_MS = 30_000;
 const BACKOFF_MULTIPLIER = 1.5;
 const JITTER_FACTOR = 0.2;
 
+const AUDIO_CONSTRAINTS: MediaStreamConstraints = {
+  audio: {
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
+
 export interface UseAudioCaptureResult {
   active: boolean;
   error: string | null;
@@ -64,6 +73,8 @@ export function useAudioCapture(enabled: boolean): UseAudioCaptureResult {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let currentDelay = INITIAL_DELAY_MS;
     let pending = new Int16Array(0);
+    let reacquiring = false;
+    let activeTrack: MediaStreamTrack | null = null;
 
     function scheduleReconnect(): void {
       if (cancelled || reconnectTimer) return;
@@ -130,20 +141,68 @@ export function useAudioCapture(enabled: boolean): UseAudioCaptureResult {
       }
     }
 
+    function attachTrackListeners(media: MediaStream): void {
+      activeTrack = media.getAudioTracks?.()[0] ?? media.getTracks()[0] ?? null;
+      // Follow the OS default: if this device permanently ends (e.g. the user
+      // unplugs earphones), re-acquire whatever became the new default input.
+      activeTrack?.addEventListener?.("ended", onTrackLost);
+    }
+
+    function detachTrackListeners(): void {
+      activeTrack?.removeEventListener?.("ended", onTrackLost);
+      activeTrack = null;
+    }
+
+    function onTrackLost(): void {
+      void reacquire();
+    }
+
+    function onDeviceChange(): void {
+      void reacquire();
+    }
+
+    // getUserMedia binds a fixed device at start; when the OS default changes
+    // (earphones unplugged, dock removed, …) that track goes silent and never
+    // switches on its own. Rebuild only the mic-bound half of the graph against
+    // the new default, reusing the existing AudioContext / worklet / WebSocket /
+    // backoff. The reacquiring guard collapses duplicate devicechange bursts.
+    async function reacquire(): Promise<void> {
+      if (cancelled || reacquiring) return;
+      if (!audioContext || !workletNode) return;
+      reacquiring = true;
+      try {
+        detachTrackListeners();
+        sourceNode?.disconnect();
+        sourceNode = null;
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = null;
+        pending = new Int16Array(0);
+        downsampler = new PcmDownsampler(audioContext.sampleRate, TARGET_SAMPLE_RATE);
+
+        const media = await navigator.mediaDevices.getUserMedia(AUDIO_CONSTRAINTS);
+        if (cancelled) {
+          media.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = media;
+        sourceNode = audioContext.createMediaStreamSource(media);
+        sourceNode.connect(workletNode);
+        attachTrackListeners(media);
+        setError(null);
+      } catch (err) {
+        if (!cancelled) setError(mapErrorMessage(err));
+      } finally {
+        reacquiring = false;
+      }
+    }
+
     async function start(): Promise<void> {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Microphone not supported in this browser");
         }
 
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
+        stream = await navigator.mediaDevices.getUserMedia(AUDIO_CONSTRAINTS);
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           stream = null;
@@ -168,6 +227,9 @@ export function useAudioCapture(enabled: boolean): UseAudioCaptureResult {
         // silence, so this never feeds the mic back to the speakers.
         workletNode.connect(audioContext.destination);
 
+        attachTrackListeners(stream);
+        navigator.mediaDevices.addEventListener?.("devicechange", onDeviceChange);
+
         void connectWs();
         setActive(true);
         setError(null);
@@ -182,6 +244,8 @@ export function useAudioCapture(enabled: boolean): UseAudioCaptureResult {
 
     return () => {
       cancelled = true;
+      navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
+      detachTrackListeners();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (workletNode) {
         workletNode.port.onmessage = null;

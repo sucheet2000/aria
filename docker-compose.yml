@@ -24,7 +24,7 @@ services:
       # CLERK_SECRET_KEY instead so the server does not run unauthenticated.
       - ALLOW_INSECURE_NO_AUTH=${ALLOW_INSECURE_NO_AUTH:-1}
       # No microphone in a container; the server-local audio worker is disabled.
-      - AUDIO_ENABLED=false
+      - AUDIO_ENABLED=true
       - DEBUG=true
     restart: unless-stopped
 
