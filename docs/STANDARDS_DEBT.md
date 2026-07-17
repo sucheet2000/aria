@@ -43,7 +43,7 @@ _All audit findings are addressed._ Two items are **code-complete on `integratio
 | Item | What's needed |
 |------|----------------|
 | `SCALE-1` (A.2) | A **live camera+mic test** (headless CI can't exercise the real pipeline). Provisioning **resolved** → MediaPipe WASM + models load from the official CDN (jsDelivr + Google storage); Vercel would not serve the large committed binaries (`.task`/`.wasm` 404'd). |
-| **CSP** (follow-up) | Loading third-party executable WASM/JS from a CDN into a now-Clerk-authenticated origin needs an app-wide **Content-Security-Policy** — allowlist `'self'` + `cdn.jsdelivr.net` + `storage.googleapis.com` + the API/WS/Clerk origins (`wasm-unsafe-eval`, `worker-src`). Also closes the pre-existing no-CSP gap. **Required before the A.2 prod promotion.** |
+| **CSP** ✅ shipped | App-wide **enforcing CSP** added in `next.config.mjs` — allowlists Clerk + MediaPipe CDN + API/WS (`wasm-unsafe-eval`, `worker-src blob:`), plus `frame-ancestors 'self'`, cam/mic `Permissions-Policy`, `nosniff`, `Referrer-Policy`. Security-reviewed (PASS). **Residual follow-up (deferred, not a blocker):** migrate to per-request nonce + `strict-dynamic` in middleware to drop `'unsafe-inline'` script (the real inline-XSS mitigation); tighten `img-src`/`storage` with it. |
 | `SEC-1` | A **live signed-in WS check** before its prod promotion. |
 
 Deferred/known gaps (none block current prod): dependency **hash-locking** (needs a Linux CI lock step), a formal **backup/restore** path (DATA-4), **end-to-end tests**, `ARCH-3` (emotion-enum consolidation), and orphaned tooling (`scripts/benchmark_nats.py`).
