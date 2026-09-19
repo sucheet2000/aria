@@ -51,6 +51,24 @@ _TIER2_WORD_THRESHOLD = 15  # queries longer than this default to Tier 2
 # so widening it does not affect the cached SOUL prefix.
 _MAX_HISTORY_TURNS = 16
 
+# Anthropic prompt caching (R4). The stable SOUL.md prefix carries the only
+# cache breakpoint; the provider caches the whole prefix up to it and ignores
+# the marker silently (no error, no write) when the prefix is shorter than the
+# model's minimum. Minimums verified 2026-09-19 against
+# platform.claude.com/docs/en/docs/build-with-claude/prompt-caching; the
+# eligibility log below makes the live situation visible per model. Do not
+# pad the prompt to cross a threshold. Note the provider hashes tools → system
+# → messages, so a turn that attaches the web_fetch tool has a different
+# (larger) prefix than a plain turn and would keep a separate cache entry.
+_CACHE_MIN_PREFIX_TOKENS: dict[str, int] = {
+    _MODEL_HAIKU: 4096,
+    _MODEL_SONNET: 1024,
+}
+# Local estimate only. Measured 2026-09-19 with the provider's count_tokens:
+# SOUL.md = 2,801 chars = 658 tokens (both models); chars/4 estimates 700.
+_CHARS_PER_TOKEN_ESTIMATE = 4
+_eligibility_logged: set[str] = set()
+
 # Native web_fetch server tool (GA, no beta header). Cap on how many times a
 # paused turn may be resumed so a stuck pause_turn can never loop unboundedly.
 _WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
@@ -174,6 +192,61 @@ def _usage_fields(response: object) -> dict[str, int]:
     return fields
 
 
+_ABSENT = object()
+
+
+def cache_status(usage: object) -> str:
+    """Classify a response's prompt-cache outcome from provider usage counters.
+
+    ``"read"`` only when ``cache_read_input_tokens > 0`` (the actual hit
+    signal); ``"created"`` when the cache was written but not read;
+    ``"none"`` when both counters are present and zero (marker ignored, e.g.
+    prefix below the model minimum); ``"unknown"`` when the fields are absent
+    or malformed. Never inspects prompt content.
+    """
+    if usage is None:
+        return "unknown"
+    try:
+        read: Any = getattr(usage, "cache_read_input_tokens", _ABSENT)
+        created: Any = getattr(usage, "cache_creation_input_tokens", _ABSENT)
+        if read is _ABSENT or created is _ABSENT:
+            return "unknown"
+        # The SDK types both counters Optional[int]; a null means "no cache
+        # activity", the same as 0 (and the same as _usage_fields logs).
+        read_n, created_n = int(read or 0), int(created or 0)
+    except (TypeError, ValueError):
+        return "unknown"
+    if read_n > 0:
+        return "read"
+    if created_n > 0:
+        return "created"
+    return "none"
+
+
+def _cache_eligibility(model: str, prefix_chars: int) -> dict[str, object]:
+    """Whether the stable prefix can be cached at all for ``model``.
+
+    ``eligible`` is ``None`` for a model whose minimum is not recorded; the
+    token figure is a chars/4 estimate, labelled as such.
+    """
+    minimum = _CACHE_MIN_PREFIX_TOKENS.get(model)
+    est = prefix_chars // _CHARS_PER_TOKEN_ESTIMATE
+    return {
+        "model": model,
+        "stable_prefix_chars": prefix_chars,
+        "stable_prefix_tokens_est": est,
+        "min_cacheable_tokens": minimum,
+        "eligible": (est >= minimum) if minimum is not None else None,
+    }
+
+
+def _log_cache_eligibility_once(model: str, prefix_chars: int) -> None:
+    if model in _eligibility_logged:
+        return
+    _eligibility_logged.add(model)
+    logger.info("prompt cache eligibility", **_cache_eligibility(model, prefix_chars))
+
+
 def _url_host(url: str | None) -> str | None:
     """Host part of a user-pasted URL, for logs; never the full URL."""
     if not url:
@@ -190,6 +263,9 @@ def _record_token_usage(model: str, response: object) -> None:
     cached/(cached+uncached) a direct input-token cache-hit ratio.
     """
     usage = getattr(response, "usage", None)
+    collector = MetricsCollector()
+    # Classified first so an absent/malformed usage still counts as "unknown".
+    collector.record_prompt_cache(model, cache_status(usage))
     if usage is None:
         return
     try:
@@ -198,7 +274,6 @@ def _record_token_usage(model: str, response: object) -> None:
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
     except (TypeError, ValueError):
         return
-    collector = MetricsCollector()
     collector.record_token_cost(model, cached=True, tokens=cache_read)
     collector.record_token_cost(model, cached=False, tokens=input_tokens + cache_creation)
 
@@ -253,11 +328,15 @@ class LLMClient:
             vision, message, working_memory, episodic_memory
         )
 
-        # Anthropic prompt caching: put the stable SOUL.md prefix in its own
-        # cache_control block so repeated calls reuse the cached KV and save ~90%
-        # of system-prompt token cost (ephemeral cache TTL is 5 minutes). The
-        # per-turn observation goes in a SEPARATE uncached block so the cache
-        # breakpoint sits after the stable prefix and actually hits.
+        # Prompt caching (R4): the stable SOUL.md prefix is its own block and
+        # carries the only cache breakpoint; the per-turn observation (vision,
+        # transcript, working ring, retrieved facts) is a SEPARATE block after
+        # it, so nothing owner- or turn-specific can enter the cached prefix.
+        # Whether the provider actually caches depends on the prefix meeting
+        # the model's minimum (see _CACHE_MIN_PREFIX_TOKENS); the marker is
+        # ignored harmlessly below it and "prompt cache eligibility" reports
+        # which case applies. The 5-minute ephemeral entry is refreshed by
+        # every read.
         system: list[dict] = []
         if soul_content:
             system.append(
@@ -267,6 +346,7 @@ class LLMClient:
                     "cache_control": {"type": "ephemeral"},
                 }
             )
+            _log_cache_eligibility_once(model, len(soul_content))
         system.append({"type": "text", "text": observation_content})
 
         messages = []
@@ -278,12 +358,12 @@ class LLMClient:
         # allow-list is configured, AND the message actually contains a URL.
         # When any of those is false the call is byte-for-byte as today (no
         # `tools` kwarg), so the feature is inert by default.
+        # Prompt caching is generally available; no beta header is needed.
         create_kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": self.MAX_TOKENS,
             "system": system,
             "messages": messages,
-            "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
         }
         if (
             settings.WEB_FETCH_ENABLED
@@ -326,6 +406,7 @@ class LLMClient:
             elapsed_ms=elapsed_ms,
             continuations=continuations,
             stop_reason=getattr(response, "stop_reason", None),
+            cache_status=cache_status(getattr(response, "usage", None)),
             **_usage_fields(response),
         )
 
