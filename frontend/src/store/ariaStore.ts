@@ -30,7 +30,10 @@ export interface ARIAStore {
   wsConnected: boolean;
   wsError: string | null;
 
-  // Vision data (raw from server)
+  // Perception INPUT (browser-derived, written by setVisionFrame /
+  // clearVisionFrame; setEmotionConfidence is a legacy setter with no
+  // callers): the user's estimated facial affect and its heuristic
+  // confidence. Mirrors visionState.emotion / visionState.emotion_confidence.
   faceLandmarks: number[][];
   headPose: { pitch: number; yaw: number; roll: number };
   handLandmarks: number[][];
@@ -38,7 +41,10 @@ export interface ARIAStore {
   emotionConfidence: number;
   lastFrameTimestamp: number;
 
-  // Avatar state (derived/controlled)
+  // Cognition OUTPUT (R3): ARIA's own response expression, owned by the
+  // cognition response (setAvatarEmotion). Perception never writes it; an
+  // empathetic mirror of the user's face is a cognition decision, not a
+  // side effect of the camera loop.
   avatarEmotion: string;
   isSpeaking: boolean;
   isListening: boolean;
@@ -146,12 +152,11 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
       handLandmarks: frame.hand_landmarks,
       emotion: frame.emotion,
       emotionConfidence: frame.emotion_confidence ?? 0,
-      avatarEmotion: frame.emotion,
       lastFrameTimestamp: frame.timestamp,
       visionState: frame,
     }),
-  // Deliberately leaves avatarEmotion untouched (R3 boundary): the avatar is
-  // driven by the cognition response, not by camera teardown.
+  // Leaves avatarEmotion untouched (R3): the avatar is driven by the
+  // cognition response, not by camera teardown.
   clearVisionFrame: () =>
     set({
       faceLandmarks: [],
