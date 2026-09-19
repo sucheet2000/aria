@@ -14,7 +14,6 @@ from app.models.schemas import (
     MemoryDeleteResult,
     MemoryEntryDeleted,
     MemoryExport,
-    PerceptionFrame,
     SpatialEvent,
 )
 from app.observability.metrics import MetricsCollector
@@ -54,15 +53,9 @@ async def cognition(
 ) -> dict:
     start = time.time()
 
-    vision = PerceptionFrame(
-        emotion=req.vision_state.emotion,
-        confidence=req.vision_state.confidence,
-        pitch=req.vision_state.pitch,
-        yaw=req.vision_state.yaw,
-        roll=req.vision_state.roll,
-        face_detected=req.vision_state.face_detected,
-        hands_detected=req.vision_state.hands_detected,
-    )
+    # The validated frame is passed through whole (R2): a field-by-field copy
+    # is how a perception field silently goes missing at a boundary.
+    vision = req.vision_state
 
     # S3: Python is the single source of truth for durable memory. Retrieve
     # for THIS turn's message before generating, so a fact deleted before this

@@ -78,6 +78,7 @@ export interface ARIAStore {
   setWsError: (v: string | null) => void;
   setSessionId: (id: string) => void;
   setVisionFrame: (frame: PerceptionFrame) => void;
+  clearVisionFrame: () => void;
   setAvatarEmotion: (v: string) => void;
   setIsSpeaking: (v: boolean) => void;
   setIsListening: (v: boolean) => void;
@@ -148,6 +149,18 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
       avatarEmotion: frame.emotion,
       lastFrameTimestamp: frame.timestamp,
       visionState: frame,
+    }),
+  // Deliberately leaves avatarEmotion untouched (R3 boundary): the avatar is
+  // driven by the cognition response, not by camera teardown.
+  clearVisionFrame: () =>
+    set({
+      faceLandmarks: [],
+      headPose: { pitch: 0, yaw: 0, roll: 0 },
+      handLandmarks: [],
+      emotion: "neutral",
+      emotionConfidence: 0,
+      lastFrameTimestamp: 0,
+      visionState: null,
     }),
   setAvatarEmotion: (v) => set({ avatarEmotion: v }),
   setIsSpeaking: (v) => set({ isSpeaking: v }),

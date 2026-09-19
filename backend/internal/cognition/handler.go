@@ -13,15 +13,19 @@ import (
 // oversized payloads. Over-cap requests surface as 413.
 const maxRequestBodyBytes = 64 << 10
 
-// PerceptionFrame holds perception data from the vision worker.
+// PerceptionFrame holds the browser's derived perception state for one turn.
+// EmotionConfidence is the browser's heuristic facial-affect score in [0, 1]
+// (canonical wire field `emotion_confidence`); nil means the browser had no
+// perception frame to report. Go forwards it verbatim: it never computes,
+// defaults or clamps it, so an absent value stays absent for Python.
 type PerceptionFrame struct {
-	Emotion       string  `json:"emotion"`
-	Confidence    float64 `json:"confidence"`
-	Pitch         float64 `json:"pitch"`
-	Yaw           float64 `json:"yaw"`
-	Roll          float64 `json:"roll"`
-	FaceDetected  bool    `json:"face_detected"`
-	HandsDetected bool    `json:"hands_detected"`
+	Emotion           string   `json:"emotion"`
+	EmotionConfidence *float64 `json:"emotion_confidence,omitempty"`
+	Pitch             float64  `json:"pitch"`
+	Yaw               float64  `json:"yaw"`
+	Roll              float64  `json:"roll"`
+	FaceDetected      bool     `json:"face_detected"`
+	HandsDetected     bool     `json:"hands_detected"`
 }
 
 // ConversationTurn represents a single role/content pair in conversation history.
@@ -117,6 +121,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sessionID := req.SessionID
 	if sessionID == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "session_id is required"})
+		return
+	}
+	if c := req.VisionState.EmotionConfidence; c != nil && (*c < 0 || *c > 1) {
+		h.log.Warn().Msg("cognition request rejected: emotion_confidence out of range")
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "emotion_confidence must be between 0 and 1"})
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())

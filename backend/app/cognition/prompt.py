@@ -8,7 +8,8 @@ from app.models.schemas import PerceptionFrame
 
 _OBSERVATION_TEMPLATE = """\
 Current observation:
-  Expressive state: {emotion} ({confidence}% confidence)
+  Estimated facial affect (heuristic, not ground truth): {affect}
+  Face visible: {face_detected}
   Head pose: pitch {pitch} yaw {yaw} roll {roll}
   Hands visible: {hands_detected}
   Speech: "{transcript}"
@@ -62,8 +63,17 @@ def build_system_parts(
     memory). Keeping them separate lets the caller place the cache breakpoint after
     the stable prefix so Anthropic prompt caching actually hits.
     """
-    conflict, delta = detect_conflict(
-        transcript, vision.emotion, vision.confidence
+    # R2: without a visible face there is no usable visual signal, whatever
+    # confidence a (replayed or hand-rolled) body claims for the label.
+    visual_confidence = vision.emotion_confidence if vision.face_detected else None
+    conflict, delta = detect_conflict(transcript, vision.emotion, visual_confidence)
+    # The confidence is a browser heuristic in [0, 1]; render it verbatim
+    # (never as a percentage; abs() only normalises -0.0) and say so when the
+    # browser had none.
+    affect = (
+        f"{vision.emotion} (confidence {abs(vision.emotion_confidence):.3f})"
+        if vision.emotion_confidence is not None
+        else f"{vision.emotion} (confidence unavailable)"
     )
 
     working_mem_text = (
@@ -79,8 +89,8 @@ def build_system_parts(
     )
 
     observation = _OBSERVATION_TEMPLATE.format(
-        emotion=vision.emotion,
-        confidence=round(vision.confidence * 100, 1),
+        affect=affect,
+        face_detected="yes" if vision.face_detected else "no",
         pitch=round(vision.pitch, 1),
         yaw=round(vision.yaw, 1),
         roll=round(vision.roll, 1),

@@ -83,7 +83,7 @@ class TestLocalHandlers:
         client._client.messages.create = mock_create
 
         from app.models.schemas import ConversationTurn, PerceptionFrame
-        vision = PerceptionFrame(emotion="neutral", confidence=0.9, hands_detected=False)
+        vision = PerceptionFrame(emotion="neutral", emotion_confidence=0.9, hands_detected=False)
         result = await client.complete(
             message="repeat that",
             vision=vision,
@@ -286,7 +286,7 @@ class TestPromptCachingBreakpoint:
         transcript = "xyzzy_unique_transcript_marker"
         await client.complete(
             message=transcript,
-            vision=PerceptionFrame(emotion="neutral", confidence=0.5),
+            vision=PerceptionFrame(emotion="neutral", emotion_confidence=0.5),
             conversation_history=[],
             working_memory=[],
             episodic_memory=[],
