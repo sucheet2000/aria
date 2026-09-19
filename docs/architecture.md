@@ -82,7 +82,7 @@ Microphone (getUserMedia, browser)
 ```
 Each turn combines:
   - the user's message (typed, or transcribed speech)
-  - current vision_state (emotion, head pose, face/hands detected)
+  - current vision_state (emotion + its heuristic `emotion_confidence` in [0,1], head pose, face/hands detected)
   - working memory (recent symbolic inferences for this session)
   - episodic + profile memory retrieved from ChromaDB
         |

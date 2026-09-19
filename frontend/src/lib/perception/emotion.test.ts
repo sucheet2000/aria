@@ -122,6 +122,19 @@ describe("EmotionClassifier", () => {
     expect(emotion).toBe("happy");
   });
 
+  it("reports a heuristic confidence in [0, 1] that clears the happy threshold", () => {
+    const clf = new EmotionClassifier();
+    const { emotion, confidence } = clf.classify(happyFace());
+    expect(emotion).toBe("happy");
+    expect(confidence).toBeGreaterThanOrEqual(0.45);
+    expect(confidence).toBeLessThanOrEqual(1);
+
+    const neutral = new EmotionClassifier().classify(base());
+    expect(neutral.emotion).toBe("neutral");
+    expect(neutral.confidence).toBeGreaterThanOrEqual(0);
+    expect(neutral.confidence).toBeLessThanOrEqual(1);
+  });
+
   it("rounds confidence to 3 decimal places", () => {
     const clf = new EmotionClassifier();
     const { confidence } = clf.classify(happyFace());

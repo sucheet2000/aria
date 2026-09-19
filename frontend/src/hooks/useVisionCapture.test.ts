@@ -187,6 +187,52 @@ describe("useVisionCapture", () => {
     expect(visionCaptureActiveRef.current).toBe(false);
   });
 
+  it("stores a heuristic emotion_confidence in [0, 1]", async () => {
+    const { result } = renderHook(() => useVisionCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    rafCb!(performance.now());
+
+    const frame = useAriaStore.getState().visionState;
+    expect(frame).not.toBeNull();
+    expect(typeof frame!.emotion_confidence).toBe("number");
+    expect(frame!.emotion_confidence).toBeGreaterThanOrEqual(0);
+    expect(frame!.emotion_confidence).toBeLessThanOrEqual(1);
+  });
+
+  it("stores neutral with confidence 0 when no face is detected", async () => {
+    faceLandmarker.detectForVideo.mockReturnValue({
+      faceLandmarks: [],
+      facialTransformationMatrixes: [],
+    });
+    const { result } = renderHook(() => useVisionCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    rafCb!(performance.now());
+
+    const frame = useAriaStore.getState().visionState;
+    expect(frame).not.toBeNull();
+    expect(frame!.face_landmarks).toEqual([]);
+    expect(frame!.emotion).toBe("neutral");
+    expect(frame!.emotion_confidence).toBe(0);
+  });
+
+  it("clears the stale perception frame on unmount without touching avatarEmotion", async () => {
+    const { result, unmount } = renderHook(() => useVisionCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    rafCb!(performance.now());
+    expect(useAriaStore.getState().visionState).not.toBeNull();
+    useAriaStore.getState().setAvatarEmotion("sad");
+
+    unmount();
+
+    const s = useAriaStore.getState();
+    expect(s.visionState).toBeNull();
+    expect(s.emotionConfidence).toBe(0);
+    expect(s.avatarEmotion).toBe("sad");
+  });
+
   it("tears down capture on unmount", async () => {
     const { unmount } = renderHook(() => useVisionCapture(true));
     await vi.waitFor(() => expect(visionCaptureActiveRef.current).toBe(true));

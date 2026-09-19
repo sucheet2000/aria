@@ -15,6 +15,10 @@ export interface ActionUnits {
 
 export interface EmotionResult {
   emotion: string;
+  // Heuristic score in [0, 1], rounded to 3 dp: the winning weighted
+  // action-unit score; 1 - bestScore for neutral; a constant 0.5 when the
+  // 5-frame majority overrides the raw frame. Higher means stronger geometric
+  // evidence. NOT a calibrated probability.
   confidence: number;
 }
 

@@ -228,6 +228,7 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
       if (video) video.srcObject = null;
       faceLandmarker?.close();
       handLandmarker?.close();
+      useAriaStore.getState().clearVisionFrame();
       visionCaptureActiveRef.current = false;
       setActive(false);
       setLoading(false);

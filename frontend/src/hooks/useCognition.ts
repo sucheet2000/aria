@@ -8,6 +8,7 @@ import { useWorldModel } from "@/spatial/useWorldModel";
 import type { SpatialAnchor } from "@/spatial/useWorldModel";
 import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
 import { API_BASE } from "@/lib/config";
+import { buildCognitionVisionState } from "@/lib/perception/cognitionVisionState";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
 // importing useCognition (which would create a circular dependency).
@@ -101,15 +102,7 @@ export function useCognition() {
   ): Promise<void> {
     if (!text.trim() || isLoading) return;
 
-    const state = useAriaStore.getState();
-    const {
-      emotion,
-      headPose,
-      faceLandmarks,
-      handLandmarks,
-      conversationHistory,
-      visionState,
-    } = state;
+    const { conversationHistory, visionState } = useAriaStore.getState();
 
     addMessage("user", text.trim());
     setIsLoading(true);
@@ -132,14 +125,7 @@ export function useCognition() {
         body: JSON.stringify({
           message: text.trim(),
           session_id: useAriaStore.getState().sessionId,
-          vision_state: {
-            emotion,
-            pitch: headPose?.pitch ?? 0,
-            yaw: headPose?.yaw ?? 0,
-            roll: headPose?.roll ?? 0,
-            face_detected: faceLandmarks.length > 0,
-            hands_detected: handLandmarks.length > 0,
-          },
+          vision_state: buildCognitionVisionState(visionState, Date.now()),
           conversation_history: conversationHistory,
           gesture: visionState?.gesture_name ?? "none",
           pointing_vector: visionState?.pointing_vector ?? null,

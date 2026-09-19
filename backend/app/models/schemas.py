@@ -38,7 +38,13 @@ class PerceptionFrame(BaseModel):
     before this point.
     """
     emotion: str = "neutral"
-    confidence: float = 0.0
+    # Canonical wire field ``vision_state.emotion_confidence`` (R2): the
+    # browser's heuristic facial-affect score for ``emotion`` in [0, 1] — a
+    # weighted action-unit score, not a calibrated probability. ``None`` means
+    # perception was unavailable (no camera / no frame / stale frame); ``0.0``
+    # means a frame was measured but carried no usable facial signal (no face).
+    # Neither is ever treated as certainty.
+    emotion_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     pitch: float = 0.0
     yaw: float = 0.0
     roll: float = 0.0

@@ -67,25 +67,25 @@ def test_detect_conflict_aligned_negative():
 # --- build_system_prompt ---
 
 def test_build_system_prompt_contains_aria():
-    vision = PerceptionFrame(emotion="neutral", confidence=0.5)
+    vision = PerceptionFrame(emotion="neutral", emotion_confidence=0.5)
     prompt = build_system_prompt(vision, "hello", [], [])
     assert "ARIA" in prompt
 
 
 def test_build_system_prompt_contains_emotion():
-    vision = PerceptionFrame(emotion="happy", confidence=0.9)
+    vision = PerceptionFrame(emotion="happy", emotion_confidence=0.9)
     prompt = build_system_prompt(vision, "hello", [], [])
     assert "happy" in prompt
 
 
 def test_build_system_prompt_conflict_instruction_when_conflict():
-    vision = PerceptionFrame(emotion="fearful", confidence=0.8)
+    vision = PerceptionFrame(emotion="fearful", emotion_confidence=0.8, face_detected=True)
     prompt = build_system_prompt(vision, "I am fine", [], [])
     assert CONFLICT_INSTRUCTION in prompt
 
 
 def test_build_system_prompt_no_conflict_instruction_when_aligned():
-    vision = PerceptionFrame(emotion="angry", confidence=0.7)
+    vision = PerceptionFrame(emotion="angry", emotion_confidence=0.7)
     prompt = build_system_prompt(vision, "I am frustrated", [], [])
     assert NO_CONFLICT_INSTRUCTION in prompt
 

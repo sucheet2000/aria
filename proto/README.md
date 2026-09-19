@@ -5,7 +5,7 @@ ARIA's Go and Python layers, plus the [buf](https://buf.build) codegen config.
 
 ## What is live here
 
-The **message types** (`Point3D`, `PerceptionFrame`, `HandGestureEvent`, `SpatialAnchor`, and
+The **message types** (`Point3D`, `HandGestureEvent`, `SpatialAnchor`, and
 the related enums) are generated into Go and Python and are imported by the backend. Keeping
 them in one contract means the same concept has the same shape on both sides.
 
