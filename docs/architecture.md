@@ -107,7 +107,10 @@ the words (see `SOUL.md`).
 - Verifies the Clerk token on every request and per WebSocket connection.
 - Per-user and global rate limiting on the paid endpoints.
 - Terminates `/ws` (session channel) and `/ws/audio` (browser mic stream).
-- Spawns and supervises the Python audio worker; forwards mic PCM to it.
+- Spawns and supervises one Python audio worker per authenticated owner (started on the
+  owner's first `/ws/audio` connection, stopped on the last); forwards that owner's mic PCM
+  to it and routes its transcripts back only to that owner's `/ws` clients. TTS mute is
+  per owner. `AUDIO_MAX_SESSIONS` caps concurrent workers.
 - Proxies `POST /api/cognition` and `POST /api/tts` to the Python service, adding the
   internal-auth header and the resolved owner identity.
 

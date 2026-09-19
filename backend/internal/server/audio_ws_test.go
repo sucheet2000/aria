@@ -15,25 +15,24 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/auth"
 )
 
-// recordingAudio is a fake AudioController that records forwarded PCM frames and
-// mute calls, satisfying the hub's AudioController interface.
+// recordingAudio is a fake owner-keyed AudioController that records forwarded
+// PCM frames, satisfying the hub's AudioController interface.
 type recordingAudio struct {
 	mu     sync.Mutex
 	frames [][]byte
-	muted  bool
 }
 
-func (r *recordingAudio) WriteAudio(pcm []byte) {
+func (r *recordingAudio) Acquire(_ string) error { return nil }
+
+func (r *recordingAudio) Release(_ string) {}
+
+func (r *recordingAudio) WriteAudio(_ string, pcm []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.frames = append(r.frames, append([]byte(nil), pcm...))
 }
 
-func (r *recordingAudio) Mute(m bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.muted = m
-}
+func (r *recordingAudio) SetMuted(_ string, _ bool) {}
 
 func (r *recordingAudio) frameCount() int {
 	r.mu.Lock()

@@ -14,14 +14,17 @@ var defaultAllowedOrigins = []string{"http://localhost:3000", "http://127.0.0.1:
 
 // Config holds all runtime configuration for the server.
 type Config struct {
-	Host              string
-	Port              int
-	PythonBin         string
-	AnthropicKey      string
-	ElevenLabsKey     string
-	Debug             bool
-	AudioScript       string
-	AudioEnabled      bool
+	Host          string
+	Port          int
+	PythonBin     string
+	AnthropicKey  string
+	ElevenLabsKey string
+	Debug         bool
+	AudioScript   string
+	AudioEnabled  bool
+	// AudioMaxSessions caps concurrent per-owner audio workers (each loads its
+	// own Whisper model). Clamped to >= 1 so the cap can never be disabled.
+	AudioMaxSessions  int
 	TTSProvider       string
 	ElevenLabsVoiceID string
 	WhisperModel      string
@@ -76,6 +79,16 @@ func Load() *Config {
 	audioEnabled := true
 	if v := os.Getenv("AUDIO_ENABLED"); v == "false" || v == "0" {
 		audioEnabled = false
+	}
+
+	audioMaxSessions := 8
+	if v := os.Getenv("AUDIO_MAX_SESSIONS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			audioMaxSessions = n
+		}
+	}
+	if audioMaxSessions < 1 {
+		audioMaxSessions = 1
 	}
 
 	ttsProvider := os.Getenv("TTS_PROVIDER")
@@ -137,6 +150,7 @@ func Load() *Config {
 		Debug:                debug,
 		AudioScript:          audioScript,
 		AudioEnabled:         audioEnabled,
+		AudioMaxSessions:     audioMaxSessions,
 		TTSProvider:          ttsProvider,
 		ElevenLabsVoiceID:    elevenLabsVoiceID,
 		WhisperModel:         whisperModel,

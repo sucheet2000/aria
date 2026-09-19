@@ -68,6 +68,7 @@ Vercel (Next.js) ──> Railway Go URL
 | `RATE_LIMIT_GLOBAL_RPS` | No | no | Global ceiling requests/sec. Default `50`. |
 | `RATE_LIMIT_GLOBAL_BURST` | No | no | Global burst. Default `100`. |
 | `AUDIO_ENABLED` | **Yes** | no | Set `true` in the cloud. Capture is browser-side (A.2): the audio worker consumes PCM streamed from the browser over `/ws/audio` — it does **not** use a server mic. With `false`, the STT worker never starts and voice input is **silently dropped** (health stays green). |
+| `AUDIO_MAX_SESSIONS` | no | `8` | Max concurrent per-owner STT workers (one Python process, one Whisper model each — size the instance accordingly). Clamped to ≥ 1. A new owner beyond the cap gets its `/ws/audio` closed with 1013 (try again later); existing owners are unaffected. Sessions live in the Go process that terminates the owner's WebSockets, so `numReplicas > 1` needs sticky routing of `/ws` and `/ws/audio`. |
 | `DATA_DIR` | **Yes** | no | Base dir for durable user data (memory + anchors). **Must** point at a mounted volume, e.g. `/data`. See "Persistent storage" below. Unset defaults to `backend/` (local dev only). |
 | `DEBUG` | No | no | `false` in production. |
 

@@ -136,3 +136,30 @@ func TestLoad_RateLimitFromEnv(t *testing.T) {
 		t.Errorf("RateLimitGlobalBurst = %v, want 80", cfg.RateLimitGlobalBurst)
 	}
 }
+
+func TestLoad_AudioMaxSessionsDefault(t *testing.T) {
+	t.Setenv("AUDIO_MAX_SESSIONS", "")
+	cfg := Load()
+	if cfg.AudioMaxSessions != 8 {
+		t.Fatalf("AudioMaxSessions = %d, want default 8", cfg.AudioMaxSessions)
+	}
+}
+
+func TestLoad_AudioMaxSessionsEnvOverride(t *testing.T) {
+	t.Setenv("AUDIO_MAX_SESSIONS", "3")
+	cfg := Load()
+	if cfg.AudioMaxSessions != 3 {
+		t.Fatalf("AudioMaxSessions = %d, want 3", cfg.AudioMaxSessions)
+	}
+}
+
+func TestLoad_AudioMaxSessionsClampsToAtLeastOne(t *testing.T) {
+	t.Setenv("AUDIO_MAX_SESSIONS", "0")
+	if cfg := Load(); cfg.AudioMaxSessions != 1 {
+		t.Fatalf("AudioMaxSessions = %d, want clamp to 1", cfg.AudioMaxSessions)
+	}
+	t.Setenv("AUDIO_MAX_SESSIONS", "-5")
+	if cfg := Load(); cfg.AudioMaxSessions != 1 {
+		t.Fatalf("AudioMaxSessions = %d, want clamp to 1", cfg.AudioMaxSessions)
+	}
+}

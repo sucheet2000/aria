@@ -67,35 +67,30 @@ func main() {
 	// cognition request), so there is no server-side gRPC cognition path.
 	hub := server.NewHub()
 
-	audioWorker := audio.New(cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel, hub)
-	hub.SetAudio(audioWorker)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go hub.Run(ctx)
-
+	// One Python STT worker per authenticated owner, started on that owner's
+	// first /ws/audio connection and stopped on its last disconnect. Transcripts
+	// are routed straight to the owning user's /ws clients (SEC-6).
+	var audioSessions *audio.SessionManager
 	if cfg.AudioEnabled {
-		go func() {
-			if err := audioWorker.Start(ctx); err != nil {
-				log.Error().Err(err).Msg("audio worker failed")
-			}
-		}()
+		audioSessions = audio.NewSessionManager(
+			ctx, cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel,
+			cfg.AudioMaxSessions, hub.BroadcastToOwner,
+		)
+		hub.SetAudio(audioSessions)
 	}
+
+	go hub.Run(ctx)
 
 	// The server waits for FastAPI readiness (bounded, non-fatal) before it
 	// begins serving so the first cognition request does not 500.
 	srv := server.New(cfg, hub, wm)
 
-	// Gate /ready on the always-on audio worker.
-	if cfg.AudioEnabled {
-		srv.AddReadyCheck("audio", audioWorker.Running)
-	}
-
-	// Gate /ready on the always-on audio worker; the vision worker is on-demand
-	// (lazily started per client) and so is not a readiness signal.
-	if cfg.AudioEnabled {
-		srv.AddReadyCheck("audio", audioWorker.Running)
+	// Gate /ready on the audio session manager being able to spawn workers.
+	if audioSessions != nil {
+		srv.AddReadyCheck("audio", audioSessions.Ready)
 	}
 
 	go func() {
@@ -114,7 +109,11 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), server.ShutdownTimeout)
 	defer shutdownCancel()
 
-	server.GracefulShutdown(shutdownCtx, cancel, srv, audioWorker)
+	if audioSessions != nil {
+		server.GracefulShutdown(shutdownCtx, cancel, srv, audioSessions)
+	} else {
+		server.GracefulShutdown(shutdownCtx, cancel, srv)
+	}
 
 	log.Info().Msg("server stopped")
 }

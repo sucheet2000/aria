@@ -17,27 +17,28 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Broadcaster is satisfied by any type that can broadcast raw bytes to clients.
-// BroadcastScoped delivers a frame only to the owner that claims the local
-// perception stream, so transcripts do not leak across users.
-type Broadcaster interface {
-	Broadcast([]byte)
-	BroadcastScoped([]byte)
-}
+// TranscriptSink receives every transcript envelope this worker produces. The
+// SessionManager binds it to one owner, so a worker can only ever deliver to
+// the owner whose audio it is transcribing.
+type TranscriptSink func(data []byte)
 
-// transcriptEnvelope wraps an audio transcript line for WebSocket broadcast.
+// transcriptEnvelope wraps an audio transcript line for WebSocket delivery.
 type transcriptEnvelope struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
 }
 
-// Worker manages the Python audio subprocess.
+// cancelWaitDelay bounds how long a cancelled subprocess may outlive SIGTERM
+// before it is SIGKILLed (exec.Cmd.WaitDelay).
+const cancelWaitDelay = 2 * time.Second
+
+// Worker manages one Python audio subprocess: one owner's private STT stream.
 type Worker struct {
 	pythonBin    string
 	scriptPath   string
 	workDir      string
 	whisperModel string
-	hub          Broadcaster
+	sink         TranscriptSink
 	cmd          *exec.Cmd
 	procMu       sync.Mutex
 	stdinPipe    io.WriteCloser
@@ -48,8 +49,7 @@ type Worker struct {
 	log          zerolog.Logger
 }
 
-// Running reports whether the audio subprocess is currently alive. It is used by
-// the /ready probe to gate readiness on the always-on audio worker.
+// Running reports whether the audio subprocess is currently alive.
 func (w *Worker) Running() bool {
 	return w.running.Load()
 }
@@ -61,14 +61,26 @@ func (w *Worker) setStdinPipe(p io.WriteCloser) {
 	w.stdinMu.Unlock()
 }
 
-// New creates a new Worker.
-func New(pythonBin, scriptPath, workDir, whisperModel string, hub Broadcaster) *Worker {
+// closeStdin closes the subprocess stdin so the Python read loop sees EOF and
+// exits on its own. Safe to call when no subprocess is running.
+func (w *Worker) closeStdin() {
+	w.stdinMu.Lock()
+	pipe := w.stdinPipe
+	w.stdinPipe = nil
+	w.stdinMu.Unlock()
+	if pipe != nil {
+		_ = pipe.Close()
+	}
+}
+
+// New creates a new Worker whose transcripts are delivered to sink.
+func New(pythonBin, scriptPath, workDir, whisperModel string, sink TranscriptSink) *Worker {
 	return &Worker{
 		pythonBin:    pythonBin,
 		scriptPath:   scriptPath,
 		workDir:      workDir,
 		whisperModel: whisperModel,
-		hub:          hub,
+		sink:         sink,
 		restartDelay: 2 * time.Second,
 		log:          log.With().Str("component", "audio-worker").Logger(),
 	}
@@ -97,6 +109,10 @@ func (w *Worker) run(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, w.pythonBin, "-u", w.scriptPath, "--model", w.whisperModel)
 	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+w.workDir)
+	// On context cancel ask the process to stop (SIGTERM) and only SIGKILL it
+	// after cancelWaitDelay, so a per-session teardown is graceful and bounded.
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = cancelWaitDelay
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -148,7 +164,7 @@ func (w *Worker) run(ctx context.Context) error {
 				w.log.Error().Err(err).Msg("failed to marshal transcript envelope")
 				continue
 			}
-			w.hub.BroadcastScoped(data)
+			w.sink(data)
 		}
 	}()
 
@@ -175,7 +191,7 @@ func (w *Worker) run(ctx context.Context) error {
 
 // Mute gates the browser audio stream at the Go edge. When muted, WriteAudio
 // drops incoming PCM frames so the STT pipeline hears silence while ARIA speaks
-// (TTS playback). Muting no longer touches the subprocess stdin — that pipe now
+// (TTS playback). Muting does not touch the subprocess stdin — that pipe
 // carries raw PCM only.
 func (w *Worker) Mute(muted bool) {
 	w.muted.Store(muted)

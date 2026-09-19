@@ -2,14 +2,10 @@ package audio
 
 import "testing"
 
-type mockHub struct{}
-
-func (m *mockHub) Broadcast(_ []byte)       {}
-func (m *mockHub) BroadcastScoped(_ []byte) {}
+func nopSink(_ []byte) {}
 
 func TestNewWorkerFields(t *testing.T) {
-	hub := &mockHub{}
-	w := New("python3", "audio_worker.py", "/tmp", "base", hub)
+	w := New("python3", "audio_worker.py", "/tmp", "base", nopSink)
 
 	if w.pythonBin != "python3" {
 		t.Errorf("expected pythonBin 'python3', got %q", w.pythonBin)
@@ -23,20 +19,20 @@ func TestNewWorkerFields(t *testing.T) {
 	if w.whisperModel != "base" {
 		t.Errorf("expected whisperModel 'base', got %q", w.whisperModel)
 	}
-	if w.hub != hub {
-		t.Error("expected hub to match provided hub")
+	if w.sink == nil {
+		t.Error("expected sink to be set")
 	}
 }
 
 func TestNewWorkerNotNil(t *testing.T) {
-	w := New("python3", "script.py", "/tmp", "small", &mockHub{})
+	w := New("python3", "script.py", "/tmp", "small", nopSink)
 	if w == nil {
 		t.Fatal("expected non-nil Worker")
 	}
 }
 
 func TestStopNoopWhenNotStarted(t *testing.T) {
-	w := New("python3", "script.py", "/tmp", "base", &mockHub{})
+	w := New("python3", "script.py", "/tmp", "base", nopSink)
 	// Stop should not panic when cmd is nil
 	w.Stop()
 }

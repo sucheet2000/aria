@@ -152,7 +152,7 @@ nested Python (backend/gen/python/perception/v1). No separate grpc_tools step.
 ## Architecture Decisions
 - Session IDs: UUIDs generated per client, stored in ariaStore; requests are owner-scoped via the verified Clerk identity (Go sets `X-Aria-Owner` on internal calls to Python)
 - Perception is browser-side: MediaPipe (WASM) runs in the browser (`frontend/src/hooks/useVisionCapture.ts`, `lib/perception/*`); mic capture is browser-side too (`useAudioCapture.ts`), streaming 16 kHz PCM to the server over `/ws/audio`
-- Audio pipeline: the Go server spawns `app/pipeline/audio_worker.py`, which reads PCM from stdin (fed from the browser via `/ws/audio`) → VAD → faster-whisper STT → transcript over the WS. TTS-mute is Go-edge gating (drops PCM frames while ARIA speaks)
+- Audio pipeline: the Go server spawns one `app/pipeline/audio_worker.py` per authenticated owner (`audio.SessionManager`, on the owner's first `/ws/audio` connection), which reads that owner's PCM from stdin → VAD → faster-whisper STT → transcript routed only to that owner's `/ws` clients. TTS-mute is per-owner Go-edge gating (drops that owner's PCM frames while ARIA speaks). `AUDIO_MAX_SESSIONS` (default 8) caps concurrent workers
 - Cognition/interrupts: cognition is HTTP `POST /api/cognition` (Go → Python); interrupts are browser-side (the browser aborts its own in-flight cognition request) — there is no server-side gRPC path
 - Spatial anchors: SQLite via app/spatial/anchor_registry.py (register/get/list/update/delete)
 - SOUL.md: ARIA's identity loaded at runtime by backend/app/cognition/prompt.py
