@@ -4,6 +4,7 @@ import json
 import re
 import time
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -154,6 +155,32 @@ def _handle_local(utterance: str, last_response: str) -> str:
     return ""
 
 
+def _usage_fields(response: object) -> dict[str, int]:
+    """Token counts from ``response.usage`` for structured logs (never content)."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    fields: dict[str, int] = {}
+    for attr, key in (
+        ("input_tokens", "input_tokens"),
+        ("output_tokens", "output_tokens"),
+        ("cache_read_input_tokens", "cache_read_tokens"),
+        ("cache_creation_input_tokens", "cache_creation_tokens"),
+    ):
+        try:
+            fields[key] = int(getattr(usage, attr, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return fields
+
+
+def _url_host(url: str | None) -> str | None:
+    """Host part of a user-pasted URL, for logs; never the full URL."""
+    if not url:
+        return None
+    return urlparse(url).netloc or None
+
+
 def _record_token_usage(model: str, response: object) -> None:
     """Record input-token usage into the metrics recorder, defensively.
 
@@ -205,7 +232,7 @@ class LLMClient:
         episodic_memory: list[str],
     ) -> CognitionResponse:
         tier: Tier = classify_tier(message)
-        logger.debug("llm tier routing", tier=tier, message=message[:80])
+        logger.debug("llm tier routing", tier=tier, message_chars=len(message))
 
         # ── Tier 0: local handler, no API call ─────────────────────────────
         if tier == 0:
@@ -291,17 +318,28 @@ class LLMClient:
             response = await self._client.messages.create(**create_kwargs)
             _record_token_usage(model, response)
         elapsed_ms = int((time.time() - start) * 1000)
-        logger.debug("llm api call", tier=tier, model=model, elapsed_ms=elapsed_ms)
+        # INFO so per-turn latency and token usage survive the production floor.
+        logger.info(
+            "llm api call",
+            tier=tier,
+            model=model,
+            elapsed_ms=elapsed_ms,
+            continuations=continuations,
+            stop_reason=getattr(response, "stop_reason", None),
+            **_usage_fields(response),
+        )
 
         text, used_web_fetch, fetch_error = _extract_text_and_fetch(response)
 
         if used_web_fetch:
-            # URL is owner-supplied and safe to log; fetched page content is not.
+            # S2: the URL is user-supplied content (paths and query strings can
+            # carry identifiers); log only its host. Fetched page content is
+            # never logged.
             logger.info(
                 "web_fetch turn",
                 tier=tier,
                 model=model,
-                url=_first_url(message),
+                url_host=_url_host(_first_url(message)),
                 outcome=fetch_error or "ok",
             )
 
@@ -324,7 +362,7 @@ class LLMClient:
     def _parse_response(self, raw: str) -> CognitionResponse:
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
-            logger.warning("llm response not JSON, falling back", raw=raw[:100])
+            logger.warning("llm response not JSON, falling back", raw_chars=len(raw))
             return CognitionResponse(
                 symbolic_inference="state unclear",
                 world_model_update=None,
@@ -352,7 +390,7 @@ class LLMClient:
                 natural_language_response=data.get("natural_language_response", ""),
             )
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
-            logger.warning("failed to parse llm json", error=str(e))
+            logger.warning("failed to parse llm json", error_type=type(e).__name__)
             return CognitionResponse(
                 symbolic_inference="parse error",
                 world_model_update=None,

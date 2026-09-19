@@ -173,7 +173,9 @@ func (w *Worker) run(ctx context.Context) error {
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			w.log.Warn().Str("source", "python-audio").Msg(scanner.Text())
+			// The worker's own structured records arrive here (its stdout is the
+			// transcript transport), so relay at Info rather than inflating to Warn.
+			w.log.Info().Str("source", "python-audio").Msg(scanner.Text())
 		}
 	}()
 

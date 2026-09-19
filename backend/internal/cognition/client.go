@@ -17,8 +17,8 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/reqid"
 )
 
-// maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
-// into the returned error, so a large error page cannot bloat the message.
+// maxErrorBodyBytes caps how much of a non-2xx upstream response body is
+// drained before the connection is released; the body is never logged.
 const maxErrorBodyBytes = 4 << 10
 
 // Client forwards cognition requests to the Python FastAPI service and enriches
@@ -100,11 +100,13 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(httpResp.Body, maxErrorBodyBytes))
+		// S2: the body is drained (bounded) but never embedded in the error —
+		// this error is logged, and a 422 body echoes the user's request text.
+		n, _ := io.Copy(io.Discard, io.LimitReader(httpResp.Body, maxErrorBodyBytes))
 		return CognitionResponse{}, fmt.Errorf(
-			"cognition upstream returned %d: %s",
+			"cognition upstream returned %d (%d body bytes)",
 			httpResp.StatusCode,
-			strings.TrimSpace(string(body)),
+			n,
 		)
 	}
 

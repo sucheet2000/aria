@@ -219,8 +219,13 @@ def test_process_audio_stream_emits_transcript_from_pcm() -> None:
     import io
     from unittest import mock
 
+    import structlog
+
     from app.pipeline import audio_worker as aw
     from app.pipeline.vad import VADProcessor
+
+    # As in main(): worker logs go to stderr so stdout stays pure transport.
+    saved_logging = structlog.get_config()
 
     vad = VADProcessor()
     vad._vad = mock.Mock()
@@ -240,14 +245,18 @@ def test_process_audio_stream_emits_transcript_from_pcm() -> None:
     args = argparse.Namespace(denoise=False, max_utterance_ms=8000)
 
     out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        aw.process_audio_stream(
-            aw.read_pcm_chunks(io.BytesIO(pcm)),
-            vad,
-            transcriber,
-            denoiser,
-            args,
-        )
+    try:
+        aw.configure_worker_logging()
+        with contextlib.redirect_stdout(out):
+            aw.process_audio_stream(
+                aw.read_pcm_chunks(io.BytesIO(pcm)),
+                vad,
+                transcriber,
+                denoiser,
+                args,
+            )
+    finally:
+        structlog.configure(**saved_logging)
 
     transcriber.transcribe.assert_called_once()
     lines = [json.loads(x) for x in out.getvalue().splitlines() if x.strip()]
