@@ -41,6 +41,7 @@ class MetricsCollector:
                 inst._cognition_latency = Histogram()
                 inst._interrupt_latency = Histogram()
                 inst._token_cost: dict[str, dict[str, int]] = {}
+                inst._prompt_cache: dict[str, dict[str, int]] = {}
                 inst._anchors_created: int = 0
                 inst._gesture_events: dict[str, int] = {}
                 inst._errors: int = 0
@@ -62,6 +63,14 @@ class MetricsCollector:
             key = "cached" if cached else "uncached"
             bucket[key] += tokens
 
+    def record_prompt_cache(self, model: str, status: str) -> None:
+        """Count prompt-cache outcomes per model: read (hit), created, none, unknown."""
+        with self._data_lock:
+            bucket = self._prompt_cache.setdefault(
+                model, {"read": 0, "created": 0, "none": 0, "unknown": 0}
+            )
+            bucket[status if status in bucket else "unknown"] += 1
+
     def record_anchor_created(self) -> None:
         with self._data_lock:
             self._anchors_created += 1
@@ -80,6 +89,7 @@ class MetricsCollector:
                 "cognition_latency_ms": self._cognition_latency.snapshot(),
                 "interrupt_latency_ms": self._interrupt_latency.snapshot(),
                 "token_cost": {k: dict(v) for k, v in self._token_cost.items()},
+                "prompt_cache": {k: dict(v) for k, v in self._prompt_cache.items()},
                 "anchors_created": self._anchors_created,
                 "gesture_events": dict(self._gesture_events),
                 "errors": self._errors,

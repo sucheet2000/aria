@@ -13,6 +13,7 @@ def reset_metrics():
     m._cognition_latency = Histogram()
     m._interrupt_latency = Histogram()
     m._token_cost = {}
+    m._prompt_cache = {}
     m._anchors_created = 0
     m._gesture_events = {}
     yield
@@ -125,8 +126,16 @@ def test_snapshot_has_all_keys():
     assert "cognition_latency_ms" in snap
     assert "interrupt_latency_ms" in snap
     assert "token_cost" in snap
+    assert "prompt_cache" in snap
     assert "anchors_created" in snap
     assert "gesture_events" in snap
+
+
+def test_prompt_cache_unknown_status_falls_back_to_unknown_bucket():
+    m = MetricsCollector()
+    m.record_prompt_cache("claude-haiku", "read")
+    m.record_prompt_cache("claude-haiku", "not-a-status")
+    assert m.snapshot()["prompt_cache"]["claude-haiku"] == {"read": 1, "created": 0, "none": 0, "unknown": 1}
 
 
 # --- /metrics endpoint ---
