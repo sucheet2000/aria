@@ -9,6 +9,7 @@ import "sync"
 type WorkingMemory struct {
 	mu      sync.RWMutex
 	buffers map[string][]string
+	gens    map[string]uint64
 	maxSize int
 }
 
@@ -16,6 +17,7 @@ type WorkingMemory struct {
 func New(maxSize int) *WorkingMemory {
 	return &WorkingMemory{
 		buffers: make(map[string][]string),
+		gens:    make(map[string]uint64),
 		maxSize: maxSize,
 	}
 }
@@ -66,10 +68,37 @@ func (w *WorkingMemory) All(owner string) []string {
 	return result
 }
 
-// Clear empties owner's buffer.
+// Clear empties owner's buffer and bumps owner's generation so a caller that
+// captured the generation earlier can tell a delete happened meanwhile.
 func (w *WorkingMemory) Clear(owner string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	delete(w.buffers, owner)
+	w.gens[owner]++
+}
+
+// Generation returns how many times owner's buffer has been cleared.
+func (w *WorkingMemory) Generation(owner string) uint64 {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.gens[owner]
+}
+
+// PushIfGeneration appends inference only if owner's generation still equals
+// gen, comparing and appending under one lock so a Clear cannot land between
+// the check and the write. It reports whether the push happened.
+func (w *WorkingMemory) PushIfGeneration(owner, inference string, gen uint64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.gens[owner] != gen {
+		return false
+	}
+	entries := append(w.buffers[owner], inference)
+	if len(entries) > w.maxSize {
+		entries = entries[len(entries)-w.maxSize:]
+	}
+	w.buffers[owner] = entries
+	return true
 }

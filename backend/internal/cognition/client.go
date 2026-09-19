@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -22,15 +21,18 @@ import (
 const maxErrorBodyBytes = 4 << 10
 
 // Client forwards cognition requests to the Python FastAPI service and enriches
-// them with working memory.
+// them with working memory (the last few symbolic inferences).
+//
+// Durable semantic memory (profile/episodic facts) is NOT held here: Python is
+// its single source of truth and retrieves it per turn (S3). Go used to cache
+// the previous turn's episodic list and replay it, which resurrected deleted
+// facts; that cache is gone.
 type Client struct {
 	pythonServiceURL   string
 	httpClient         *http.Client
 	workingMemory      *memory.WorkingMemory
 	log                zerolog.Logger
 	internalAuthSecret string
-	episodicMemory     map[string][]string
-	episodicMu         sync.RWMutex
 }
 
 // New creates a Client that proxies to the given Python service URL.
@@ -40,7 +42,6 @@ func New(pythonServiceURL string, wm *memory.WorkingMemory) *Client {
 		httpClient:       &http.Client{Timeout: 30 * time.Second},
 		workingMemory:    wm,
 		log:              zerolog.Nop(),
-		episodicMemory:   make(map[string][]string),
 	}
 }
 
@@ -57,11 +58,12 @@ func (c *Client) SetInternalAuthSecret(secret string) {
 	c.internalAuthSecret = secret
 }
 
-// enrichedRequest extends CognitionRequest with memory fields forwarded to Python.
+// enrichedRequest extends CognitionRequest with the working-memory field
+// forwarded to Python. Episodic memory is deliberately absent: Python retrieves
+// it from the store for every turn.
 type enrichedRequest struct {
 	CognitionRequest
-	WorkingMemory  []string `json:"working_memory"`
-	EpisodicMemory []string `json:"episodic_memory"`
+	WorkingMemory []string `json:"working_memory"`
 }
 
 // Complete enriches the request with working memory, posts it to the Python
@@ -70,11 +72,14 @@ type enrichedRequest struct {
 func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionResponse, error) {
 	start := time.Now()
 	owner := auth.OwnerFromContext(ctx)
+	// If the owner deletes their memory while this turn is in flight, the
+	// inference it produces was based on pre-delete facts and must not be
+	// pushed back into the freshly cleared ring.
+	gen := c.workingMemory.Generation(owner)
 
 	enriched := enrichedRequest{
 		CognitionRequest: req,
 		WorkingMemory:    c.workingMemory.Last(owner, 5),
-		EpisodicMemory:   c.getEpisodicMemory(owner),
 	}
 
 	body, err := json.Marshal(enriched)
@@ -116,28 +121,16 @@ func (c *Client) Complete(ctx context.Context, req CognitionRequest) (CognitionR
 	}
 
 	if resp.SymbolicInference != "" {
-		c.workingMemory.Push(owner, resp.SymbolicInference)
+		// Check-and-push under one lock: a delete that lands between the two
+		// would otherwise re-populate the freshly cleared ring.
+		c.workingMemory.PushIfGeneration(owner, resp.SymbolicInference, gen)
 	}
 
-	if len(resp.EpisodicMemory) > 0 {
-		c.episodicMu.Lock()
-		c.episodicMemory[owner] = resp.EpisodicMemory
-		c.episodicMu.Unlock()
-	}
-
+	// resp.EpisodicMemory (the facts Python retrieved for THIS turn) is passed
+	// through to the browser for display only; it is never stored here.
 	resp.ProcessingMs = time.Since(start).Milliseconds()
 	resp.AvatarEmotion = suggestAvatarEmotion(resp.SymbolicInference)
 	return resp, nil
-}
-
-// getEpisodicMemory returns a copy of the cached episodic memory slice for owner.
-func (c *Client) getEpisodicMemory(owner string) []string {
-	c.episodicMu.RLock()
-	defer c.episodicMu.RUnlock()
-	cached := c.episodicMemory[owner]
-	result := make([]string, len(cached))
-	copy(result, cached)
-	return result
 }
 
 // suggestAvatarEmotion maps keywords in a symbolic inference string to an

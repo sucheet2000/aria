@@ -2,7 +2,7 @@ import dataclasses
 import time
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_owner
@@ -11,6 +11,9 @@ from app.cognition.memory import MemoryStore
 from app.models.schemas import (
     CognitionRequest,
     CognitionResponse,
+    MemoryDeleteResult,
+    MemoryEntryDeleted,
+    MemoryExport,
     PerceptionFrame,
     SpatialEvent,
 )
@@ -61,12 +64,21 @@ async def cognition(
         hands_detected=req.vision_state.hands_detected,
     )
 
+    # S3: Python is the single source of truth for durable memory. Retrieve
+    # for THIS turn's message before generating, so a fact deleted before this
+    # turn is never replayed and a fact stored last turn is available now. (The
+    # Go edge previously cached the previous turn's list and re-sent it.) A
+    # delete that lands DURING this turn cannot un-say the reply, but the
+    # store drops this turn's fact-write via expected_generation below.
+    deletion_gen = memory.deletion_generation(owner)
+    episodic = await memory.query_relevant(req.message, owner=owner, n_results=5)
+
     result: CognitionResponse = await client.complete(
         message=req.message,
         vision=vision,
         conversation_history=req.conversation_history,
         working_memory=req.working_memory,
-        episodic_memory=req.episodic_memory,
+        episodic_memory=episodic,
     )
 
     processing_ms = int((time.time() - start) * 1000)
@@ -77,6 +89,10 @@ async def cognition(
         # web_fetch ran, so a hostile page cannot write into owner memory.
         logger.info("fact-write suppressed on web_fetch turn", owner=owner)
     elif result.world_model_update:
+        # The store checks ``expected_generation`` under the owner's mutation
+        # lock: if the owner deleted memory while this turn was generating,
+        # the model saw pre-delete facts and its triple is dropped atomically
+        # with that check (the store logs the suppression).
         wmu = result.world_model_update
         await memory.store_triple(
             subject=wmu.triple.subject,
@@ -85,9 +101,8 @@ async def cognition(
             confidence=wmu.confidence,
             source=wmu.source,
             owner=owner,
+            expected_generation=deletion_gen,
         )
-
-    episodic = await memory.query_relevant(req.message, owner=owner, n_results=5)
 
     spatial_event: SpatialEvent | None = None
     if req.gesture != "none" or req.two_hand_gesture != "NONE":
@@ -175,3 +190,45 @@ async def clear_working(
 ) -> dict:
     await memory.clear_working(owner=owner)
     return {"status": "cleared"}
+
+
+def _require_store(memory: MemoryStore, owner: str) -> None:
+    if not memory.loaded:
+        logger.warning("memory store unavailable", owner=owner)
+        raise HTTPException(status_code=503, detail="memory store unavailable")
+
+
+@router.get("/api/memory/export", response_model=MemoryExport, response_model_exclude_none=True)
+async def export_memory(
+    offset: int = Query(0, ge=0, le=1_000_000),
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    """Everything ARIA stores for the verified owner, grouped by collection,
+    paged by ``offset`` (see ``truncated`` in the response). The owner comes
+    only from the edge-set header; no other query/body field is honoured."""
+    _require_store(memory, owner)
+    return await memory.export(owner=owner, offset=offset)
+
+
+@router.delete("/api/memory", response_model=MemoryDeleteResult)
+async def delete_memory(
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    """Delete every stored memory of the verified owner. Synchronous: a 200
+    means the data is gone from the store before this returns."""
+    _require_store(memory, owner)
+    return {"deleted": await memory.delete_all(owner=owner)}
+
+
+@router.delete("/api/memory/{entry_id}", response_model=MemoryEntryDeleted)
+async def delete_memory_entry(
+    entry_id: str,
+    memory: MemoryStore = Depends(get_memory),
+    owner: str = Depends(get_current_owner),
+) -> dict:
+    _require_store(memory, owner)
+    if not await memory.delete_entry(owner=owner, entry_id=entry_id):
+        raise HTTPException(status_code=404, detail="memory entry not found")
+    return {"deleted": entry_id}

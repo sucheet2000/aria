@@ -90,6 +90,7 @@ export interface ARIAStore {
   dequeueAudio: () => string | undefined;
   setTranscript: (v: string) => void;
   addMessage: (role: "user" | "assistant", content: string) => void;
+  clearConversation: () => void;
   setEmotionConfidence: (v: number) => void;
   setProcessingMs: (v: number) => void;
   setProfileFacts: (facts: string[]) => void;
@@ -166,6 +167,7 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
     return first;
   },
   setTranscript: (v) => set({ transcript: v }),
+  clearConversation: () => set({ conversationHistory: [] }),
   addMessage: (role, content) =>
     set((state) => ({
       conversationHistory: [...state.conversationHistory, { role, content }],

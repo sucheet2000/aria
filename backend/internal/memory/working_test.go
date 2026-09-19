@@ -186,3 +186,42 @@ func TestConcurrentPushAndLast(t *testing.T) {
 		}
 	}
 }
+
+// Generation lets a caller detect that Clear ran while it was busy, so a
+// late Push after a delete can be dropped.
+func TestWorkingMemory_GenerationBumpsOnClearOnly(t *testing.T) {
+	wm := New(5)
+	g0 := wm.Generation("a")
+	wm.Push("a", "x")
+	if wm.Generation("a") != g0 {
+		t.Fatal("Push must not change the generation")
+	}
+	wm.Clear("a")
+	if wm.Generation("a") == g0 {
+		t.Fatal("Clear must bump the generation")
+	}
+	if wm.Generation("b") != 0 {
+		t.Fatal("other owners unaffected")
+	}
+}
+
+// PushIfGeneration is the atomic check-and-push a cognition turn needs: the
+// generation comparison and the append happen under one lock, so a Clear
+// cannot slip between them.
+func TestWorkingMemory_PushIfGeneration(t *testing.T) {
+	wm := New(5)
+	gen := wm.Generation("a")
+	if !wm.PushIfGeneration("a", "fresh", gen) {
+		t.Fatal("push with the current generation must succeed")
+	}
+	wm.Clear("a")
+	if wm.PushIfGeneration("a", "stale", gen) {
+		t.Fatal("push with a pre-clear generation must be refused")
+	}
+	if got := wm.All("a"); len(got) != 0 {
+		t.Fatalf("stale inference landed after Clear: %v", got)
+	}
+	if !wm.PushIfGeneration("a", "after", wm.Generation("a")) {
+		t.Fatal("push with the post-clear generation must succeed")
+	}
+}

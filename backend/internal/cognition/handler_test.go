@@ -50,7 +50,6 @@ func TestEnrichedRequest_GestureFieldsMarshalled(t *testing.T) {
 	enriched := enrichedRequest{
 		CognitionRequest: req,
 		WorkingMemory:    []string{},
-		EpisodicMemory:   []string{},
 	}
 	b, err := json.Marshal(enriched)
 	if err != nil {
