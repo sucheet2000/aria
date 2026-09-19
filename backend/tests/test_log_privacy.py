@@ -190,7 +190,9 @@ async def test_model_response_never_appears_in_logs() -> None:
             message="please explain why", vision=PerceptionFrame(),
             conversation_history=[], working_memory=[], episodic_memory=[],
         )
-    assert PRIVATE_MODEL_OUTPUT in result.natural_language_response
+    # R5: a non-JSON completion is neither spoken (safe fallback) nor logged.
+    assert PRIVATE_MODEL_OUTPUT not in result.natural_language_response
+    assert result.response_status == "malformed"
     assert PRIVATE_MODEL_OUTPUT not in _rendered(logs)
 
     # A well-formed JSON completion must not be logged either.

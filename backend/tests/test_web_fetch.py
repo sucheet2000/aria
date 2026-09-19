@@ -259,7 +259,10 @@ class TestPauseTurnLoop:
         result = await _complete(client, "read https://example.com/a")
 
         assert mock_create.call_count == llm_mod._MAX_TURN_CONTINUATIONS + 1
-        assert result.natural_language_response == "hi"
+        # R5: a turn still paused after the bounded continuations is incomplete;
+        # its interim text is not spoken.
+        assert result.response_status == "truncated"
+        assert result.natural_language_response == llm_mod.SAFE_FALLBACK_RESPONSE
 
     @pytest.mark.asyncio
     async def test_pause_turn_resolves_and_parses_final(
@@ -325,7 +328,8 @@ class TestFetchErrorDegradation:
 
         result = await _complete(client, "read https://example.com/a")
 
-        assert result.symbolic_inference == "empty completion"
+        assert result.response_status == "empty"
+        assert result.symbolic_inference == ""
         assert result.used_web_fetch is True
 
 
@@ -411,12 +415,9 @@ class TestMalformedEnvelopeDegrades:
             }
         )
 
-        result = client._parse_response(raw)
-
-        assert isinstance(result, CognitionResponse)
-        assert result.world_model_update is None
-        assert result.symbolic_inference == "parse error"
-        assert result.natural_language_response == raw
+        # R5: a malformed fact is a schema failure, never spoken raw.
+        with pytest.raises(llm_mod.LLMResponseSchemaError):
+            client._parse_response(raw)
 
     def test_non_dict_triple_degrades(self) -> None:
         client = LLMClient(api_key="test-key")
@@ -431,12 +432,8 @@ class TestMalformedEnvelopeDegrades:
             }
         )
 
-        result = client._parse_response(raw)
-
-        assert isinstance(result, CognitionResponse)
-        assert result.world_model_update is None
-        assert result.symbolic_inference == "parse error"
-        assert result.natural_language_response == raw
+        with pytest.raises(llm_mod.LLMResponseSchemaError):
+            client._parse_response(raw)
 
 
 # ── config: INERT-by-default + comma-separated env parsing ────────────────────

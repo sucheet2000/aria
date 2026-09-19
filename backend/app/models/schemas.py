@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,12 @@ class AudioTranscript(BaseModel):
 
 
 # --- Cognition API types ---
+
+# How a provider turn was classified (R5). "valid" is the only status whose
+# content is trusted; every other status yields the user-safe fallback.
+ResponseStatus = Literal["valid", "malformed", "truncated", "empty", "invalid_schema", "refused"]
+RESPONSE_STATUSES: tuple[str, ...] = get_args(ResponseStatus)
+
 
 class PerceptionFrame(BaseModel):
     """Trimmed per-frame perception data forwarded to the cognition layer.
@@ -93,6 +100,10 @@ class CognitionResponse(BaseModel):
     # web_fetch server tool actually ran on this turn. The cognition route uses
     # it to suppress the fact-write so a fetched page cannot poison owner memory.
     used_web_fetch: bool = False
+    # Internal signal (never serialized to the wire): how the provider turn was
+    # classified (R5). Anything but "valid" is a user-safe fallback whose
+    # symbolic_inference is "" and world_model_update is None.
+    response_status: ResponseStatus = "valid"
 
 
 # --- Memory data-control API types (S3) ---

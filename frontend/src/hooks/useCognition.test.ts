@@ -171,3 +171,27 @@ describe("avatarEmotion ownership (R3)", () => {
     expect(useAriaStore.getState().avatarEmotion).toBe("sad");
   });
 });
+
+describe("TTS-facing response path (R5)", () => {
+  it("hands onResponse exactly the natural_language_response the server sent", async () => {
+    const safe = "Sorry, I lost my train of thought for a moment. Could you say that again?";
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...okResponse, natural_language_response: safe, symbolic_inference: "" }),
+    });
+    const onResponse = vi.fn();
+    const { result } = renderHook(() => useCognition());
+
+    await act(async () => {
+      await result.current.sendMessage("hello", onResponse);
+    });
+
+    expect(onResponse).toHaveBeenCalledTimes(1);
+    expect(onResponse.mock.calls[0][0]).toBe(safe);
+    const history = useAriaStore.getState().conversationHistory;
+    expect(history[history.length - 1]).toEqual({ role: "assistant", content: safe });
+    // The browser never parses or reconstructs model JSON: it speaks the field as given.
+    expect(onResponse.mock.calls[0][0]).not.toContain("{");
+  });
+});
