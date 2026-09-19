@@ -17,10 +17,15 @@ const (
 	maxMessageSize = 65536
 )
 
-// AudioController is implemented by the audio worker.
+// AudioController is the owner-keyed audio session surface the edge drives.
+// Every call carries the owner from the authenticated connection, never a
+// client-supplied field, so one owner's PCM, mute or lifecycle can never
+// touch another owner's session (SEC-6). Implemented by audio.SessionManager.
 type AudioController interface {
-	Mute(muted bool)
-	WriteAudio(pcm []byte)
+	Acquire(owner string) error
+	Release(owner string)
+	WriteAudio(owner string, pcm []byte)
+	SetMuted(owner string, muted bool)
 }
 
 // broadcastMsg is a queued broadcast. When scoped is true the message is only
@@ -33,13 +38,12 @@ type broadcastMsg struct {
 
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
-	clients     map[*Client]bool
-	broadcast   chan broadcastMsg
-	register    chan *Client
-	unregister  chan *Client
-	mu          sync.RWMutex
-	audio       AudioController
-	activeOwner string
+	clients    map[*Client]bool
+	broadcast  chan broadcastMsg
+	register   chan *Client
+	unregister chan *Client
+	mu         sync.RWMutex
+	audio      AudioController
 }
 
 // Client represents a single WebSocket connection.
@@ -82,11 +86,6 @@ func (h *Hub) Run(_ context.Context) {
 				delete(h.clients, client)
 				close(client.send)
 			}
-			// Release the active-owner claim if no remaining client owns it, so
-			// scoped frames are not withheld from the surviving clients.
-			if h.activeOwner != "" && !h.hasOwnerLocked(h.activeOwner) {
-				h.activeOwner = ""
-			}
 			h.mu.Unlock()
 			log.Info().Str("remote", client.conn.RemoteAddr().String()).Msg("client disconnected")
 
@@ -114,43 +113,13 @@ func (h *Hub) Broadcast(msg []byte) {
 	h.broadcast <- broadcastMsg{data: msg}
 }
 
-// BroadcastToOwner sends a message only to clients whose owner matches.
+// BroadcastToOwner sends a message only to clients whose owner matches. It is
+// the transcript route for the audio session manager: a transcript produced
+// by owner A's worker is delivered to A's /ws clients and nobody else. When
+// auth is disabled every client has the empty owner, so the empty owner
+// reaches all local clients — the single-user default.
 func (h *Hub) BroadcastToOwner(owner string, msg []byte) {
 	h.broadcast <- broadcastMsg{data: msg, owner: owner, scoped: true}
-}
-
-// BroadcastScoped delivers a per-user perception frame (vision_state / transcript)
-// to the owner that currently claims the local camera/mic stream. When no owner
-// has claimed the stream (single-user default, or auth disabled where every
-// client shares the empty owner), it falls back to delivering to all clients so
-// behavior is unchanged.
-func (h *Hub) BroadcastScoped(msg []byte) {
-	h.mu.RLock()
-	owner := h.activeOwner
-	h.mu.RUnlock()
-	if owner == "" {
-		h.Broadcast(msg)
-		return
-	}
-	h.BroadcastToOwner(owner, msg)
-}
-
-// setActiveOwner records which owner currently claims the local perception stream.
-func (h *Hub) setActiveOwner(owner string) {
-	h.mu.Lock()
-	h.activeOwner = owner
-	h.mu.Unlock()
-}
-
-// hasOwnerLocked reports whether any connected client has the given owner.
-// Caller must hold h.mu.
-func (h *Hub) hasOwnerLocked(owner string) bool {
-	for client := range h.clients {
-		if client.owner == owner {
-			return true
-		}
-	}
-	return false
 }
 
 // writePump pumps messages from the hub to the WebSocket connection.
@@ -184,6 +153,8 @@ func (c *Client) writePump() {
 }
 
 // readPump reads from the WebSocket to detect disconnects and sets read deadlines.
+// Control messages (tts_mute/tts_unmute) act only on the sending connection's
+// authenticated owner; any owner-like field in the payload is ignored.
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -206,16 +177,12 @@ func (c *Client) readPump() {
 			switch msg.Type {
 			case "tts_mute":
 				if c.hub.audio != nil {
-					c.hub.audio.Mute(true)
+					c.hub.audio.SetMuted(c.owner, true)
 				}
 			case "tts_unmute":
 				if c.hub.audio != nil {
-					c.hub.audio.Mute(false)
+					c.hub.audio.SetMuted(c.owner, false)
 				}
-			case MsgTypeSessionInit:
-				// The initializing client claims the local perception stream, so
-				// scoped transcript frames go only to its owner.
-				c.hub.setActiveOwner(c.owner)
 			}
 		}
 		if err != nil {

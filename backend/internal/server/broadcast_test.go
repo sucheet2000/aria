@@ -50,36 +50,24 @@ func TestBroadcastToOwner_OnlyMatchingOwner(t *testing.T) {
 	expectNoReceive(t, b)
 }
 
-func TestBroadcastScoped_HonorsActiveOwner(t *testing.T) {
+// TestBroadcastToOwner_EmptyOwnerIsAuthDisabledDefault: with auth disabled every
+// client carries the empty owner, so an empty-owner transcript reaches all of
+// them — and never a client that does carry an owner.
+func TestBroadcastToOwner_EmptyOwnerIsAuthDisabledDefault(t *testing.T) {
 	hub := NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go hub.Run(ctx)
 
-	a := addClient(hub, "a")
-	b := addClient(hub, "b")
+	local1 := addClient(hub, "")
+	local2 := addClient(hub, "")
+	authed := addClient(hub, "a")
 
-	hub.setActiveOwner("a")
-	hub.BroadcastScoped([]byte("frame"))
+	hub.BroadcastToOwner("", []byte("frame"))
 
-	expectReceive(t, a, "frame")
-	expectNoReceive(t, b)
-}
-
-func TestBroadcastScoped_EmptyActiveOwnerReachesAll(t *testing.T) {
-	hub := NewHub()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go hub.Run(ctx)
-
-	a := addClient(hub, "a")
-	b := addClient(hub, "b")
-
-	// No active owner claimed → single-user default: reach everyone.
-	hub.BroadcastScoped([]byte("frame"))
-
-	expectReceive(t, a, "frame")
-	expectReceive(t, b, "frame")
+	expectReceive(t, local1, "frame")
+	expectReceive(t, local2, "frame")
+	expectNoReceive(t, authed)
 }
 
 func TestBroadcast_UnscopedReachesAll(t *testing.T) {

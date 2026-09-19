@@ -10,24 +10,20 @@ import (
 	"time"
 )
 
-// countingHub counts broadcasts across restarts (one line per subprocess run).
+// countingHub counts transcript deliveries across restarts (one line per
+// subprocess run).
 type countingHub struct{ n atomic.Int64 }
 
-func (h *countingHub) Broadcast(_ []byte)       { h.n.Add(1) }
-func (h *countingHub) BroadcastScoped(_ []byte) { h.n.Add(1) }
+func (h *countingHub) sink(_ []byte) { h.n.Add(1) }
 
-// slowHub records broadcasts without internal synchronisation and sleeps while
-// broadcasting, so that -race flags any overlap between two runs' scanner
+// slowHub records deliveries without internal synchronisation and sleeps while
+// recording, so that -race flags any overlap between two runs' scanner
 // goroutines (proving they are joined before run() returns).
 type slowHub struct {
 	received [][]byte
 }
 
-func (h *slowHub) Broadcast(data []byte) { h.record(data) }
-
-func (h *slowHub) BroadcastScoped(data []byte) { h.record(data) }
-
-func (h *slowHub) record(data []byte) {
+func (h *slowHub) sink(data []byte) {
 	time.Sleep(60 * time.Millisecond)
 	h.received = append(h.received, data)
 }
@@ -48,7 +44,7 @@ func writeScript(t *testing.T, body string) (dir, path string) {
 // Without mutex protection the -race detector flags the unsynchronised access.
 func TestMute_ConcurrentWithRestart_NoRace(t *testing.T) {
 	dir, script := writeScript(t, "sleep 0.2\n")
-	w := New("/bin/sh", script, dir, "base", &slowHub{})
+	w := New("/bin/sh", script, dir, "base", (&slowHub{}).sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -91,7 +87,7 @@ func TestRun_JoinsScannerGoroutines(t *testing.T) {
 	const runs = 8
 	dir, script := writeScript(t, "echo '{\"a\":1}'\n")
 	hub := &slowHub{}
-	w := New("/bin/sh", script, dir, "base", hub)
+	w := New("/bin/sh", script, dir, "base", hub.sink)
 
 	for i := 0; i < runs; i++ {
 		if err := w.run(context.Background()); err != nil {
@@ -112,7 +108,7 @@ func TestRun_JoinsScannerGoroutines(t *testing.T) {
 func TestStart_RestartsOnUnexpectedExit(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
 	hub := &countingHub{}
-	w := New("/bin/sh", script, dir, "base", hub)
+	w := New("/bin/sh", script, dir, "base", hub.sink)
 	w.restartDelay = time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,7 +136,7 @@ func TestStart_RestartsOnUnexpectedExit(t *testing.T) {
 // keeps reassigning w.cmd, proving the process handle is read/written under a lock.
 func TestStop_DuringRestart_NoRace(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
-	w := New("/bin/sh", script, dir, "base", &countingHub{})
+	w := New("/bin/sh", script, dir, "base", (&countingHub{}).sink)
 	w.restartDelay = time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -170,7 +166,7 @@ func TestStop_DuringRestart_NoRace(t *testing.T) {
 // without entering the restart backoff, even with a very long restart delay.
 func TestStart_CancelledContextReturnsPromptly(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
-	w := New("/bin/sh", script, dir, "base", &countingHub{})
+	w := New("/bin/sh", script, dir, "base", (&countingHub{}).sink)
 	w.restartDelay = time.Hour
 
 	ctx, cancel := context.WithCancel(context.Background())
