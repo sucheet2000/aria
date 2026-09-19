@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -113,6 +114,15 @@ func (s *Server) Start(ctx context.Context) error {
 		r.Get("/memory/episodic", s.handleMemoryEpisodicProxy)
 		r.Get("/anchors", s.handleAnchorsProxy)
 		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
+
+		// Owner data controls (S3): export and delete are rate-limited like the
+		// paid endpoints so repeated full-store operations cannot be spammed.
+		r.Group(func(r chi.Router) {
+			r.Use(rl.Middleware)
+			r.Get("/memory/export", s.handleMemoryExportProxy)
+			r.Delete("/memory", s.handleMemoryDeleteAll)
+			r.Delete("/memory/{entry_id}", s.handleMemoryDeleteEntryProxy)
+		})
 	})
 
 	// Wait (bounded, non-fatal) for FastAPI so the first cognition/tts request
@@ -177,15 +187,77 @@ func (s *Server) handleAnchorsProxy(w http.ResponseWriter, r *http.Request) {
 	s.proxyToPython(w, r, http.MethodGet, "/api/anchors")
 }
 
+// exportOffset is the only client query parameter the export proxy forwards:
+// a non-negative integer page offset (at most 9 digits). Everything else in
+// the client's query string is dropped.
+var exportOffset = regexp.MustCompile(`^[0-9]{1,9}$`)
+
+// handleMemoryExportProxy returns everything Python stores for the verified
+// owner, grouped by collection (profile / episodic / working), one page at a
+// time via a validated `offset`.
+func (s *Server) handleMemoryExportProxy(w http.ResponseWriter, r *http.Request) {
+	path := "/api/memory/export"
+	if raw, ok := r.URL.Query()["offset"]; ok {
+		if len(raw) != 1 || !exportOffset.MatchString(raw[0]) {
+			http.Error(w, `{"error":"invalid offset"}`, http.StatusBadRequest)
+			return
+		}
+		path += "?offset=" + raw[0]
+	}
+	s.proxyToPython(w, r, http.MethodGet, path)
+}
+
+// handleMemoryDeleteAll deletes the verified owner's durable memory in Python
+// and, only once Python has confirmed, clears that owner's Go working-memory
+// ring so nothing about them survives on either side. A non-2xx from Python is
+// propagated unchanged and leaves Go state intact.
+func (s *Server) handleMemoryDeleteAll(w http.ResponseWriter, r *http.Request) {
+	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	s.proxyToPython(rec, r, http.MethodDelete, "/api/memory")
+	if rec.status >= 200 && rec.status < 300 {
+		s.workingMemory.Clear(auth.OwnerFromContext(r.Context()))
+	}
+}
+
+// memoryEntryID is the shape of a stored memory id (a 16-hex content hash).
+var memoryEntryID = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+func (s *Server) handleMemoryDeleteEntryProxy(w http.ResponseWriter, r *http.Request) {
+	entryID := chi.URLParam(r, "entry_id")
+	if !memoryEntryID.MatchString(entryID) {
+		http.Error(w, `{"error":"invalid memory entry id"}`, http.StatusBadRequest)
+		return
+	}
+	s.proxyToPython(w, r, http.MethodDelete, "/api/memory/"+entryID)
+}
+
+// statusRecorder captures the status the proxy wrote so the caller can act on
+// the upstream result after the body has been relayed.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
 func (s *Server) handleAnchorDeleteProxy(w http.ResponseWriter, r *http.Request) {
 	anchorID := chi.URLParam(r, "anchor_id")
 	s.proxyToPython(w, r, http.MethodDelete, "/api/anchors/"+anchorID)
 }
 
+// maxProxyResponseBytes bounds a relayed upstream body (a memory export is the
+// largest: ~500 entries per collection).
+const maxProxyResponseBytes = 4 << 20
+
 // proxyToPython forwards the inbound request to the internal Python service at
 // path (relative to the Python base URL) using method, attaching the
-// authenticated owner, the internal-auth secret, and the request id. It streams
-// the upstream status and JSON body straight back to the caller.
+// authenticated owner, the internal-auth secret, and the request id. Only the
+// given path is forwarded — never the caller's query string or body — so a
+// client cannot smuggle an owner or filter past the edge. It streams the
+// upstream status and (bounded) JSON body straight back to the caller.
 func (s *Server) proxyToPython(w http.ResponseWriter, r *http.Request, method, path string) {
 	req, err := http.NewRequestWithContext(r.Context(), method, s.pythonURL+path, nil)
 	if err != nil {
@@ -201,9 +273,16 @@ func (s *Server) proxyToPython(w http.ResponseWriter, r *http.Request, method, p
 		return
 	}
 	defer resp.Body.Close()
+	// Read up to one byte past the cap: an over-cap body is refused outright
+	// rather than relayed truncated as a 200 with invalid JSON.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProxyResponseBytes+1))
+	if err != nil || len(body) > maxProxyResponseBytes {
+		http.Error(w, `{"error":"python response too large"}`, http.StatusBadGateway)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body) //nolint:errcheck
+	w.Write(body) //nolint:errcheck
 }
 
 const (

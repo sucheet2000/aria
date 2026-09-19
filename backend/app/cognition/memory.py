@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import structlog
@@ -18,10 +21,80 @@ WORKING_COLLECTION = "aria_working"
 EPISODIC_TTL_DAYS = 30
 SWEEP_INTERVAL_SECONDS = 3600
 
+# Bounds one owner's export per collection so a response cannot grow without
+# limit; ARIA stores at most one triple per cognition turn.
+MEMORY_EXPORT_LIMIT = 500
+
+# Stored metadata keys surfaced verbatim in an export (nothing is invented).
+_EXPORT_METADATA_KEYS = (
+    "subject", "predicate", "object", "confidence", "source", "timestamp", "expires_at",
+)
+
+
+class _OwnerLocks:
+    """Per-owner mutual exclusion for storage mutations.
+
+    One ``threading.Lock`` per owner, created on first use and dropped again
+    when no thread holds or waits for it, so the registry never grows beyond
+    the owners currently mutating. Different owners never contend. Locks are
+    plain thread locks because every mutation runs in the threadpool; the
+    asyncio loop never holds one, so there is nothing to deadlock against.
+    """
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._locks: dict[str, tuple[threading.Lock, int]] = {}
+
+    @contextmanager
+    def held(self, owner: str) -> Iterator[None]:
+        with self._guard:
+            entry = self._locks.get(owner)
+            if entry is None:
+                lock, refs = threading.Lock(), 0
+            else:
+                lock, refs = entry
+            self._locks[owner] = (lock, refs + 1)  # registered before blocking
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
+            with self._guard:
+                _, refs = self._locks[owner]
+                if refs <= 1:
+                    del self._locks[owner]
+                else:
+                    self._locks[owner] = (lock, refs - 1)
+
+    def active(self) -> int:
+        with self._guard:
+            return len(self._locks)
+
 
 class MemoryStore:
     """
     Layered ChromaDB memory store, scoped by ``owner``.
+
+    Concurrency (S3.1): every owner-initiated storage mutation — ``store_triple``,
+    ``delete_all``, ``delete_entry``, ``clear_working`` — runs inside that
+    owner's lock (the TTL sweep deletes already-expired documents without a
+    lock; it only removes, so it cannot resurrect anything), and each delete bumps the owner's deletion generation while
+    holding it. A cognition turn passes the generation it observed before
+    retrieval as ``expected_generation``; the write is dropped, atomically with
+    the check, if any delete completed in between. So a delete is an epoch
+    boundary: writes ordered before it are deleted, writes from turns that
+    started before it are dropped, and only turns that started after it can
+    store. Reads are not serialised.
+
+    SCALE-2 note (single-writer): the owner locks and the deletion generation
+    are process-local. The guarantee holds for one replica; running the
+    Python service with ``numReplicas > 1`` would need the generation counter
+    and the mutual exclusion moved into the shared store.
+
+    Deliberate asymmetry: ``delete_all`` and ``delete_entry`` bump the
+    generation (any in-flight turn's write is dropped — conservative for
+    privacy), while ``clear_working`` does not (it clears session scratch only
+    and must not discard a concurrent turn's learned fact).
 
     Three collections:
       aria_profile  - stable user facts (permanent)
@@ -46,6 +119,11 @@ class MemoryStore:
         self._episodic = None
         self._working = None
         self._last_sweep: float = 0.0
+        # Per-owner count of delete operations, only ever changed while that
+        # owner's lock is held. A cognition turn captures it before retrieval
+        # and its write is dropped (under the same lock) if it changed.
+        self._deletion_gen: dict[str, int] = {}
+        self._owner_locks = _OwnerLocks()
 
     def load(self) -> None:
         try:
@@ -123,12 +201,17 @@ class MemoryStore:
         confidence: float,
         source: str,
         owner: str | None = None,
-    ) -> None:
+        expected_generation: int | None = None,
+    ) -> bool:
+        """Persist a triple. Returns False when nothing was written because
+        ``expected_generation`` no longer matches the owner's deletion
+        generation (a delete completed since the caller observed it)."""
         if not self.loaded:
-            return
+            return False
         owner = owner or settings.DEFAULT_OWNER
-        await run_in_threadpool(
-            self._store_triple_sync, subject, predicate, obj, confidence, source, owner
+        return await run_in_threadpool(
+            self._store_triple_sync, subject, predicate, obj, confidence, source, owner,
+            expected_generation=expected_generation,
         )
 
     def _store_triple_sync(
@@ -139,7 +222,27 @@ class MemoryStore:
         confidence: float,
         source: str,
         owner: str,
-    ) -> None:
+        expected_generation: int | None = None,
+    ) -> bool:
+        with self._owner_locks.held(owner):
+            if (
+                expected_generation is not None
+                and self._deletion_gen.get(owner, 0) != expected_generation
+            ):
+                logger.info("fact-write suppressed after delete", owner=owner, source=source)
+                return False
+            return self._store_triple_locked(subject, predicate, obj, confidence, source, owner)
+
+    def _store_triple_locked(
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
+        confidence: float,
+        source: str,
+        owner: str,
+    ) -> bool:
+        """Write under the owner lock. Returns False if the storage call failed."""
         doc_id = self._triple_id(owner, subject, predicate, obj)
         text = self._triple_text(subject, predicate, obj)
         metadata = {
@@ -191,6 +294,8 @@ class MemoryStore:
                 collection=collection_name, error_type=type(e).__name__,
                 error=str(e)[:200],
             )
+            return False
+        return True
 
     async def query_relevant(
         self,
@@ -291,12 +396,121 @@ class MemoryStore:
 
     def _clear_working_sync(self, owner: str) -> None:
         try:
-            ids = self._working.get(where={"owner": owner})["ids"]
-            if ids:
-                self._working.delete(ids=ids)
+            with self._owner_locks.held(owner):
+                ids = self._working.get(where={"owner": owner})["ids"]
+                if ids:
+                    self._working.delete(ids=ids)
             logger.info("working memory cleared", owner=owner)
         except Exception as e:
             logger.error("clear_working failed", error_type=type(e).__name__, error=str(e)[:200])
+
+    # ── owner data controls (S3): export / delete ───────────────────────────
+
+    def _collections(self) -> list[tuple[str, object]]:
+        return [
+            ("profile", self._profile),
+            ("episodic", self._episodic),
+            ("working", self._working),
+        ]
+
+    def deletion_generation(self, owner: str | None = None) -> int:
+        """How many delete operations ``owner`` has run; bumps on every delete."""
+        return self._deletion_gen.get(owner or settings.DEFAULT_OWNER, 0)
+
+    def _bump_deletion_generation(self, owner: str) -> None:
+        # Caller holds the owner lock, so this read-modify-write is atomic.
+        self._deletion_gen[owner] = self._deletion_gen.get(owner, 0) + 1
+
+    async def export(self, owner: str | None = None, offset: int = 0) -> dict[str, object]:
+        """Everything stored for ``owner``, grouped by collection, with the
+        metadata ARIA actually persists. Each collection returns at most
+        MEMORY_EXPORT_LIMIT entries starting at ``offset``; ``truncated`` lists
+        the collections that have more beyond this page, so a caller pages by
+        adding MEMORY_EXPORT_LIMIT to ``offset`` until it is empty. Owner is the
+        verified identity from the edge; the request never chooses it."""
+        owner = owner or settings.DEFAULT_OWNER
+        if not self.loaded:
+            return {"profile": [], "episodic": [], "working": [], "truncated": []}
+        return await run_in_threadpool(self._export_sync, owner, max(0, offset))
+
+    def _export_sync(self, owner: str, offset: int) -> dict[str, object]:
+        by_label: dict[str, list[dict[str, object]]] = {}
+        truncated: list[str] = []
+        for label, coll in self._collections():
+            # Fetch one extra row: its presence (not an exact-limit count) is
+            # what marks the collection as having more pages.
+            data = coll.get(  # type: ignore[attr-defined]
+                where={"owner": owner},
+                limit=MEMORY_EXPORT_LIMIT + 1,
+                offset=offset,
+                include=["documents", "metadatas"],
+            )
+            ids = data["ids"]
+            metas = data["metadatas"] or []
+            docs = data["documents"] or []
+            if len(ids) > MEMORY_EXPORT_LIMIT:
+                truncated.append(label)
+                ids, docs, metas = ids[:MEMORY_EXPORT_LIMIT], docs[:MEMORY_EXPORT_LIMIT], metas[:MEMORY_EXPORT_LIMIT]
+            entries: list[dict[str, object]] = []
+            for doc_id, doc, meta in zip(ids, docs, metas):
+                entry: dict[str, object] = {"id": doc_id, "collection": label, "content": doc}
+                for key in _EXPORT_METADATA_KEYS:
+                    if meta is not None and key in meta:
+                        entry[key] = meta[key]
+                entries.append(entry)
+            by_label[label] = entries
+        # S2: counts only, never the documents.
+        logger.info(
+            "memory exported",
+            owner=owner,
+            offset=offset,
+            profile=len(by_label["profile"]),
+            episodic=len(by_label["episodic"]),
+            working=len(by_label["working"]),
+            truncated=truncated,
+        )
+        out: dict[str, object] = dict(by_label)
+        out["truncated"] = truncated
+        return out
+
+    async def delete_all(self, owner: str | None = None) -> dict[str, int]:
+        """Delete every document ``owner`` has in every collection. Returns the
+        per-collection counts. Synchronous: when this returns, the store no
+        longer holds the data."""
+        owner = owner or settings.DEFAULT_OWNER
+        if not self.loaded:
+            return {"profile": 0, "episodic": 0, "working": 0}
+        return await run_in_threadpool(self._delete_all_sync, owner)
+
+    def _delete_all_sync(self, owner: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        with self._owner_locks.held(owner):
+            for label, coll in self._collections():
+                ids = coll.get(where={"owner": owner}, include=[])["ids"]  # type: ignore[attr-defined]
+                if ids:
+                    coll.delete(ids=ids)  # type: ignore[attr-defined]
+                counts[label] = len(ids)
+            self._bump_deletion_generation(owner)
+        logger.info("memory deleted", owner=owner, **counts)
+        return counts
+
+    async def delete_entry(self, owner: str | None, entry_id: str) -> bool:
+        """Delete one document by id, only if it belongs to ``owner``."""
+        owner = owner or settings.DEFAULT_OWNER
+        if not self.loaded:
+            return False
+        return await run_in_threadpool(self._delete_entry_sync, owner, entry_id)
+
+    def _delete_entry_sync(self, owner: str, entry_id: str) -> bool:
+        with self._owner_locks.held(owner):
+            for label, coll in self._collections():
+                found = coll.get(ids=[entry_id], where={"owner": owner}, include=[])  # type: ignore[attr-defined]
+                if found["ids"]:
+                    coll.delete(ids=found["ids"])  # type: ignore[attr-defined]
+                    self._bump_deletion_generation(owner)
+                    logger.info("memory entry deleted", owner=owner, collection=label)
+                    return True
+        return False
 
     async def get_profile_facts(self, owner: str | None = None, n: int = 10) -> list[str]:
         if not self.loaded:

@@ -56,7 +56,6 @@ class CognitionRequest(BaseModel):
     vision_state: PerceptionFrame = Field(default_factory=PerceptionFrame)
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     working_memory: list[str] = Field(default_factory=list)
-    episodic_memory: list[str] = Field(default_factory=list)
     # Gesture fields forwarded from the browser perception layer
     gesture: str = "none"
     two_hand_gesture: str = "NONE"
@@ -88,6 +87,44 @@ class CognitionResponse(BaseModel):
     # web_fetch server tool actually ran on this turn. The cognition route uses
     # it to suppress the fact-write so a fetched page cannot poison owner memory.
     used_web_fetch: bool = False
+
+
+# --- Memory data-control API types (S3) ---
+
+class MemoryEntry(BaseModel):
+    """One stored document plus the metadata ARIA actually persists.
+    Metadata keys absent from the store are omitted from the response."""
+    id: str
+    collection: str
+    content: str
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
+    confidence: float | None = None
+    source: str | None = None
+    timestamp: float | None = None
+    expires_at: float | None = None
+
+
+class MemoryExport(BaseModel):
+    profile: list[MemoryEntry]
+    episodic: list[MemoryEntry]
+    working: list[MemoryEntry]
+    truncated: list[str]
+
+
+class MemoryDeleteCounts(BaseModel):
+    profile: int
+    episodic: int
+    working: int
+
+
+class MemoryDeleteResult(BaseModel):
+    deleted: MemoryDeleteCounts
+
+
+class MemoryEntryDeleted(BaseModel):
+    deleted: str
 
 
 @dataclass
