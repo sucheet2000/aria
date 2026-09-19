@@ -10,11 +10,13 @@ import (
 )
 
 // TestStreamProxy_Non2xxReturnsMeaningfulError verifies that a non-2xx response
-// from the Python TTS service surfaces as a clear status+body error.
+// from the Python TTS service surfaces as a clear status error. The upstream
+// body is NOT embedded (S2): a validation error body can echo the spoken
+// text, and the error string is logged.
 func TestStreamProxy_Non2xxReturnsMeaningfulError(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("elevenlabs quota exceeded"))
+		_, _ = w.Write([]byte("elevenlabs quota exceeded: PRIVATE_TTS_TEXT_9c4e"))
 	}))
 	defer fake.Close()
 
@@ -30,8 +32,11 @@ func TestStreamProxy_Non2xxReturnsMeaningfulError(t *testing.T) {
 	if !strings.Contains(msg, "500") {
 		t.Errorf("error should mention status 500, got %q", msg)
 	}
-	if !strings.Contains(msg, "quota exceeded") {
-		t.Errorf("error should include upstream body, got %q", msg)
+	if strings.Contains(msg, "PRIVATE_TTS_TEXT_9c4e") || strings.Contains(msg, "quota exceeded") {
+		t.Errorf("error must not embed the upstream body (it can echo request text), got %q", msg)
+	}
+	if !strings.Contains(msg, "(48 body bytes)") {
+		t.Errorf("error should report the exact body size, got %q", msg)
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -18,8 +17,8 @@ import (
 	"github.com/sucheet2000/aria/backend/internal/reqid"
 )
 
-// maxErrorBodyBytes caps how much of a non-2xx upstream response body is read
-// into the returned error, so a large error page cannot bloat the message.
+// maxErrorBodyBytes caps how much of a non-2xx upstream response body is
+// drained before the connection is released; the body is never logged.
 const maxErrorBodyBytes = 4 << 10
 
 // Client handles text-to-speech synthesis.
@@ -102,8 +101,10 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return fmt.Errorf("tts upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		// S2: drain (bounded) but never embed the body — the error is logged and
+		// a validation body can echo the text being spoken.
+		n, _ := io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return fmt.Errorf("tts upstream returned %d (%d body bytes)", resp.StatusCode, n)
 	}
 
 	_, err = io.Copy(w, resp.Body)

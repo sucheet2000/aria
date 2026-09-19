@@ -19,6 +19,8 @@ from typing import BinaryIO
 import numpy as np
 import structlog
 
+from app.config import settings
+from app.observability.logging import configure_logging
 from app.pipeline.denoiser import Denoiser
 from app.pipeline.transcriber import Transcriber
 from app.pipeline.vad import VADProcessor
@@ -37,6 +39,15 @@ _stop = False
 def _handle_sigterm(signum: int, frame: object) -> None:
     global _stop
     _stop = True
+
+
+def configure_worker_logging() -> None:
+    """Route this process's logs to stderr at the environment's level.
+
+    stdout is reserved for the JSON transcript lines the Go edge forwards to
+    the browser; a log record there would be misread as a transcript (S2).
+    """
+    configure_logging(settings.ENV, stream=sys.stderr)
 
 
 def run_synthetic(args: argparse.Namespace) -> None:
@@ -165,17 +176,30 @@ def process_audio_stream(
                 _consecutive_transcribe_errors = 0
             except Exception as exc:
                 _consecutive_transcribe_errors += 1
-                print(f"transcribe error: {exc}", file=sys.stderr)
+                # S2: classify the failure; never interpolate the exception
+                # message (a decoder error could quote audio-derived text).
+                logger.warning(
+                    "transcribe failed",
+                    error_type=type(exc).__name__,
+                    consecutive_errors=_consecutive_transcribe_errors,
+                )
                 if _consecutive_transcribe_errors >= _MAX_CONSECUTIVE_ERRORS:
-                    print(
-                        f"FATAL: {_consecutive_transcribe_errors} consecutive "
-                        "transcription errors — exiting so supervisor can restart",
-                        file=sys.stderr,
+                    logger.error(
+                        "transcribe failed repeatedly, exiting so supervisor can restart",
+                        consecutive_errors=_consecutive_transcribe_errors,
                     )
                     sys.exit(1)
                 continue
 
             duration_ms = int((time.time() - t0) * 1000)
+            # S2: transcript text is written to stdout as the transport to Go
+            # only; logs carry size and timing.
+            logger.debug(
+                "transcription complete",
+                chars=len(text),
+                duration_ms=duration_ms,
+                confidence=confidence,
+            )
             if text:
                 now = time.time()
                 state = {
@@ -291,6 +315,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    configure_worker_logging()
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
     if args.synthetic:

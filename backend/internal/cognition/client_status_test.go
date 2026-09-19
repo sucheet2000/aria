@@ -11,12 +11,14 @@ import (
 )
 
 // TestComplete_Non2xxReturnsMeaningfulError verifies that a non-2xx response
-// from the Python service surfaces as a clear status+body error rather than a
-// confusing "decode cognition response" error.
+// from the Python service surfaces as a clear status error rather than a
+// confusing "decode cognition response" error. The upstream body is NOT
+// embedded (S2): a 422 body echoes the request input, which is user content,
+// and the error string is logged.
 func TestComplete_Non2xxReturnsMeaningfulError(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = w.Write([]byte(`{"detail":"validation failed"}`))
+		_, _ = w.Write([]byte(`{"detail":[{"msg":"validation failed","input":"PRIVATE_USER_MESSAGE_8d91"}]}`))
 	}))
 	defer fake.Close()
 
@@ -29,8 +31,11 @@ func TestComplete_Non2xxReturnsMeaningfulError(t *testing.T) {
 	if !strings.Contains(msg, "422") {
 		t.Errorf("error should mention status 422, got %q", msg)
 	}
-	if !strings.Contains(msg, "validation failed") {
-		t.Errorf("error should include upstream body, got %q", msg)
+	if strings.Contains(msg, "PRIVATE_USER_MESSAGE_8d91") || strings.Contains(msg, "validation failed") {
+		t.Errorf("error must not embed the upstream body (it can echo user content), got %q", msg)
+	}
+	if !strings.Contains(msg, "(76 body bytes)") {
+		t.Errorf("error should report the exact body size, got %q", msg)
 	}
 	if strings.Contains(strings.ToLower(msg), "decode") {
 		t.Errorf("error should not be a decode error, got %q", msg)

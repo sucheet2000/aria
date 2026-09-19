@@ -37,6 +37,32 @@ def _worst_case_budget_seconds() -> float:
     )
 
 
+def _provider_status(resp: httpx.Response) -> str | None:
+    """ElevenLabs' machine-readable error code, if any.
+
+    Two body shapes occur: ``{"detail": {"status": "<code>", ...}}`` for API
+    errors and the FastAPI-style ``{"detail": [{"type", "loc", "msg", "input"}]}``
+    for 422 validation errors. S2: a validation body echoes the request text in
+    ``input``/``msg``, so only the enum ``type`` and the field path are kept.
+    """
+    try:
+        detail = resp.json().get("detail")
+    except Exception:
+        return None
+    if isinstance(detail, dict):
+        status = detail.get("status")
+        return str(status)[:64] if isinstance(status, str) else None
+    if isinstance(detail, list) and detail and isinstance(detail[0], dict):
+        first = detail[0]
+        kind = first.get("type")
+        loc = first.get("loc")
+        if not isinstance(kind, str):
+            return None
+        path = ".".join(str(part) for part in loc) if isinstance(loc, list) else ""
+        return f"{kind}:{path}"[:64] if path else kind[:64]
+    return None
+
+
 def _retryable(status: int) -> bool:
     return status == 429 or 500 <= status < 600
 
@@ -98,7 +124,9 @@ async def tts(req: TTSRequest) -> Response:
             logger.error(
                 "elevenlabs error",
                 status=resp.status_code,
-                body=resp.text[:200],
+                provider_status=_provider_status(resp),
+                body_chars=len(resp.text),
+                attempts=attempt + 1,
             )
             if resp.status_code == 402:
                 logger.warning(
@@ -110,5 +138,5 @@ async def tts(req: TTSRequest) -> Response:
                 return Response(status_code=503, content=b"")
             return Response(status_code=resp.status_code)
     except Exception as e:
-        logger.error("tts request failed", error=str(e))
+        logger.error("tts request failed", error_type=type(e).__name__, error=str(e)[:200])
         return Response(status_code=500)

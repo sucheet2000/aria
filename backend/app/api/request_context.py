@@ -46,12 +46,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     for correlation; internals are never leaked in the response body.
     """
     request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
+    # S2: no ``error=str(exc)`` field — the exception message is already in
+    # the rendered traceback, and duplicating it as a searchable field only
+    # widens exposure if a library message ever embeds request content.
     logger.error(
         "unhandled_exception",
         request_id=request_id,
         path=request.url.path,
         method=request.method,
-        error=str(exc),
+        error_type=type(exc).__name__,
         exc_info=exc,
     )
     MetricsCollector().record_error()

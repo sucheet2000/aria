@@ -65,7 +65,7 @@ class MemoryStore:
         except ImportError:
             logger.warning("chromadb not available, memory disabled")
         except Exception as e:
-            logger.error("memory store failed to load", error=str(e))
+            logger.error("memory store failed to load", error_type=type(e).__name__, error=str(e)[:200])
 
     @property
     def loaded(self) -> bool:
@@ -113,7 +113,7 @@ class MemoryStore:
                     else:
                         coll.update(ids=[old_id], metadatas=[new_meta])
             except Exception as e:
-                logger.error("owner backfill failed", error=str(e))
+                logger.error("owner backfill failed", error_type=type(e).__name__, error=str(e)[:200])
 
     async def store_triple(
         self,
@@ -154,8 +154,10 @@ class MemoryStore:
         try:
             if source == "explicit_statement":
                 collection = self._profile
+                collection_name = PROFILE_COLLECTION
             elif source in ("behavioral_inference", "visual_inference"):
                 collection = self._episodic
+                collection_name = EPISODIC_COLLECTION
                 now = time.time()
                 metadata["expires_at"] = now + EPISODIC_TTL_DAYS * 86400
                 if now - self._last_sweep > SWEEP_INTERVAL_SECONDS:
@@ -163,16 +165,32 @@ class MemoryStore:
                     self._last_sweep = now
             else:
                 collection = self._working
+                collection_name = WORKING_COLLECTION
 
+            # S2: log the operation, never the fact — not even its content hash
+            # (enumerable triples make a short hash guessable); ``chars`` is the
+            # document length only.
             existing = collection.get(ids=[doc_id])
             if existing["ids"]:
                 collection.update(ids=[doc_id], documents=[text], metadatas=[metadata])
-                logger.debug("memory updated", id=doc_id, text=text)
+                logger.info(
+                    "memory updated",
+                    collection=collection_name, source=source,
+                    operation="update", chars=len(text),
+                )
             else:
                 collection.add(ids=[doc_id], documents=[text], metadatas=[metadata])
-                logger.debug("memory stored", id=doc_id, text=text)
+                logger.info(
+                    "memory stored",
+                    collection=collection_name, source=source,
+                    operation="add", chars=len(text),
+                )
         except Exception as e:
-            logger.error("store_triple failed", error=str(e))
+            logger.error(
+                "store_triple failed",
+                collection=collection_name, error_type=type(e).__name__,
+                error=str(e)[:200],
+            )
 
     async def query_relevant(
         self,
@@ -189,6 +207,7 @@ class MemoryStore:
         results: list[str] = []
         observed: list[dict[str, object]] = []
         now = time.time()
+        started = time.monotonic()
         cutoff = settings.RECALL_MAX_DISTANCE
         try:
             for collection in [self._profile, self._episodic]:
@@ -223,12 +242,26 @@ class MemoryStore:
                         continue
                     results.append(doc)
         except Exception as e:
-            logger.error("query_relevant failed", error=str(e))
+            logger.error(
+                "query_relevant failed", error_type=type(e).__name__, error=str(e)[:200]
+            )
         if observed:
+            # ids are content hashes and distances are floats — no fact text.
             logger.debug(
                 "recall distances", owner=owner, cutoff=cutoff, facts=observed
             )
-        return results[:n_results]
+        results = results[:n_results]
+        # S2: query text and returned documents are never logged; counts only.
+        # INFO so the per-turn recall count survives the production floor.
+        logger.info(
+            "memory query completed",
+            owner=owner,
+            query_chars=len(context),
+            candidates=len(observed),
+            results=len(results),
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
+        return results
 
     async def sweep_expired(self) -> int:
         if not self.loaded:
@@ -247,7 +280,7 @@ class MemoryStore:
             logger.info("episodic ttl sweep", swept=len(ids))
             return len(ids)
         except Exception as e:
-            logger.error("sweep_expired failed", error=str(e))
+            logger.error("sweep_expired failed", error_type=type(e).__name__, error=str(e)[:200])
             return 0
 
     async def clear_working(self, owner: str | None = None) -> None:
@@ -263,7 +296,7 @@ class MemoryStore:
                 self._working.delete(ids=ids)
             logger.info("working memory cleared", owner=owner)
         except Exception as e:
-            logger.error("clear_working failed", error=str(e))
+            logger.error("clear_working failed", error_type=type(e).__name__, error=str(e)[:200])
 
     async def get_profile_facts(self, owner: str | None = None, n: int = 10) -> list[str]:
         if not self.loaded:
