@@ -109,3 +109,65 @@ describe("useCognition vision_state contract", () => {
     expect(JSON.stringify(sentBody())).not.toContain("avatar_emotion");
   });
 });
+
+describe("avatarEmotion ownership (R3)", () => {
+  function respond(avatar_emotion: unknown) {
+    const body: Record<string, unknown> = { ...okResponse };
+    if (avatar_emotion === undefined) delete body.avatar_emotion;
+    else body.avatar_emotion = avatar_emotion;
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => body });
+  }
+
+  it("runs the full ordering sequence through the real hook and store", async () => {
+    const { result } = renderHook(() => useCognition());
+    const store = useAriaStore.getState();
+
+    // 1–3: initial neutral; a happy face does not move the avatar
+    expect(store.avatarEmotion).toBe("neutral");
+    store.setVisionFrame(happyFrame());
+    expect(useAriaStore.getState().avatarEmotion).toBe("neutral");
+
+    // 4–5: cognition says sad
+    respond("sad");
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    expect(useAriaStore.getState().avatarEmotion).toBe("sad");
+
+    // 6–7: an angry face arrives after the response; avatar stays sad
+    store.setVisionFrame(happyFrame({ emotion: "angry" }));
+    expect(useAriaStore.getState().avatarEmotion).toBe("sad");
+    expect(useAriaStore.getState().emotion).toBe("angry");
+
+    // 8–9: next cognition response changes it
+    respond("happy");
+    await act(async () => {
+      await result.current.sendMessage("again");
+    });
+    expect(useAriaStore.getState().avatarEmotion).toBe("happy");
+  });
+
+  it("preserves the current avatar emotion when the response has no usable avatar_emotion", async () => {
+    useAriaStore.getState().setAvatarEmotion("sad");
+    const { result } = renderHook(() => useCognition());
+
+    respond(undefined);
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    expect(useAriaStore.getState().avatarEmotion).toBe("sad");
+
+    respond("");
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    expect(useAriaStore.getState().avatarEmotion).toBe("sad");
+
+    // A non-string value must not reach the store either (code review P2).
+    respond(42);
+    await act(async () => {
+      await result.current.sendMessage("hello");
+    });
+    expect(useAriaStore.getState().avatarEmotion).toBe("sad");
+  });
+});

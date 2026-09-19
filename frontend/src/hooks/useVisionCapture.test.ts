@@ -217,6 +217,19 @@ describe("useVisionCapture", () => {
     expect(frame!.emotion_confidence).toBe(0);
   });
 
+  it("does not let a detected face overwrite the cognition-owned avatarEmotion (R3)", async () => {
+    useAriaStore.getState().setAvatarEmotion("sad");
+    const { result } = renderHook(() => useVisionCapture(true));
+    await vi.waitFor(() => expect(result.current.active).toBe(true));
+
+    rafCb!(performance.now());
+
+    const s = useAriaStore.getState();
+    expect(s.visionState).not.toBeNull();
+    expect(s.emotion).toBe(s.visionState!.emotion);
+    expect(s.avatarEmotion).toBe("sad");
+  });
+
   it("clears the stale perception frame on unmount without touching avatarEmotion", async () => {
     const { result, unmount } = renderHook(() => useVisionCapture(true));
     await vi.waitFor(() => expect(result.current.active).toBe(true));

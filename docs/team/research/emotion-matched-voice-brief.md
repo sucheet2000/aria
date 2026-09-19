@@ -40,10 +40,10 @@
    `symbolic_inference` to one of {frustrated, fearful, sad, angry, disgusted,
    neutral, happy, surprised}, and the payload reaching the frontend carries
    `data.avatar_emotion`. **This** is the field to send.
-3. **Do NOT read the store.** `frontend/src/store/ariaStore.ts` `setVisionFrame`
-   (~`:147`) overwrites `avatarEmotion` with the **user's webcam facial emotion**
-   every frame, so `store.avatarEmotion` is racy and wrong-sourced, and
-   `store.emotion` is the user's face, not ARIA's. Correct source is
+3. **Do NOT read `store.emotion`.** Since R3, `setVisionFrame` no longer writes
+   `avatarEmotion`; `store.avatarEmotion` is cognition-owned (set only from
+   `data.avatar_emotion`), while `store.emotion` is the **user's webcam facial
+   emotion**, not ARIA's. Correct source is
    `data.avatar_emotion` threaded through `onResponse` into `speak()`.
 
 **What changes (small, cross-stack):**

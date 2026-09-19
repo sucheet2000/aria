@@ -139,7 +139,15 @@ export function useCognition() {
       const data: CognitionResponse = await res.json();
       setIsThinking(false);
       addMessage("assistant", data.natural_language_response);
-      setAvatarEmotion(data.avatar_emotion);
+      // R3: cognition is the only writer of ARIA's response expression. Go
+      // always supplies avatar_emotion (default "neutral"), so the guard is
+      // unreachable against today's edge; it keeps the current expression if a
+      // response ever lacks a usable value instead of blanking it.
+      const avatarEmotion =
+        typeof data.avatar_emotion === "string" && data.avatar_emotion
+          ? data.avatar_emotion
+          : undefined;
+      if (avatarEmotion) setAvatarEmotion(avatarEmotion);
       setProcessingMs(data.processing_ms);
       setSymbolicInference(data.symbolic_inference ?? "");
       if (data.world_model_update && isWorldModelUpdate(data.world_model_update)) {
@@ -151,7 +159,7 @@ export function useCognition() {
       handleSpatialEvent(data.spatial_event);
       window.dispatchEvent(new CustomEvent("aria:memory-updated"));
       if (onResponse) {
-        onResponse(data.natural_language_response, data.avatar_emotion);
+        onResponse(data.natural_language_response, avatarEmotion);
       }
     } catch (err) {
       if (interruptedRef.current) {

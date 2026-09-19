@@ -71,6 +71,26 @@ describe("SkullAvatar", () => {
     },
   );
 
+  it("renders the cognition-owned avatarEmotion, not the user's detected face (R3)", () => {
+    act(() => {
+      // Cognition chose the expression first; a later camera frame must not win.
+      useAriaStore.getState().setAvatarEmotion("fearful");
+      useAriaStore.getState().setVisionFrame({
+        face_landmarks: [[0.5, 0.5, 0]],
+        emotion: "happy",
+        emotion_confidence: 0.9,
+        head_pose: { pitch: 0, yaw: 0, roll: 0 },
+        hand_landmarks: [],
+        timestamp: Date.now() / 1000,
+      });
+    });
+    const { container } = render(<SkullAvatar />);
+    const svg = container.querySelector("svg") as SVGElement;
+    expect(svg.style.getPropertyValue("--skullav-iris")).toBe(STATE_PALETTES.fearful.iris);
+    expect(svg.style.getPropertyValue("--skullav-iris")).not.toBe(STATE_PALETTES.happy.iris);
+    expect(useAriaStore.getState().emotion).toBe("happy");
+  });
+
   it("speaking state wins over the current emotion", () => {
     act(() => {
       useAriaStore.setState({ avatarEmotion: "happy", isSpeaking: true });
