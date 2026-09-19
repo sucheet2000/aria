@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.cognition.llm import LLMClient, _handle_local, classify_tier
+from app.cognition.llm import (
+    SAFE_FALLBACK_RESPONSE,
+    LLMClient,
+    _handle_local,
+    classify_tier,
+)
 from app.models.schemas import ConversationTurn
 
 # ── tier classification ───────────────────────────────────────────────────────
@@ -206,9 +211,10 @@ class TestAnthropicReliability:
             episodic_memory=[],
         )
 
-        assert result.symbolic_inference == "empty completion"
+        assert result.response_status == "empty"
+        assert result.symbolic_inference == ""
         assert result.world_model_update is None
-        assert result.natural_language_response == ""
+        assert result.natural_language_response == SAFE_FALLBACK_RESPONSE
 
     @pytest.mark.asyncio
     async def test_non_text_block_returns_fallback(self) -> None:
@@ -229,7 +235,8 @@ class TestAnthropicReliability:
             episodic_memory=[],
         )
 
-        assert result.symbolic_inference == "empty completion"
+        assert result.response_status == "empty"
+        assert result.symbolic_inference == ""
 
     @pytest.mark.asyncio
     async def test_wellformed_completion_parses(self) -> None:

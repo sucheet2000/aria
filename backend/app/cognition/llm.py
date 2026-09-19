@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import structlog
 from anthropic import AsyncAnthropic
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.cognition.prompt import build_system_parts
 from app.config import settings
@@ -15,6 +16,7 @@ from app.models.schemas import (
     CognitionResponse,
     ConversationTurn,
     PerceptionFrame,
+    ResponseStatus,
     WorldModelTriple,
     WorldModelUpdate,
 )
@@ -68,6 +70,86 @@ _CACHE_MIN_PREFIX_TOKENS: dict[str, int] = {
 # SOUL.md = 2,801 chars = 658 tokens (both models); chars/4 estimates 700.
 _CHARS_PER_TOKEN_ESTIMATE = 4
 _eligibility_logged: set[str] = set()
+
+# ── Response safety (R5) ─────────────────────────────────────────────────────
+# The provider's text is expected to be one JSON object matching the SOUL.md
+# contract. Anything else is a typed failure and the user hears exactly one
+# safe, plain sentence; the failed turn carries no inference for the Go ring
+# and no fact for memory. The raw provider text is never spoken, returned or
+# logged.
+SAFE_FALLBACK_RESPONSE = "Sorry, I lost my train of thought for a moment. Could you say that again?"
+
+# Provider stop reasons that mean the turn did not finish: max_tokens (output
+# cap hit) and pause_turn (a server-tool turn still paused after the bounded
+# continuations). ``refusal`` is its own status so a policy refusal is not
+# miscounted as a parser bug. end_turn / stop_sequence / tool_use fall through
+# to the parser. Verified against anthropic 0.85.0 ``StopReason``
+# = (end_turn, max_tokens, stop_sequence, tool_use, pause_turn, refusal).
+_INCOMPLETE_STOP_REASONS = frozenset({"max_tokens", "pause_turn"})
+_REFUSAL_STOP_REASON = "refusal"
+
+
+class LLMResponseError(Exception):
+    """A provider turn that must not be trusted; ``status`` classifies it."""
+
+    status: ResponseStatus = "malformed"
+
+
+class LLMResponseParseError(LLMResponseError):
+    status: ResponseStatus = "malformed"
+
+
+class LLMResponseTruncatedError(LLMResponseError):
+    status: ResponseStatus = "truncated"
+
+
+class LLMResponseEmptyError(LLMResponseError):
+    status: ResponseStatus = "empty"
+
+
+class LLMResponseSchemaError(LLMResponseError):
+    status: ResponseStatus = "invalid_schema"
+
+
+class LLMResponseRefusedError(LLMResponseError):
+    """The provider declined the turn (``stop_reason == "refusal"``)."""
+
+    status: ResponseStatus = "refused"
+
+
+class _ModelTriple(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    subject: str
+    predicate: str
+    object: str
+
+
+class _ModelWorldModelUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    triple: _ModelTriple
+    confidence: float = 0.5
+    source: str = "behavioral_inference"
+
+
+class _ModelReply(BaseModel):
+    """The structured reply contract as the model must emit it. Unknown keys
+    are ignored (existing policy); ``natural_language_response`` is required
+    and must be a string; ``symbolic_inference`` defaults to ""."""
+
+    model_config = ConfigDict(extra="ignore")
+    natural_language_response: str
+    symbolic_inference: str | None = ""
+    world_model_update: _ModelWorldModelUpdate | None = None
+
+
+def _fallback_response(status: ResponseStatus) -> CognitionResponse:
+    return CognitionResponse(
+        symbolic_inference="",
+        world_model_update=None,
+        natural_language_response=SAFE_FALLBACK_RESPONSE,
+        response_status=status,
+    )
+
 
 # Native web_fetch server tool (GA, no beta header). Cap on how many times a
 # paused turn may be resumed so a stuck pause_turn can never loop unboundedly.
@@ -411,6 +493,7 @@ class LLMClient:
         )
 
         text, used_web_fetch, fetch_error = _extract_text_and_fetch(response)
+        stop_reason = getattr(response, "stop_reason", None)
 
         if used_web_fetch:
             # S2: the URL is user-supplied content (paths and query strings can
@@ -424,56 +507,81 @@ class LLMClient:
                 outcome=fetch_error or "ok",
             )
 
-        if text is None:
+        # R5: classify before trusting any content. Truncation is decided from
+        # the provider's stop_reason first, so parseable-looking partial text
+        # is never accepted; then empty; then parse + schema.
+        try:
+            if stop_reason in _INCOMPLETE_STOP_REASONS:
+                raise LLMResponseTruncatedError(stop_reason)
+            if stop_reason == _REFUSAL_STOP_REASON:
+                raise LLMResponseRefusedError(stop_reason)
+            if text is None or not text.strip():
+                raise LLMResponseEmptyError()
+            result = self._parse_response(text.strip())
+        except LLMResponseError as e:
+            cause = e.__cause__
+            # S2: the type of the underlying error only — never its message
+            # (a pydantic ValidationError message embeds the input values).
             logger.warning(
-                "llm empty or non-text completion, falling back",
+                "llm response rejected",
                 tier=tier,
                 model=model,
+                stop_reason=stop_reason,
+                response_status=e.status,
+                error_type=type(cause).__name__ if cause is not None else type(e).__name__,
+                raw_chars=len(text or ""),
             )
-            result = CognitionResponse(
-                symbolic_inference="empty completion",
-                world_model_update=None,
-                natural_language_response="",
-            )
+            MetricsCollector().record_llm_response(model, e.status)
+            result = _fallback_response(e.status)
         else:
-            result = self._parse_response(text.strip())
+            logger.info(
+                "llm response accepted",
+                tier=tier,
+                model=model,
+                stop_reason=stop_reason,
+                response_status="valid",
+                has_world_model_update=result.world_model_update is not None,
+            )
+            MetricsCollector().record_llm_response(model, "valid")
         result.used_web_fetch = used_web_fetch
         return result
 
     def _parse_response(self, raw: str) -> CognitionResponse:
+        """Parse the model's text into the structured contract.
+
+        Raises ``LLMResponseParseError`` when no JSON object can be decoded and
+        ``LLMResponseSchemaError`` when the object does not satisfy the
+        contract. Never returns the raw text.
+        """
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
-            logger.warning("llm response not JSON, falling back", raw_chars=len(raw))
-            return CognitionResponse(
-                symbolic_inference="state unclear",
-                world_model_update=None,
-                natural_language_response=raw,
-            )
-
+            raise LLMResponseParseError("no JSON object in completion")
         try:
             data = json.loads(match.group())
-            wmu = None
-            if data.get("world_model_update"):
-                raw_wmu = data["world_model_update"]
-                triple = WorldModelTriple(
-                    subject=raw_wmu["triple"]["subject"],
-                    predicate=raw_wmu["triple"]["predicate"],
-                    object=raw_wmu["triple"]["object"],
-                )
-                wmu = WorldModelUpdate(
-                    triple=triple,
-                    confidence=float(raw_wmu.get("confidence", 0.5)),
-                    source=raw_wmu.get("source", "behavioral_inference"),
-                )
-            return CognitionResponse(
-                symbolic_inference=data.get("symbolic_inference", ""),
-                world_model_update=wmu,
-                natural_language_response=data.get("natural_language_response", ""),
+        except json.JSONDecodeError as e:
+            raise LLMResponseParseError("completion is not valid JSON") from e
+        if not isinstance(data, dict):
+            raise LLMResponseSchemaError("completion JSON is not an object")
+        # Existing policy: a null/empty/false world_model_update means "no fact".
+        if not data.get("world_model_update"):
+            data["world_model_update"] = None
+        try:
+            reply = _ModelReply.model_validate(data)
+        except ValidationError as e:
+            raise LLMResponseSchemaError("completion does not match the reply contract") from e
+        wmu = None
+        if reply.world_model_update is not None:
+            wmu = WorldModelUpdate(
+                triple=WorldModelTriple(
+                    subject=reply.world_model_update.triple.subject,
+                    predicate=reply.world_model_update.triple.predicate,
+                    object=reply.world_model_update.triple.object,
+                ),
+                confidence=reply.world_model_update.confidence,
+                source=reply.world_model_update.source,
             )
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
-            logger.warning("failed to parse llm json", error_type=type(e).__name__)
-            return CognitionResponse(
-                symbolic_inference="parse error",
-                world_model_update=None,
-                natural_language_response=raw,
-            )
+        return CognitionResponse(
+            symbolic_inference=reply.symbolic_inference or "",
+            world_model_update=wmu,
+            natural_language_response=reply.natural_language_response,
+        )

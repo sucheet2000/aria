@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import Lock
 
+from app.models.schemas import RESPONSE_STATUSES
+
 
 @dataclass
 class Histogram:
@@ -42,6 +44,7 @@ class MetricsCollector:
                 inst._interrupt_latency = Histogram()
                 inst._token_cost: dict[str, dict[str, int]] = {}
                 inst._prompt_cache: dict[str, dict[str, int]] = {}
+                inst._llm_response: dict[str, dict[str, int]] = {}
                 inst._anchors_created: int = 0
                 inst._gesture_events: dict[str, int] = {}
                 inst._errors: int = 0
@@ -71,6 +74,16 @@ class MetricsCollector:
             )
             bucket[status if status in bucket else "unknown"] += 1
 
+    def record_llm_response(self, model: str, status: str) -> None:
+        """Count how each provider turn was classified (R5). Buckets follow
+        ``schemas.ResponseStatus``. Never carries content."""
+        with self._data_lock:
+            bucket = self._llm_response.setdefault(
+                model, dict.fromkeys(RESPONSE_STATUSES, 0)
+            )
+            if status in bucket:
+                bucket[status] += 1
+
     def record_anchor_created(self) -> None:
         with self._data_lock:
             self._anchors_created += 1
@@ -90,6 +103,7 @@ class MetricsCollector:
                 "interrupt_latency_ms": self._interrupt_latency.snapshot(),
                 "token_cost": {k: dict(v) for k, v in self._token_cost.items()},
                 "prompt_cache": {k: dict(v) for k, v in self._prompt_cache.items()},
+                "llm_response": {k: dict(v) for k, v in self._llm_response.items()},
                 "anchors_created": self._anchors_created,
                 "gesture_events": dict(self._gesture_events),
                 "errors": self._errors,

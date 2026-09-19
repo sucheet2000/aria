@@ -81,7 +81,9 @@ async def cognition(
         # Memory-poisoning guard: never persist a fact inferred on a turn where
         # web_fetch ran, so a hostile page cannot write into owner memory.
         logger.info("fact-write suppressed on web_fetch turn", owner=owner)
-    elif result.world_model_update:
+    elif result.world_model_update and result.response_status == "valid":
+        # (A failed turn never carries a world_model_update — R5 — but the
+        # status check keeps that invariant explicit at the write site.)
         # The store checks ``expected_generation`` under the owner's mutation
         # lock: if the owner deleted memory while this turn was generating,
         # the model saw pre-delete facts and its triple is dropped atomically

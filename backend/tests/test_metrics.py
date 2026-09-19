@@ -14,6 +14,7 @@ def reset_metrics():
     m._interrupt_latency = Histogram()
     m._token_cost = {}
     m._prompt_cache = {}
+    m._llm_response = {}
     m._anchors_created = 0
     m._gesture_events = {}
     yield
@@ -127,6 +128,7 @@ def test_snapshot_has_all_keys():
     assert "interrupt_latency_ms" in snap
     assert "token_cost" in snap
     assert "prompt_cache" in snap
+    assert "llm_response" in snap
     assert "anchors_created" in snap
     assert "gesture_events" in snap
 
