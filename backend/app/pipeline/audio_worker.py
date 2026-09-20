@@ -138,9 +138,6 @@ def process_audio_stream(
     last_transcript_time = 0.0
     post_sleep_until = 0.0
 
-    speech_chunks: list[np.ndarray] = []
-    silence_ms: int = 0
-    in_speech: bool = False
     _consecutive_transcribe_errors: int = 0
     _MAX_CONSECUTIVE_ERRORS = 5
 
@@ -148,22 +145,19 @@ def process_audio_stream(
         if _stop:
             break
 
-        is_speech_frame, completed = vad.process_chunk(chunk_f32)
-
-        if is_speech_frame:
-            speech_chunks.append(chunk_f32)
-            in_speech = True
-            silence_ms = 0
-
-            total_ms = len(speech_chunks) * VADProcessor.CHUNK_MS
-            if total_ms >= args.max_utterance_ms:
-                completed = list(speech_chunks)
-                speech_chunks = []
-                silence_ms = 0
-                in_speech = True
+        # V1: the VAD is the sole owner of the utterance buffer; every
+        # finalization path take-and-resets inside process_chunk, so the live
+        # buffer is already empty here. This loop keeps no speech buffer (B5).
+        _is_speech, completed = vad.process_chunk(chunk_f32)
 
         if completed is not None:
             t0 = time.time()
+            # S2: counts and duration only — never audio or text.
+            logger.debug(
+                "utterance completed",
+                chunk_count=len(completed),
+                audio_ms=len(completed) * VADProcessor.CHUNK_MS,
+            )
 
             if args.denoise and denoiser.enabled:
                 audio_array = np.concatenate(completed)
@@ -245,7 +239,7 @@ def process_audio_stream(
 
 
 def run_stdin(args: argparse.Namespace) -> None:
-    vad = VADProcessor()
+    vad = VADProcessor(max_utterance_ms=args.max_utterance_ms)
     transcriber: Transcriber
     if args.coreml:
         from app.pipeline.whisper_coreml import WhisperCoreML
