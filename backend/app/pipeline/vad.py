@@ -10,7 +10,7 @@ class VADProcessor:
     CHUNK_MS = 30
     CHUNK_SAMPLES = int(16000 * 30 / 1000)  # 480
 
-    def __init__(self, aggressiveness: int = 0) -> None:
+    def __init__(self, aggressiveness: int = 0, max_utterance_ms: int = 8000) -> None:
         self._vad = None
         self._aggressiveness = aggressiveness
         self._speech_chunks: list = []
@@ -19,6 +19,14 @@ class VADProcessor:
         self._muted: bool = False
         self.MIN_SPEECH_MS = 250
         self.MAX_SILENCE_MS = 400
+        # V1: this processor is the SOLE owner of the utterance buffer, and the
+        # max-utterance cap lives here with it. It is checked on speech frames
+        # only, so the trailing-silence window still finalizes normally; the
+        # buffer is therefore bounded by max_utterance_ms + MAX_SILENCE_MS
+        # (~8.4 s = ~538 KB float32 at the defaults).
+        # Clamped so a misconfigured cap can neither flush every single chunk
+        # nor sit below the min-speech gate it must cooperate with.
+        self.max_utterance_ms = max(max_utterance_ms, self.MIN_SPEECH_MS)
 
     def mute(self) -> None:
         """Suppress speech detection while ARIA is speaking TTS."""
@@ -54,6 +62,16 @@ class VADProcessor:
             self._in_speech = True
             self._silence_ms = 0
             self._speech_chunks.append(chunk.copy())
+            if len(self._speech_chunks) * self.CHUNK_MS >= self.max_utterance_ms:
+                # Forced flush of an over-long utterance: an atomic
+                # take-and-reset, exactly like the silence path below, so the
+                # flushed part can never be transcribed a second time. Staying
+                # in-speech keeps the continuation flowing without re-arming
+                # the idle energy gate.
+                completed = list(self._speech_chunks)
+                self._reset()
+                self._in_speech = True
+                return True, completed
             return True, None
 
         if self._in_speech:
@@ -61,7 +79,12 @@ class VADProcessor:
             self._speech_chunks.append(chunk.copy())
             if self._silence_ms >= self.MAX_SILENCE_MS:
                 total_ms = len(self._speech_chunks) * self.CHUNK_MS
-                if total_ms >= self.MIN_SPEECH_MS:
+                # Audio before the trailing-silence window. Zero means the
+                # buffer is nothing but silence (only reachable right after a
+                # forced flush) — Whisper hallucinates words on silence, so it
+                # must never be transcribed.
+                speech_ms = total_ms - self._silence_ms
+                if total_ms >= self.MIN_SPEECH_MS and speech_ms > 0:
                     completed = list(self._speech_chunks)
                     self._reset()
                     return False, completed
