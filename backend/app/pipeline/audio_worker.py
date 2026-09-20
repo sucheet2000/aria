@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import signal
 import sys
 import threading
@@ -34,6 +35,92 @@ MAX_UTTERANCE_MS = 8000
 logger = structlog.get_logger()
 
 _stop = False
+
+# ── Wake / sleep phrase matching (V2) ────────────────────────────────────────
+# These are the configured phrases, unchanged. What changed is HOW they are
+# matched: audit B6 used ``phrase in text.lower()``, so "maria" woke ARIA and
+# "that's allowed" slept it. A phrase now has to appear as a contiguous run of
+# whole tokens, which cannot happen inside a larger word.
+WAKE_WORDS = frozenset({
+    "aria",
+    "hey aria",
+    "hi aria",
+    "area",
+    "hey area",
+    "hi area",
+    "arya",
+    "hey arya",
+    "harya",
+    "haria",
+})
+SLEEP_PHRASES = frozenset({
+    "that will be all",
+    "that would be all",
+    "go to sleep",
+    "goodbye aria",
+    "bye aria",
+    "sleep aria",
+    "shut down",
+    "that's all",
+    "thats all",
+})
+
+# Runs of letters/digits only, so punctuation and whitespace are separators and
+# casefold gives Unicode-safe lowercasing. Apostrophes split too, and because
+# phrases are tokenized the same way "that's all" -> ("that", "s", "all")
+# matches the spoken form either way, while "that's allowed" does not.
+# Linear scan, no alternation or nesting: no backtracking risk.
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+# A phrase may not span a sentence boundary. Without this, dropping punctuation
+# would let "I told him that; will be all set" match "that will be all" —
+# a false sleep that plain substring matching never had. Commas and dashes are
+# NOT boundaries, so "hey, aria" and "that-would-be-all" still match.
+_SENTENCE_BREAK_RE = re.compile(r"[.!?;:]+")
+
+
+def _tokens(text: str) -> list[str]:
+    """Normalize a transcript to comparable lowercase word tokens."""
+    return _TOKEN_RE.findall(text.casefold())
+
+
+def _sentences(text: str) -> list[list[str]]:
+    """Tokenize into one token list per sentence-like segment."""
+    return [_tokens(part) for part in _SENTENCE_BREAK_RE.split(text)]
+
+
+def _phrase_tokens(phrases: frozenset[str]) -> tuple[tuple[str, ...], ...]:
+    return tuple(tuple(_tokens(p)) for p in sorted(phrases))
+
+
+# Tokenized once at import; matching reads only these. Rebinding WAKE_WORDS or
+# SLEEP_PHRASES at runtime would therefore have no effect.
+_WAKE_TOKENS = _phrase_tokens(WAKE_WORDS)
+_SLEEP_TOKENS = _phrase_tokens(SLEEP_PHRASES)
+
+
+def _contains_phrase(
+    tokens: list[str], phrases: tuple[tuple[str, ...], ...]
+) -> bool:
+    """True when any phrase appears as a contiguous run of whole tokens."""
+    for phrase in phrases:
+        span = len(phrase)
+        if not span:
+            continue
+        for start in range(len(tokens) - span + 1):
+            if tuple(tokens[start:start + span]) == phrase:
+                return True
+    return False
+
+
+def matches_wake(text: str) -> bool:
+    """True when a wake phrase appears as whole words within one sentence."""
+    return any(_contains_phrase(s, _WAKE_TOKENS) for s in _sentences(text))
+
+
+def matches_sleep(text: str) -> bool:
+    """True when a sleep phrase appears as whole words within one sentence."""
+    return any(_contains_phrase(s, _SLEEP_TOKENS) for s in _sentences(text))
 
 
 def _handle_sigterm(signum: int, frame: object) -> None:
@@ -110,29 +197,6 @@ def process_audio_stream(
     denoiser: Denoiser,
     args: argparse.Namespace,
 ) -> None:
-    WAKE_WORDS = {
-        "aria",
-        "hey aria",
-        "hi aria",
-        "area",
-        "hey area",
-        "hi area",
-        "arya",
-        "hey arya",
-        "harya",
-        "haria",
-    }
-    SLEEP_PHRASES = {
-        "that will be all",
-        "that would be all",
-        "go to sleep",
-        "goodbye aria",
-        "bye aria",
-        "sleep aria",
-        "shut down",
-        "that's all",
-        "thats all",
-    }
     ACTIVE_TIMEOUT_S = 30.0
     mode = "idle"  # "idle" or "active"
     last_transcript_time = 0.0
@@ -207,8 +271,7 @@ def process_audio_stream(
                 if mode == "active" and (now - last_transcript_time) > ACTIVE_TIMEOUT_S:
                     mode = "idle"
 
-                text_lower = text.lower().strip()
-                contains_wake = any(w in text_lower for w in WAKE_WORDS)
+                contains_wake = matches_wake(text)
 
                 if mode == "idle":
                     if now < post_sleep_until:
@@ -222,8 +285,7 @@ def process_audio_stream(
                     # else: ignore transcript in idle mode
                 else:
                     last_transcript_time = now
-                    text_lower_check = text.lower().strip()
-                    if any(p in text_lower_check for p in SLEEP_PHRASES):
+                    if matches_sleep(text):
                         mode = "idle"
                         last_transcript_time = 0.0
                         post_sleep_until = now + 5.0
