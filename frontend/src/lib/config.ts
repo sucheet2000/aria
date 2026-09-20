@@ -25,6 +25,14 @@ export const WS_URL: string =
 export const AUDIO_WS_URL: string =
   process.env.NEXT_PUBLIC_AUDIO_WS_URL ?? deriveAudioWsUrl(WS_URL);
 
+// Browser deadline for POST /api/cognition. It is the OUTERMOST bound of the
+// cross-layer budget: browser 25s > Go upstream 20s > Python total 15s >=
+// provider attempt 10s, with 5s margins. Because every inner layer gives up
+// first, this timer should essentially never fire — Go returns 504 at 20s and
+// the browser renders a real error. It exists only as a backstop for
+// network-level stalls where no response ever arrives.
+export const COGNITION_REQUEST_TIMEOUT_MS = 25000;
+
 function pointsAtLocalhost(apiBase: string): boolean {
   try {
     const host = new URL(apiBase).hostname.toLowerCase();

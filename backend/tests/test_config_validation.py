@@ -67,9 +67,18 @@ def test_env_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_anthropic_reliability_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("ANTHROPIC_MAX_RETRIES", raising=False)
+    monkeypatch.delenv("COGNITION_TOTAL_TIMEOUT_SECONDS", raising=False)
     settings = Settings(_env_file=None)
-    assert settings.ANTHROPIC_TIMEOUT_SECONDS == 30.0
+    # R6: per-ATTEMPT timeout, nested inside the turn's total budget.
+    assert settings.ANTHROPIC_TIMEOUT_SECONDS == 10.0
     assert settings.ANTHROPIC_MAX_RETRIES == 3
+    assert settings.COGNITION_TOTAL_TIMEOUT_SECONDS == 15.0
+    assert settings.COGNITION_TOTAL_TIMEOUT_SECONDS > settings.ANTHROPIC_TIMEOUT_SECONDS
+
+
+def test_cognition_budget_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COGNITION_TOTAL_TIMEOUT_SECONDS", "9.5")
+    assert Settings(_env_file=None).COGNITION_TOTAL_TIMEOUT_SECONDS == 9.5
 
 
 def test_anthropic_reliability_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:

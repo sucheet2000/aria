@@ -27,8 +27,20 @@ class Settings(BaseSettings):
     # When true, an empty ANTHROPIC_API_KEY is a fatal startup error instead of
     # a warning. Left false so key-less local dev keeps working.
     REQUIRE_ANTHROPIC_KEY: bool = False
-    # Per-request timeout (seconds) for outbound Anthropic cognition calls.
-    ANTHROPIC_TIMEOUT_SECONDS: float = 30.0
+    # R6 request budget, monotonic inward — browser 25s > Go upstream 20s >
+    # COGNITION_TOTAL 15s >= ANTHROPIC_TIMEOUT (per attempt) 10s, with a 5s
+    # margin at each hop to serialize, proxy and return the error. Measured
+    # live 2026-09-19: a real turn is 1.4s (Haiku) / 3.6s (Sonnet), so the
+    # attempt cap carries ~3x headroom. Raising any value without raising the
+    # one outside it re-creates the inversion this budget exists to prevent.
+    #
+    # Total wall-clock budget for one /api/cognition turn (retrieval + provider
+    # attempts + retries + pause_turn continuations + the fact write).
+    COGNITION_TOTAL_TIMEOUT_SECONDS: float = 15.0
+    # PER-ATTEMPT timeout for one outbound Anthropic call. The SDK applies it to
+    # each retry separately, so it is additionally capped at runtime to the
+    # budget still remaining (see llm._attempt_timeout).
+    ANTHROPIC_TIMEOUT_SECONDS: float = 10.0
     # Bounded SDK retries on transient (408/409/429/>=500) Anthropic errors.
     ANTHROPIC_MAX_RETRIES: int = 3
     # Per-request timeout (seconds) for outbound ElevenLabs TTS calls. Small so a
