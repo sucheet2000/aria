@@ -80,9 +80,15 @@ func TestServeHTTP_UpstreamGatewayTimeoutStaysA504(t *testing.T) {
 // A sub-millisecond remainder must round UP to 1ms: flooring it to 0 would drop
 // the header and let Python take its full budget while Go is already expiring.
 func TestComplete_SubMillisecondBudgetStillSendsHeader(t *testing.T) {
-	var header string
+	// The header is handed over a channel, not a shared variable: with a
+	// sub-millisecond budget Complete may return before the upstream handler
+	// runs, and reading a plain variable then races the handler goroutine.
+	headers := make(chan string, 1)
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header = r.Header.Get(DeadlineHeader)
+		select {
+		case headers <- r.Header.Get(DeadlineHeader):
+		default:
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"symbolic_inference":"","natural_language_response":"hi"}`))
 	}))
@@ -93,8 +99,17 @@ func TestComplete_SubMillisecondBudgetStillSendsHeader(t *testing.T) {
 	defer cancel()
 	_, _ = c.Complete(ctx, CognitionRequest{Message: "m", SessionID: "s1"})
 
-	if header != "" && header != "1" {
-		t.Fatalf("%s = %q, want \"1\" (rounded up) or an expired-budget refusal", DeadlineHeader, header)
+	// Both outcomes are correct for so small a budget: either the request never
+	// left (expired-budget refusal), or it left carrying a rounded-up 1ms. What
+	// must never happen is a request that leaves with the header dropped.
+	select {
+	case header := <-headers:
+		if header != "1" {
+			t.Fatalf("%s = %q, want \"1\" — a sub-millisecond remainder must round up, not floor to 0", DeadlineHeader, header)
+		}
+	case <-time.After(time.Second):
+		// Never reached the upstream; the expired-budget path is covered by
+		// TestComplete_ExpiredBudgetSkipsUpstream.
 	}
 }
 
