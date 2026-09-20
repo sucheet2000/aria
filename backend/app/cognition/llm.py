@@ -89,6 +89,37 @@ _INCOMPLETE_STOP_REASONS = frozenset({"max_tokens", "pause_turn"})
 _REFUSAL_STOP_REASON = "refusal"
 
 
+class CognitionDeadlineError(Exception):
+    """The turn's total budget ran out before or between provider calls (R6).
+
+    Deliberately NOT an ``LLMResponseError``: running out of time is not a
+    malformed model response and must not become the R5 safe fallback. The
+    route maps it to 504.
+    """
+
+
+def _now() -> float:
+    """Monotonic clock, in its own function so tests can inject a fake one."""
+    return time.monotonic()
+
+
+def _attempt_timeout(deadline: float | None) -> float:
+    """Seconds this provider attempt may take.
+
+    The SDK applies its timeout per attempt and retries on top, so an attempt
+    is additionally capped at whatever is left of the turn's budget. Retries
+    and ``pause_turn`` continuations therefore drain one shared budget instead
+    of each starting a fresh one.
+    """
+    cap = settings.ANTHROPIC_TIMEOUT_SECONDS
+    if deadline is None:
+        return cap
+    remaining = deadline - _now()
+    if remaining <= 0:
+        raise CognitionDeadlineError("request budget exhausted")
+    return min(cap, remaining)
+
+
 class LLMResponseError(Exception):
     """A provider turn that must not be trusted; ``status`` classifies it."""
 
@@ -387,7 +418,11 @@ class LLMClient:
         conversation_history: list[ConversationTurn],
         working_memory: list[str],
         episodic_memory: list[str],
+        deadline: float | None = None,
     ) -> CognitionResponse:
+        """``deadline`` is a monotonic instant (``time.monotonic()`` base) by
+        which the whole turn must be done; every provider attempt is capped to
+        the time still left before it (R6)."""
         tier: Tier = classify_tier(message)
         logger.debug("llm tier routing", tier=tier, message_chars=len(message))
 
@@ -446,6 +481,8 @@ class LLMClient:
             "max_tokens": self.MAX_TOKENS,
             "system": system,
             "messages": messages,
+            # R6: bounded by whatever is left of this turn's budget.
+            "timeout": _attempt_timeout(deadline),
         }
         if (
             settings.WEB_FETCH_ENABLED
@@ -477,6 +514,8 @@ class LLMClient:
                 *create_kwargs["messages"],
                 {"role": "assistant", "content": response.content},
             ]
+            # R6: a continuation spends what is LEFT, it never resets the budget.
+            create_kwargs["timeout"] = _attempt_timeout(deadline)
             response = await self._client.messages.create(**create_kwargs)
             _record_token_usage(model, response)
         elapsed_ms = int((time.time() - start) * 1000)

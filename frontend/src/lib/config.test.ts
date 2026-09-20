@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  COGNITION_REQUEST_TIMEOUT_MS,
   deriveWsUrl,
   deriveAudioWsUrl,
   isBackendMisconfigured,
@@ -74,5 +75,19 @@ describe("config defaults", () => {
 
   it("derives AUDIO_WS_URL as the /ws/audio path on the same host", () => {
     expect(AUDIO_WS_URL).toBe("ws://localhost:8080/ws/audio");
+  });
+});
+
+describe("COGNITION_REQUEST_TIMEOUT_MS (R6 deadline ordering)", () => {
+  // Mirrors backend/internal/cognition UpstreamTimeout. If either side moves,
+  // this test fails and forces the whole budget to be re-agreed.
+  const GO_UPSTREAM_TIMEOUT_MS = 20000;
+
+  it("is the agreed 25s browser backstop", () => {
+    expect(COGNITION_REQUEST_TIMEOUT_MS).toBe(25000);
+  });
+
+  it("is strictly the outermost bound, above the Go upstream timeout", () => {
+    expect(COGNITION_REQUEST_TIMEOUT_MS).toBeGreaterThan(GO_UPSTREAM_TIMEOUT_MS);
   });
 });

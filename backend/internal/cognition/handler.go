@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -128,13 +129,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "emotion_confidence must be between 0 and 1"})
 		return
 	}
-	ctx, cancel := context.WithCancel(r.Context())
+	budget := h.client.UpstreamTimeout()
+	ctx, cancel := context.WithTimeout(r.Context(), budget)
 	defer cancel()
 
+	start := time.Now()
 	result, err := h.client.Complete(ctx, req)
 	if err != nil {
-		h.log.Error().Err(err).Msg("cognition complete failed")
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		switch {
+		case errors.Is(r.Context().Err(), context.Canceled):
+			// The caller hung up. Writing a body would go nowhere, and a 500
+			// would charge a client-side disconnect to the server error rate.
+			h.log.Info().
+				Str("reason", "client_disconnected").
+				Int64("elapsed_ms", time.Since(start).Milliseconds()).
+				Msg("cognition request abandoned by caller")
+		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, ErrUpstreamTimeout):
+			h.log.Error().
+				Str("reason", "upstream_timeout").
+				Int64("elapsed_ms", time.Since(start).Milliseconds()).
+				Int64("budget_ms", budget.Milliseconds()).
+				Msg("cognition upstream exceeded its budget")
+			writeJSON(w, http.StatusGatewayTimeout, errorResponse{Error: "cognition upstream timed out"})
+		default:
+			h.log.Error().Err(err).Msg("cognition complete failed")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+		}
 		return
 	}
 

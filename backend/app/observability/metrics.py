@@ -45,6 +45,7 @@ class MetricsCollector:
                 inst._token_cost: dict[str, dict[str, int]] = {}
                 inst._prompt_cache: dict[str, dict[str, int]] = {}
                 inst._llm_response: dict[str, dict[str, int]] = {}
+                inst._cognition_timeout: dict[str, int] = {}
                 inst._anchors_created: int = 0
                 inst._gesture_events: dict[str, int] = {}
                 inst._errors: int = 0
@@ -84,6 +85,12 @@ class MetricsCollector:
             if status in bucket:
                 bucket[status] += 1
 
+    def record_cognition_timeout(self, category: str) -> None:
+        """Count how a cognition turn ran out of budget (R6): which layer gave
+        up, never why in content terms."""
+        with self._data_lock:
+            self._cognition_timeout[category] = self._cognition_timeout.get(category, 0) + 1
+
     def record_anchor_created(self) -> None:
         with self._data_lock:
             self._anchors_created += 1
@@ -104,6 +111,7 @@ class MetricsCollector:
                 "token_cost": {k: dict(v) for k, v in self._token_cost.items()},
                 "prompt_cache": {k: dict(v) for k, v in self._prompt_cache.items()},
                 "llm_response": {k: dict(v) for k, v in self._llm_response.items()},
+                "cognition_timeout": dict(self._cognition_timeout),
                 "anchors_created": self._anchors_created,
                 "gesture_events": dict(self._gesture_events),
                 "errors": self._errors,

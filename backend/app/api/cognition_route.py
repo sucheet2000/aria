@@ -1,13 +1,16 @@
+import asyncio
 import dataclasses
 import time
+from collections.abc import Mapping
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_owner
-from app.cognition.llm import LLMClient
+from app.cognition.llm import CognitionDeadlineError, LLMClient
 from app.cognition.memory import MemoryStore
+from app.config import settings
 from app.models.schemas import (
     CognitionRequest,
     CognitionResponse,
@@ -23,6 +26,51 @@ from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# R6: the Go edge sends what is left of ITS deadline. Python caps that to its
+# own maximum, so a caller can only ever shorten the budget, never extend
+# server policy, and a malformed value is ignored rather than fatal.
+DEADLINE_HEADER = "X-Aria-Deadline-Ms"
+
+# A durable write runs in a threadpool, which anyio does not abandon on
+# cancellation, so once it starts it finishes even on a turn the caller has
+# given up on. We therefore refuse to START one without at least this much
+# budget left. It shrinks the window rather than closing it: the guarantee is
+# "no side effect is begun once the budget is effectively gone".
+WRITE_MARGIN_SECONDS = 0.25
+
+
+def _now() -> float:
+    """Monotonic clock, in its own function so tests can inject a fake one."""
+    return time.monotonic()
+
+
+def cognition_budget_seconds(headers: Mapping[str, str]) -> float:
+    """Seconds this turn may take: ``min(our maximum, what the caller has left)``."""
+    maximum = settings.COGNITION_TOTAL_TIMEOUT_SECONDS
+    raw = headers.get(DEADLINE_HEADER)
+    if raw is None:
+        return maximum
+    try:
+        remaining_ms = int(raw)
+    except (TypeError, ValueError):
+        return maximum
+    if remaining_ms <= 0:
+        return 0.0
+    return min(maximum, remaining_ms / 1000.0)
+
+
+def _timeout_category(exc: BaseException) -> str:
+    """Which layer gave up, for logs and counters. Caller cancellation is not
+    the same event as our own deadline expiring."""
+    if isinstance(exc, asyncio.CancelledError):
+        return "cancelled"
+    return "python_total_timeout"
+
+
+def _budget_spent(deadline: float, *, margin: float = 0.0) -> bool:
+    """True when there is no longer enough budget to begin a side effect."""
+    return _now() + margin >= deadline
 
 
 # ── dependency providers (services are created once in the app lifespan) ──────
@@ -46,12 +94,69 @@ def get_registry(request: Request) -> AnchorRegistry:
 @router.post("/api/cognition")
 async def cognition(
     req: CognitionRequest,
+    request: Request,
     client: LLMClient = Depends(get_client),
     memory: MemoryStore = Depends(get_memory),
     bridge: GestureAnchorBridge = Depends(get_bridge),
     owner: str = Depends(get_current_owner),
 ) -> dict:
     start = time.time()
+    # R6: one budget for the whole turn. It bounds retrieval, every provider
+    # attempt and retry, the continuation loop and the fact write, so no inner
+    # layer can outlive the caller that is waiting on it.
+    budget = cognition_budget_seconds(request.headers)
+    deadline = _now() + budget
+    if budget <= 0:
+        # The caller's own deadline has already passed: do no work at all
+        # rather than start a turn nobody is waiting for.
+        raise _deadline_response(owner, budget, start, "python_total_timeout")
+    try:
+        async with asyncio.timeout(budget):
+            return await _cognition_turn(
+                req, client, memory, bridge, owner, start, deadline
+            )
+    except (TimeoutError, CognitionDeadlineError) as exc:
+        raise _deadline_response(owner, budget, start, _timeout_category(exc)) from None
+    except asyncio.CancelledError:
+        # The caller went away mid-turn. Record it as its own category — it is
+        # not our deadline expiring — then RE-RAISE: cancellation must never be
+        # swallowed or converted into a response.
+        MetricsCollector().record_cognition_timeout("cancelled")
+        logger.info(
+            "cognition cancelled",
+            owner=owner,
+            timeout_category="cancelled",
+            budget_ms=int(budget * 1000),
+            elapsed_ms=int((time.time() - start) * 1000),
+        )
+        raise
+
+
+def _deadline_response(
+    owner: str, budget: float, start: float, category: str
+) -> HTTPException:
+    """Count and log the expiry, then hand back the 504 to raise. S2: layer,
+    category and timings only — never the message, the prompt or the reply."""
+    MetricsCollector().record_cognition_timeout(category)
+    logger.warning(
+        "cognition deadline exceeded",
+        owner=owner,
+        timeout_category=category,
+        budget_ms=int(budget * 1000),
+        elapsed_ms=int((time.time() - start) * 1000),
+    )
+    return HTTPException(status_code=504, detail="cognition timed out")
+
+
+async def _cognition_turn(
+    req: CognitionRequest,
+    client: LLMClient,
+    memory: MemoryStore,
+    bridge: GestureAnchorBridge,
+    owner: str,
+    start: float,
+    deadline: float,
+) -> dict:
 
     # The validated frame is passed through whole (R2): a field-by-field copy
     # is how a perception field silently goes missing at a boundary.
@@ -72,6 +177,7 @@ async def cognition(
         conversation_history=req.conversation_history,
         working_memory=req.working_memory,
         episodic_memory=episodic,
+        deadline=deadline,
     )
 
     processing_ms = int((time.time() - start) * 1000)
@@ -81,6 +187,9 @@ async def cognition(
         # Memory-poisoning guard: never persist a fact inferred on a turn where
         # web_fetch ran, so a hostile page cannot write into owner memory.
         logger.info("fact-write suppressed on web_fetch turn", owner=owner)
+    elif _budget_spent(deadline, margin=WRITE_MARGIN_SECONDS):
+        # R6: no budget left to begin a durable write (see WRITE_MARGIN_SECONDS).
+        logger.info("fact-write skipped after deadline", owner=owner)
     elif result.world_model_update and result.response_status == "valid":
         # (A failed turn never carries a world_model_update — R5 — but the
         # status check keeps that invariant explicit at the write site.)
@@ -100,7 +209,13 @@ async def cognition(
         )
 
     spatial_event: SpatialEvent | None = None
-    if req.gesture != "none" or req.two_hand_gesture != "NONE":
+    if (req.gesture != "none" or req.two_hand_gesture != "NONE") and _budget_spent(
+        deadline, margin=WRITE_MARGIN_SECONDS
+    ):
+        # Registering an anchor is a durable SQLite write with the same
+        # non-abandonable threadpool shape as the fact write above.
+        logger.info("spatial event skipped after deadline", owner=owner)
+    elif req.gesture != "none" or req.two_hand_gesture != "NONE":
         spatial_event = await run_in_threadpool(
             bridge.on_gesture_event,
             req.gesture,

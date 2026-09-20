@@ -7,7 +7,7 @@ import type { WorldModelUpdate } from "@/store/ariaStore";
 import { useWorldModel } from "@/spatial/useWorldModel";
 import type { SpatialAnchor } from "@/spatial/useWorldModel";
 import { broadcastAnchorAdded } from "@/spatial/useSpatialSync";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, COGNITION_REQUEST_TIMEOUT_MS } from "@/lib/config";
 import { buildCognitionVisionState } from "@/lib/perception/cognitionVisionState";
 
 // Module-level ref so useWebSocket can abort the in-flight fetch without
@@ -111,7 +111,7 @@ export function useCognition() {
 
     const controller = new AbortController();
     abortCognitionRef.current = () => controller.abort();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), COGNITION_REQUEST_TIMEOUT_MS);
 
     try {
       const token = await getToken();
@@ -133,7 +133,11 @@ export function useCognition() {
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        // 504 is the server's own deadline (Go 20s / Python 15s) firing before
+        // our 25s backstop — the expected timeout path, not a generic failure.
+        const err = new Error(`HTTP ${res.status}`);
+        if (res.status === 504) err.name = "TimeoutError";
+        throw err;
       }
 
       const data: CognitionResponse = await res.json();
@@ -168,7 +172,7 @@ export function useCognition() {
         return;
       }
       const msg =
-        err instanceof Error && err.name === "AbortError"
+        err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")
           ? "Request timed out."
           : "I could not process that request.";
       setError(msg);
