@@ -34,6 +34,12 @@ type Config struct {
 	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
 	// Python requires. Empty disables the boundary for local dev.
 	InternalAuthSecret string
+
+	// MetricsToken is the dedicated scrape credential for GET /metrics. It is
+	// deliberately NOT a user session token: monitoring is a machine caller and
+	// must not require, or be satisfied by, a person's Clerk session. Empty
+	// leaves the endpoint open, which the server refuses to do on a public bind.
+	MetricsToken string
 	// PythonBaseURL is the single source of truth for the internal Python FastAPI
 	// base URL that Go proxies cognition, tts, memory, and anchor requests to.
 	PythonBaseURL string
@@ -167,6 +173,7 @@ func Load() *Config {
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
 		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),
+		MetricsToken:         os.Getenv("METRICS_TOKEN"),
 		PythonBaseURL:        pythonBaseURL,
 		AllowedOrigins:       allowedOrigins,
 		RateLimitRPS:         rateLimitRPS,
