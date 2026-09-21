@@ -61,6 +61,14 @@ function openPalm(): number[][] {
 function point(): number[][] {
   const lm = baseLandmarks();
   lm[0] = [0.5, 0.9, 0.0];
+  // The thumb has to be placed. baseLandmarks() leaves every point at the
+  // centre of the frame, which put the thumb tip on top of the index tip —
+  // geometrically a pinch, not a point. The old classifier never looked at the
+  // thumb so the fixture passed anyway.
+  lm[1] = [0.42, 0.82, 0.0];
+  lm[2] = [0.38, 0.78, 0.0];
+  lm[3] = [0.35, 0.75, 0.0];
+  lm[4] = [0.33, 0.72, 0.0];
   extendFinger(lm, 5, 6, 7, 8, 0.75);
   curlFinger(lm, 9, 10, 11, 12, 0.7);
   curlFinger(lm, 13, 14, 15, 16, 0.7);
@@ -114,11 +122,16 @@ describe("GestureClassifier", () => {
     expect(Math.sqrt(vx * vx + vy * vy + vz * vz)).toBeCloseTo(1.0, 5);
   });
 
-  it("classifies a fist as PINCH (cancel) with no pointing vector", () => {
-    const r = new GestureClassifier().classify(fist());
-    expect(r.gestureType).toBe(HAND_GESTURE_PINCH);
-    expect(gestureName(r.gestureType)).toBe("cancel");
-    expect(r.pointingVector).toBeNull();
+  // A closed fist is NOT a pinch. It used to be reported as one — and shown to
+  // the user as "cancel" — because PINCH was scored by a curled-finger count
+  // that never looked at the thumb. There is no FIST value in the gesture
+  // contract, so a fist now correctly reads as no recognized gesture rather
+  // than as somebody else's.
+  it("does not classify a fist as PINCH", () => {
+    const g = new GestureClassifier().classify(fist());
+    expect(g.gestureType).not.toBe(HAND_GESTURE_PINCH);
+    expect(g.gestureType).toBe(HAND_GESTURE_UNSPECIFIED);
+    expect(g.pointingVector).toBeNull();
   });
 
   it("classifies a thumbs-up as THUMB_UP (confirm)", () => {

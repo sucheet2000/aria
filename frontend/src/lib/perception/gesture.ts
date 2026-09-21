@@ -84,6 +84,9 @@ function openPalm(lm: Landmarks): number {
 
 function pointGesture(lm: Landmarks): number {
   if (!isExtended(lm, INDEX_TIP, INDEX_MCP)) return 0.0;
+  // Bringing the thumb to the extended index tip is a pinch, not a point; the
+  // two poses are otherwise identical from the curled fingers alone.
+  if (pinchRatio(lm) < PINCH_MAX_RATIO) return 0.0;
   const curled = [
     isCurled(lm, MIDDLE_TIP, MIDDLE_MCP),
     isCurled(lm, RING_TIP, RING_MCP),
@@ -93,15 +96,56 @@ function pointGesture(lm: Landmarks): number {
   return 0.5 + 0.5 * (curled / 3);
 }
 
-function fist(lm: Landmarks): number {
-  const curled = [
-    isCurled(lm, INDEX_TIP, INDEX_MCP),
-    isCurled(lm, MIDDLE_TIP, MIDDLE_MCP),
-    isCurled(lm, RING_TIP, RING_MCP),
-    isCurled(lm, PINKY_TIP, PINKY_MCP),
-  ].filter(Boolean).length;
-  if (curled < 3) return 0.0;
-  return 0.5 + 0.5 * (curled / 4);
+// A pinch is a relationship between two fingertips, so that is what is
+// measured: thumb tip to index tip. PINCH used to be scored by a curled-finger
+// count that never looked at the thumb, which made a closed fist score as a
+// pinch — reported to the user as "cancel".
+//
+// The distance is normalized by the hand's own size (wrist to middle knuckle)
+// so the verdict holds at any distance from the camera, for either hand, and
+// anywhere in frame. A raw pixel threshold would only work at one depth.
+const PINCH_MAX_RATIO = 0.25;
+
+function distance(lm: Landmarks, a: number, b: number): number {
+  const dx = lm[a][0] - lm[b][0];
+  const dy = lm[a][1] - lm[b][1];
+  const dz = (lm[a][2] ?? 0) - (lm[b][2] ?? 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// Wrist to middle knuckle: roughly constant for a given hand regardless of
+// which fingers are curled, so it survives the very poses being classified.
+function handScale(lm: Landmarks): number {
+  return distance(lm, WRIST, MIDDLE_MCP);
+}
+
+// Fingertip gap as a fraction of hand size. Infinity when the hand has no
+// measurable size, so a degenerate frame can never read as a pinch.
+function pinchRatio(lm: Landmarks): number {
+  const scale = handScale(lm);
+  if (!(scale > 1e-6)) return Number.POSITIVE_INFINITY;
+  return distance(lm, THUMB_TIP, INDEX_TIP) / scale;
+}
+
+function pinchGesture(lm: Landmarks): number {
+  const ratio = pinchRatio(lm);
+  if (!(ratio < PINCH_MAX_RATIO)) return 0.0;
+  // Touching scores highest, easing to the floor at the threshold.
+  return 0.5 + 0.5 * (1 - ratio / PINCH_MAX_RATIO);
+}
+
+// Every coordinate must be a real number. MediaPipe can emit NaN for a hand it
+// half-lost, and comparisons against NaN are all false, which would otherwise
+// silently read as "no gesture" in some branches and a confident one in others.
+function landmarksAreFinite(lm: Landmarks): boolean {
+  for (const p of lm) {
+    if (p.length < 2) return false;
+    for (let i = 0; i < 3; i += 1) {
+      const v = p[i] ?? 0;
+      if (!Number.isFinite(v)) return false;
+    }
+  }
+  return true;
 }
 
 function pointingVector(lm: Landmarks): [number, number, number] {
@@ -121,7 +165,7 @@ function round3(v: number): number {
 
 export class GestureClassifier {
   classify(landmarks: Landmarks): HandGesture {
-    if (landmarks.length !== 21) {
+    if (landmarks.length !== 21 || !landmarksAreFinite(landmarks)) {
       return { gestureType: HAND_GESTURE_UNSPECIFIED, confidence: 0.0, pointingVector: null };
     }
 
@@ -129,7 +173,7 @@ export class GestureClassifier {
       [HAND_GESTURE_THUMB_UP, thumbUp(landmarks)],
       [HAND_GESTURE_OPEN_PALM, openPalm(landmarks)],
       [HAND_GESTURE_POINT, pointGesture(landmarks)],
-      [HAND_GESTURE_PINCH, fist(landmarks)],
+      [HAND_GESTURE_PINCH, pinchGesture(landmarks)],
     ];
 
     let bestType = HAND_GESTURE_UNSPECIFIED;
