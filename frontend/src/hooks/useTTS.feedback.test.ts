@@ -14,6 +14,7 @@ vi.mock("@clerk/nextjs", () => ({
 import { useTTS, __ttsMuteHoldCount } from "./useTTS";
 import { wsSendRef } from "./useWebSocket";
 import { ttsResyncRef } from "./ttsResyncState";
+import { isTtsCaptureSuppressed } from "./ttsSpeakingState";
 
 const LINE = "Sure, I can help with that.";
 const PRIVATE = "PRIVATE_TTS_FEEDBACK_5197";
@@ -101,7 +102,7 @@ function installAudio(playBehavior: "resolve" | "reject"): void {
   });
 }
 
-type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "timeout";
+type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "unavailable" | "gateway" | "timeout";
 
 function mockTtsFetch(kind: FetchKind): void {
   vi.stubGlobal(
@@ -112,6 +113,29 @@ function mockTtsFetch(kind: FetchKind): void {
         return Promise.reject(
           Object.assign(new Error("signal timed out"), { name: "TimeoutError" })
         );
+      }
+      if (kind === "gateway") {
+        // An intermediary — Railway's edge, a proxy, Cloudflare — answers a
+        // dead origin with an HTML page. It is a 5xx and it is far larger than
+        // the 100-byte usability floor, so ONLY the status tells the browser
+        // this is not speech.
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          arrayBuffer: async () =>
+            new TextEncoder().encode("<html><body>" + "service unavailable ".repeat(20) + "</body></html>").buffer,
+        });
+      }
+      if (kind === "unavailable") {
+        // Closure 2: the server no longer answers a dead provider with an empty
+        // 200. It says 503 with a JSON error and no audio at all.
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          arrayBuffer: async () => new TextEncoder().encode(
+            '{"error":"speech synthesis unavailable"}'
+          ).buffer,
+        });
       }
       if (kind === "not-ok") {
         return Promise.resolve({
@@ -251,6 +275,54 @@ describe("V3 — browser SpeechSynthesis fallback (the finding)", () => {
     expect(spoke).toBeGreaterThanOrEqual(0);
     expect(firstIndex("tts_mute")).toBeLessThan(spoke);
     expect(trace).not.toContain("tts_unmute");
+  });
+
+  // ── Closure 2 ────────────────────────────────────────────────────────────
+  // The server used to answer a dead provider with 200 and an empty body, and
+  // the browser fell back because the BODY was unusable. Now it answers 503
+  // with a JSON error body, so the fallback has to be reached by the STATUS.
+  // A JSON error body is over 100 bytes of nothing useful, so the old size
+  // check would have played it as audio.
+  it("Closure 2 test 6: the browser voice still speaks when the server says 503", async () => {
+    mockTtsFetch("unavailable");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
+    expect(firstIndex("tts_mute")).toBeLessThan(firstIndex("browser:speak"));
+    expect(trace.slice(0, firstIndex("browser:speak"))).not.toContain("tts_unmute");
+  });
+
+  it("Closure 2 test 7: the 503 path completes the whole mute lifecycle", async () => {
+    mockTtsFetch("unavailable");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Local gate shut while the fallback voice is talking...
+    expect(isTtsCaptureSuppressed()).toBe(true);
+    expect(__ttsMuteHoldCount()).toBe(1);
+
+    lastUtterance?.onend?.();
+
+    // ...and fully open once it stops, with the server told as well.
+    expect(isTtsCaptureSuppressed()).toBe(false);
+    expect(__ttsMuteHoldCount()).toBe(0);
+    expect(trace[trace.length - 1]).toBe("tts_unmute");
+  });
+
+  it("Closure 2 test 6b: a large 5xx error page is never played as audio", async () => {
+    mockTtsFetch("gateway");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Nothing was handed to the audio element; the browser voice spoke instead.
+    expect(lastAudio).toBeNull();
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
   });
 
   it("Test 4: releases capture when fallback speech finishes", async () => {

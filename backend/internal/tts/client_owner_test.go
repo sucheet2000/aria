@@ -1,8 +1,8 @@
 package tts
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,8 +23,7 @@ func TestStream_SetsOwnerHeader(t *testing.T) {
 	c.pythonURL = fake.URL
 
 	ctx := auth.WithOwner(context.Background(), "user_tts_1")
-	var buf bytes.Buffer
-	if err := c.Stream(ctx, "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, ctx, "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if gotOwner != "user_tts_1" {
@@ -44,8 +43,7 @@ func TestStream_NoOwnerHeaderWhenAbsent(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if hadHeader {
@@ -66,8 +64,7 @@ func TestStream_SetsInternalAuthHeader(t *testing.T) {
 	c.pythonURL = fake.URL
 	c.SetInternalAuthSecret("boundary-secret")
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if gotSecret != "boundary-secret" {
@@ -87,11 +84,23 @@ func TestStream_NoInternalAuthHeaderWhenSecretEmpty(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if hadHeader {
 		t.Error("X-Internal-Auth should not be set when secret is empty")
 	}
+}
+
+// drain reads a client's speech stream to a string, so tests can assert on the
+// bytes the handler would forward.
+func drain(t *testing.T, c *Client, ctx context.Context, text, emotion string) (string, error) {
+	t.Helper()
+	rc, err := c.Open(ctx, text, emotion)
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	b, readErr := io.ReadAll(rc)
+	return string(b), readErr
 }

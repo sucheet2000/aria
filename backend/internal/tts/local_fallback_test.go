@@ -1,9 +1,7 @@
 package tts
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -60,14 +58,13 @@ func withoutLocalFallback(t *testing.T) {
 // rather than pretending to have produced audio.
 func TestStream_WithoutLocalFallback_ReturnsAnError(t *testing.T) {
 	withoutLocalFallback(t)
-	var buf bytes.Buffer
-	err := failingProxy(t).Stream(context.Background(), "hello", "", &buf)
+	body, err := drain(t, failingProxy(t), context.Background(), "hello", "")
 
 	if err == nil {
 		t.Fatal("no error when neither the proxy nor a fallback could speak")
 	}
-	if buf.Len() != 0 {
-		t.Fatalf("wrote %d bytes of audio it never produced", buf.Len())
+	if len(body) != 0 {
+		t.Fatalf("produced %d bytes of audio it never had", len(body))
 	}
 	if !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("error does not explain the situation: %v", err)
@@ -78,7 +75,7 @@ func TestStream_WithoutLocalFallback_ReturnsAnError(t *testing.T) {
 // Python service is down rather than chasing a phantom audio bug.
 func TestStream_ErrorMentionsTheProxyFailure(t *testing.T) {
 	withoutLocalFallback(t)
-	err := failingProxy(t).Stream(context.Background(), "hello", "", io.Discard)
+	_, err := drain(t, failingProxy(t), context.Background(), "hello", "")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -94,13 +91,13 @@ func TestStream_ProxySuccessNeverConsultsTheFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	var buf bytes.Buffer
 	c := New("", "")
 	c.SetPythonURL(srv.URL)
-	if err := c.Stream(context.Background(), "hi", "", &buf); err != nil {
+	got, err := drain(t, c, context.Background(), "hi", "")
+	if err != nil {
 		t.Fatalf("proxy path failed: %v", err)
 	}
-	if buf.String() != "audio-bytes" {
-		t.Fatalf("got %q", buf.String())
+	if got != "audio-bytes" {
+		t.Fatalf("got %q", got)
 	}
 }

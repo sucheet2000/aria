@@ -1,7 +1,6 @@
 package tts
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -23,8 +22,7 @@ func TestStreamProxy_Non2xxReturnsMeaningfulError(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	err := c.streamProxy(context.Background(), "hello", "", &buf)
+	_, err := c.openProxy(context.Background(), "hello", "")
 	if err == nil {
 		t.Fatal("expected error on 500, got nil")
 	}
@@ -53,8 +51,7 @@ func TestStreamProxy_ErrorBodyIsBounded(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	err := c.streamProxy(context.Background(), "hello", "", &buf)
+	_, err := c.openProxy(context.Background(), "hello", "")
 	if err == nil {
 		t.Fatal("expected error on 502, got nil")
 	}
