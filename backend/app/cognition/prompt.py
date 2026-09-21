@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 
 from app.cognition.conflict import detect_conflict
 from app.models.schemas import PerceptionFrame
@@ -46,9 +47,27 @@ Known facts about this user:
 {conflict_instruction}"""
 
 
+_MARKER_RE = re.compile(
+    "|".join(re.escape(m) for m in (MEMORY_BLOCK_START, MEMORY_BLOCK_END)),
+    re.IGNORECASE,
+)
+
+
 def _fenced(line: str) -> str:
-    """Neutralize any delimiter a stored value tries to smuggle in."""
-    return line.replace(MEMORY_BLOCK_START, "").replace(MEMORY_BLOCK_END, "")
+    """Neutralize any delimiter a stored value tries to smuggle in.
+
+    A single pass is not enough: removing one marker can splice the fragments
+    either side of it into a fresh one, so
+    ``</recalled</recalled_user_data>_user_data>`` would survive as a real
+    terminator and let the value continue outside the block. Stripping runs to a
+    fixed point, and matches case-insensitively because a model reading
+    ``</RECALLED_USER_DATA>`` as the end of the block is a risk not worth taking.
+    """
+    previous = None
+    while previous != line:
+        previous = line
+        line = _MARKER_RE.sub("", line)
+    return line
 
 
 _soul_cache: str | None = None
