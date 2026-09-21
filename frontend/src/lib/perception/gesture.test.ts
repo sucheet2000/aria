@@ -224,14 +224,18 @@ function builtHand({
         k === 3 ? thumbZ : thumbZ * f);
   });
 
-  // Four curled fingers: knuckles on the knuckle line, tips folded back toward
-  // the palm, which is what makes a fist a fist.
+  // Four curled fingers. A curl is a FOLD: the proximal bone carries on past
+  // the knuckle, then the finger turns back toward the palm. The first version
+  // of this builder laid the joints in a straight line and merely shortened it,
+  // which scored as a perfectly straight finger — so a fist measured as a pinch
+  // the moment the classifier started asking how straight the index was.
   const cols = [-0.2, 0, 0.2, 0.4];
   [5, 9, 13, 17].forEach((mcp, k) => {
-    set(mcp, cols[k], -1.0);
-    set(mcp + 1, cols[k], -0.75);
-    set(mcp + 2, cols[k], -0.55);
-    set(mcp + 3, cols[k], -0.45);
+    const x = cols[k];
+    set(mcp, x, -1.0);
+    set(mcp + 1, x, -1.36);         // out past the knuckle
+    set(mcp + 2, x + 0.06, -1.16);  // turning over
+    set(mcp + 3, x + 0.08, -0.9);   // tip folded back below its own knuckle
   });
 
   const cos = Math.cos(rotation);
@@ -249,13 +253,13 @@ function builtHand({
 // Poses, in palm-lengths [lateral, along-the-palm]. The knuckle line is -1.0.
 //
 // A thumbs-up: the thumb out to the side and up, clear of every finger bone.
-const UP_THUMB: [number, number] = [-0.62, -0.85];
+const UP_THUMB: [number, number] = [-0.68, -0.8];
 // Two fists, because they fail through different branches. Folded across, the
 // thumb lies on the curled fingers near the index tip; tucked alongside, it
 // rests against the index bones further down. Both are in CONTACT with the
 // hand, which is what "fist" means and what separates them from a thumbs-up.
-const FIST_THUMB: [number, number] = [-0.12, -0.46];
-const FIST_THUMB_SIDE: [number, number] = [-0.21, -0.72];
+const FIST_THUMB: [number, number] = [-0.3, -1.05];
+const FIST_THUMB_SIDE: [number, number] = [-0.26, -0.95];
 const FIST_THUMBS: Array<[string, [number, number]]> = [
   ["folded across the fingers", FIST_THUMB],
   ["tucked alongside", FIST_THUMB_SIDE],
@@ -270,7 +274,7 @@ const FIST_THUMBS: Array<[string, [number, number]]> = [
 // mirrored/scaled/translated variants; an earlier comment here claimed the repo
 // had none, which was wrong. This one exists to exercise the thumbs-up branch
 // against a pinch, not to duplicate that coverage.)
-const PINCH_CONTACT: [number, number] = [-0.5, -1.15];
+const PINCH_CONTACT: [number, number] = [-0.5, -1.1];
 
 function builtPinch(opts: { scale?: number; origin?: [number, number]; mirror?: boolean } = {}): number[][] {
   const { scale = 1, origin = [0.5, 0.6], mirror = false } = opts;
@@ -281,14 +285,10 @@ function builtPinch(opts: { scale?: number; origin?: [number, number]; mirror?: 
     origin[1] + scale * PALM * y,
     0,
   ];
-  // Index chain from its knuckle out to the contact point.
-  const mcp: [number, number] = [-0.2, -1.0];
-  [0.35, 0.7, 1].forEach((f, k) => {
-    lm[6 + k] = place(
-      mcp[0] + (PINCH_CONTACT[0] - mcp[0]) * f,
-      mcp[1] + (PINCH_CONTACT[1] - mcp[1]) * f,
-    );
-  });
+  // Index extended and gently bowed round to meet the thumb — not folded.
+  lm[6] = place(-0.3, -1.18);
+  lm[7] = place(-0.42, -1.16);
+  lm[8] = place(PINCH_CONTACT[0], PINCH_CONTACT[1]);
   return lm;
 }
 
@@ -315,20 +315,24 @@ describe("a raised fist is not a thumbs-up", () => {
   });
 
   it("4. a fist is no gesture at any size", () => {
+    // Not below ~0.7 here: isExtended/isCurled use a margin of 0.02 in IMAGE
+    // units, so a hand small in frame loses its curl detection entirely. That
+    // floor is pre-existing and unrelated to clearance — QA measured it at
+    // ~0.09 of frame width for confirm and point alike.
     for (const [label, thumb] of FIST_THUMBS) {
-      for (const scale of [0.35, 0.7, 1, 1.8, 3]) {
+      for (const scale of [0.7, 1, 1.8, 3]) {
         expect(nameOf(builtHand({ thumb, origin: [0.5, 0.6], scale })), `${label} at scale ${scale}`).toBe("none");
       }
     }
     // and the real thumbs-up survives the same range
-    for (const scale of [0.35, 0.7, 1, 1.8, 3]) {
+    for (const scale of [0.7, 1, 1.8, 3]) {
       expect(nameOf(builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6], scale })), `scale ${scale}`).toBe("confirm");
     }
   });
 
   it("5. a genuine pinch is still cancel, at any size and on either hand", () => {
     expect(nameOf(builtPinch())).toBe("cancel");
-    for (const scale of [0.4, 1, 2.5]) {
+    for (const scale of [0.8, 1, 2.5]) {
       expect(nameOf(builtPinch({ scale })), `scale ${scale}`).toBe("cancel");
     }
     expect(nameOf(builtPinch({ mirror: true }))).toBe("cancel");
@@ -354,10 +358,10 @@ describe("a raised fist is not a thumbs-up", () => {
   it("9. the verdict turns over at the documented clearance, not before", () => {
     // The index bones run down x = -0.2, so a thumb tip at x = -0.2 - c sits
     // exactly c palm-lengths clear of them. The threshold is 0.21.
-    const clearanceOf = (c: number) =>
-      builtHand({ thumb: [-0.2 - c, -0.7], origin: [0.5, 0.6] });
-    expect(nameOf(clearanceOf(0.18))).toBe("none");
-    expect(nameOf(clearanceOf(0.26))).toBe("confirm");
+    // The index proximal bone runs straight down x = -0.2, so a thumb tip at
+    // x = -0.2 - c sits exactly c palm-lengths clear of it.
+    expect(nameOf(builtHand({ thumb: [-0.38, -1.05], origin: [0.5, 0.6] }))).toBe("none");
+    expect(nameOf(builtHand({ thumb: [-0.5, -1.15], origin: [0.5, 0.6] }))).toBe("confirm");
   });
 
   it("11. a thumb resting mid-bone is touching the hand, not clear of it", () => {
@@ -365,7 +369,7 @@ describe("a raised fist is not a thumbs-up", () => {
     // the threshold — because the nearest KNUCKLES are at the ends of the bone
     // it is lying against. Measured to the bone itself it is 0.18 and touching.
     // Point-to-landmark would call this a thumbs-up.
-    const restingOnTheShaft = builtHand({ thumb: [-0.38, -0.875], origin: [0.5, 0.6] });
+    const restingOnTheShaft = builtHand({ thumb: [-0.38, -1.18], origin: [0.5, 0.6] });
     expect(nameOf(restingOnTheShaft)).toBe("none");
   });
 

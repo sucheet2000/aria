@@ -195,39 +195,40 @@ function pinchRatio(lm: Landmarks): number {
   return distance(lm, THUMB_TIP, INDEX_TIP) / scale;
 }
 
-// How far a fingertip reaches along the hand's own axis, in hand-lengths from
-// the wrist, with the knuckle line at 1.0.
-//
-// NOTE: an adversarial review measured this against anthropometric hands and
-// found it rejects roughly half of genuine pinches (the shipped threshold sits
-// above the real pinch median), and that it is unstable under depth noise
-// because it divides by handScale twice. It is retained here only until the
-// replacement feature for the pinch side is measured; the thumb side has
-// already moved off it. See the closure report.
-function reachAlongPalm(lm: Landmarks, tip: number): number {
-  const scale = handScale(lm);
-  if (!(scale > 1e-6)) return 0.0;
-  const ax = (lm[MIDDLE_MCP][0] - lm[WRIST][0]) / scale;
-  const ay = (lm[MIDDLE_MCP][1] - lm[WRIST][1]) / scale;
-  const az = ((lm[MIDDLE_MCP][2] ?? 0) - (lm[WRIST][2] ?? 0)) / scale;
-  const tx = lm[tip][0] - lm[WRIST][0];
-  const ty = lm[tip][1] - lm[WRIST][1];
-  const tz = (lm[tip][2] ?? 0) - (lm[WRIST][2] ?? 0);
-  return (tx * ax + ty * ay + tz * az) / scale;
-}
-
 // A pinch is made with the index finger OUT, meeting the thumb in front of the
 // hand. In a fist the index is folded back into the palm and the thumb rests
-// across it — a small thumb-to-index gap too, which is why gap alone reported
-// an ordinary resting fist as "cancel". Requiring the index to be clear of the
-// knuckles separates the two without the classifier needing to know what a
-// fist is, which matters because the contract has no value for one.
-const PINCH_INDEX_OUT_MIN = 1.15;
+// across it — a small thumb-to-index gap too, which is why the gap test alone
+// reported an ordinary resting fist as "cancel"; on its own it lets through
+// 30.5% of fists.
+//
+// What separates them is how STRAIGHT the index is: the direct knuckle-to-tip
+// distance over the length of the three bones it travels. A pinching index is
+// extended and curving gently (0.58-0.92); a fist's is folded back on itself
+// (0.30-0.66). Measuring how far the index reached instead — which is what
+// shipped briefly — cannot work: a review measured genuine pinches spanning
+// 0.84-1.47 hand-lengths with a median of 1.137, so the 1.15 threshold sat
+// above the median and rejected about half of all real pinches.
+//
+// A ratio of distances within one finger, so it survives the hand being at any
+// size, distance or angle, and degrades gently under depth noise. AND'd with
+// the existing gap test this keeps 84-91% of pinches while false-accepting
+// 1.5-2.7% of fists.
+const PINCH_INDEX_STRAIGHT_MIN = 0.6;
+
+// Direct span over path length. 1.0 is a perfectly straight finger; a fist's
+// index folds back and scores low. Zero when the bones have no length, so a
+// degenerate hand is never a pinch.
+function indexStraightness(lm: Landmarks): number {
+  const bones =
+    distance(lm, INDEX_MCP, 6) + distance(lm, 6, 7) + distance(lm, 7, INDEX_TIP);
+  if (!(bones > 1e-6)) return 0.0;
+  return distance(lm, INDEX_MCP, INDEX_TIP) / bones;
+}
 
 function pinchGesture(lm: Landmarks): number {
   const ratio = pinchRatio(lm);
   if (!(ratio < PINCH_MAX_RATIO)) return 0.0;
-  if (reachAlongPalm(lm, INDEX_TIP) < PINCH_INDEX_OUT_MIN) return 0.0;
+  if (indexStraightness(lm) < PINCH_INDEX_STRAIGHT_MIN) return 0.0;
   // Touching scores highest, easing to the floor at the threshold.
   return 0.5 + 0.5 * (1 - ratio / PINCH_MAX_RATIO);
 }
