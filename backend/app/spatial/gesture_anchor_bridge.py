@@ -15,18 +15,134 @@ Gesture priority (single-hand takes precedence for POINT):
 from __future__ import annotations
 
 import math
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from app.config import settings
 from app.models.schemas import SpatialEvent
 from app.observability.metrics import MetricsCollector
 from app.spatial.anchor_registry import AnchorRegistry
 
+# ── point dwell / dedupe (Workstream D) ──────────────────────────────────────
+# A point used to register an anchor on every request that carried one, so a
+# user who held a point while talking collected one anchor per turn. An anchor
+# now needs an intentional point: the same direction, held.
+#
+# DWELL is how long the direction must hold before anchoring. JITTER is how far
+# the fingertip may wander and still count as the same target — hands are never
+# still. COOLDOWN keeps a direction from re-anchoring while the user simply
+# keeps pointing at what they already marked.
+_POINT_DWELL_SECONDS = 1.0
+_POINT_JITTER = 0.15
+_POINT_COOLDOWN_SECONDS = 30.0
+# Bounds the per-owner tracking table; an owner idle longer than this is
+# forgotten, and the table is swept whenever it grows past _MAX_TRACKED_OWNERS.
+_TRACK_TTL_SECONDS = 300.0
+_MAX_TRACKED_OWNERS = 32
+
+
+@dataclass
+class _PointTrack:
+    """One owner's in-flight point, and what they last anchored."""
+
+    candidate: tuple[float, float, float] | None
+    candidate_since: float
+    last_seen: float
+    anchored: tuple[float, float, float] | None = None
+    anchored_at: float = 0.0
+
+
+def _finite_vec(pointing_vector: list[float] | None) -> tuple[float, float, float] | None:
+    """Return a usable 3-vector, or None when the input cannot be trusted."""
+    if pointing_vector is None or len(pointing_vector) < 3:
+        return None
+    x, y, z = pointing_vector[0], pointing_vector[1], pointing_vector[2]
+    if not all(math.isfinite(v) for v in (x, y, z)):
+        return None
+    return (float(x), float(y), float(z))
+
+
+def _apart(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return math.dist(a, b)
+
 
 class GestureAnchorBridge:
-    """Stateless translator from gesture events to spatial anchor operations."""
+    """Translator from gesture events to spatial anchor operations.
 
-    def __init__(self, anchor_registry: AnchorRegistry) -> None:
+    Holds a small per-owner record of the point currently being held, so a
+    steady point becomes one anchor rather than one per request.
+    """
+
+    def __init__(
+        self,
+        anchor_registry: AnchorRegistry,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
         self._registry = anchor_registry
+        self._clock = clock or time.monotonic
+        self._tracks: dict[str, _PointTrack] = {}
+
+    # ── point tracking ────────────────────────────────────────────────────────
+
+    def forget_owner(self, owner: str) -> None:
+        """Drop an owner's point tracking, e.g. when their camera stops."""
+        self._tracks.pop(owner, None)
+
+    def tracked_owner_count(self) -> int:
+        """How many owners currently have point tracking. Test-only window."""
+        return len(self._tracks)
+
+    def _sweep(self, now: float) -> None:
+        if len(self._tracks) <= _MAX_TRACKED_OWNERS:
+            return
+        stale = [o for o, t in self._tracks.items() if now - t.last_seen > _TRACK_TTL_SECONDS]
+        for o in stale:
+            del self._tracks[o]
+        if len(self._tracks) > _MAX_TRACKED_OWNERS:
+            # Still over budget: drop the least recently active.
+            for o, _ in sorted(self._tracks.items(), key=lambda kv: kv[1].last_seen)[
+                : len(self._tracks) - _MAX_TRACKED_OWNERS
+            ]:
+                del self._tracks[o]
+
+    def _should_anchor(self, owner: str, vec: tuple[float, float, float]) -> bool:
+        """True when this point has been held long enough to mean it."""
+        now = self._clock()
+        track = self._tracks.get(owner)
+
+        if track is None or track.candidate is None or _apart(track.candidate, vec) > _POINT_JITTER:
+            # A new target: start the dwell over, keeping what was last anchored
+            # so the cooldown still applies to it.
+            self._tracks[owner] = _PointTrack(
+                candidate=vec,
+                candidate_since=now,
+                last_seen=now,
+                anchored=track.anchored if track else None,
+                anchored_at=track.anchored_at if track else 0.0,
+            )
+            # Sweep after inserting so the table is never over budget on exit.
+            self._sweep(now)
+            return False
+
+        track.last_seen = now
+        if now - track.candidate_since < _POINT_DWELL_SECONDS:
+            return False
+
+        if (
+            track.anchored is not None
+            and _apart(track.anchored, vec) <= _POINT_JITTER
+            and now - track.anchored_at < _POINT_COOLDOWN_SECONDS
+        ):
+            # Already marked this target recently; holding the point is not a
+            # request for another anchor.
+            return False
+
+        track.anchored = vec
+        track.anchored_at = now
+        # Require a fresh dwell before this direction can anchor again.
+        track.candidate_since = now
+        return True
 
     def on_gesture_event(
         self,
@@ -53,11 +169,20 @@ class GestureAnchorBridge:
         owner = owner or settings.DEFAULT_OWNER
         MetricsCollector().record_gesture_event(two_hand_gesture if two_hand_gesture != "NONE" else gesture)
 
-        # ── single-hand: POINT registers a new anchor ─────────────────────────
-        if gesture == "point" and pointing_vector is not None and len(pointing_vector) >= 3:
-            vec: tuple[float, float, float] = (
-                pointing_vector[0], pointing_vector[1], pointing_vector[2]
-            )
+        # ── single-hand: a HELD point registers a new anchor ──────────────────
+        if gesture != "point":
+            # The hand stopped pointing, so any dwell in progress is abandoned;
+            # coming back to the same target must earn its dwell again.
+            track = self._tracks.get(owner)
+            if track is not None:
+                track.candidate = None
+
+        if gesture == "point":
+            vec = _finite_vec(pointing_vector)
+            if vec is None:
+                return None
+            if not self._should_anchor(owner, vec):
+                return None
             anchor_id = self._registry.register_anchor(vec, "object", owner)
             return SpatialEvent(
                 event_type="anchor_registered",

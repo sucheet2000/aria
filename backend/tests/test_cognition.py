@@ -175,30 +175,55 @@ def _stub_memory() -> MagicMock:
     return mem
 
 
-def _tmp_bridge(tmp_path):
+class _TestClock:
+    """Monotonic seconds under the test's control."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _tmp_bridge(tmp_path, clock=None):
     from app.spatial.anchor_registry import AnchorRegistry
     from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
-    return GestureAnchorBridge(AnchorRegistry(db_path=tmp_path / "a.db"))
+    return GestureAnchorBridge(AnchorRegistry(db_path=tmp_path / "a.db"), clock=clock)
 
 
 def test_cognition_route_point_gesture_produces_spatial_event(tmp_path):
-    """gesture='point' + pointing_vector → spatial_event is not None (DI-injected)."""
+    """A HELD point produces an anchor; a single passing one does not.
+
+    The bridge is one app-scoped instance in production, so the dwell spans
+    requests — which is what this override models.
+    """
     from app.api.cognition_route import get_bridge, get_client, get_memory
     from app.main import app
 
+    clock = _TestClock()
+    bridge = _tmp_bridge(tmp_path, clock=clock)
     app.dependency_overrides[get_client] = lambda: _stub_llm_client()
     app.dependency_overrides[get_memory] = lambda: _stub_memory()
-    app.dependency_overrides[get_bridge] = lambda: _tmp_bridge(tmp_path)
+    app.dependency_overrides[get_bridge] = lambda: bridge
     try:
-        resp = TestClient(app).post(
-            "/api/cognition",
-            json={
-                "message": "look at that",
-                "gesture": "point",
-                "pointing_vector": [0.1, -0.2, 0.9],
-                "session_id": "test-session-001",
-            },
-        )
+        client = TestClient(app)
+        body = {
+            "message": "look at that",
+            "gesture": "point",
+            "pointing_vector": [0.1, -0.2, 0.9],
+            "session_id": "test-session-001",
+        }
+
+        first = client.post("/api/cognition", json=body)
+        assert first.status_code == 200
+        # One frame of pointing is not an instruction to place an anchor.
+        assert first.json()["spatial_event"] is None
+
+        clock.advance(2.0)
+        resp = client.post("/api/cognition", json=body)
         assert resp.status_code == 200
         data = resp.json()
         assert data["spatial_event"] is not None
