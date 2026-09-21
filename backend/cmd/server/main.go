@@ -77,7 +77,7 @@ func main() {
 	if cfg.AudioEnabled {
 		audioSessions = audio.NewSessionManager(
 			ctx, cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel,
-			cfg.AudioMaxSessions, hub.BroadcastToOwner,
+			cfg.WhisperDevice, cfg.AudioMaxSessions, hub.BroadcastToOwner,
 		)
 		hub.SetAudio(audioSessions)
 	}

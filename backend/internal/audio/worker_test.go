@@ -5,7 +5,7 @@ import "testing"
 func nopSink(_ []byte) {}
 
 func TestNewWorkerFields(t *testing.T) {
-	w := New("python3", "audio_worker.py", "/tmp", "base", nopSink)
+	w := New("python3", "audio_worker.py", "/tmp", "base", "cpu", nopSink)
 
 	if w.pythonBin != "python3" {
 		t.Errorf("expected pythonBin 'python3', got %q", w.pythonBin)
@@ -25,14 +25,14 @@ func TestNewWorkerFields(t *testing.T) {
 }
 
 func TestNewWorkerNotNil(t *testing.T) {
-	w := New("python3", "script.py", "/tmp", "small", nopSink)
+	w := New("python3", "script.py", "/tmp", "small", "cpu", nopSink)
 	if w == nil {
 		t.Fatal("expected non-nil Worker")
 	}
 }
 
 func TestStopNoopWhenNotStarted(t *testing.T) {
-	w := New("python3", "script.py", "/tmp", "base", nopSink)
+	w := New("python3", "script.py", "/tmp", "base", "cpu", nopSink)
 	// Stop should not panic when cmd is nil
 	w.Stop()
 }

@@ -316,7 +316,8 @@ def test_run_stdin_wires_cli_cap_into_the_vad(monkeypatch) -> None:
 
     monkeypatch.setattr(aw, "VADProcessor", FakeVAD)
     args = argparse.Namespace(
-        denoise=False, max_utterance_ms=4321, coreml=False, model="base"
+        denoise=False, max_utterance_ms=4321, coreml=False, model="base",
+        device="cpu",
     )
     with pytest.raises(SystemExit):
         aw.run_stdin(args)

@@ -12,7 +12,7 @@ import (
 // the session.
 
 func TestWriteAudio_ForwardsOnlyWholeSamples(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -30,7 +30,7 @@ func TestWriteAudio_ForwardsOnlyWholeSamples(t *testing.T) {
 // The parity of the stream must survive a malformed frame: a later well-formed
 // frame has to land on the same byte boundary it would have without it.
 func TestWriteAudio_OddFrameDoesNotShiftLaterSamples(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -56,7 +56,7 @@ func TestWriteAudio_OddFrameDoesNotShiftLaterSamples(t *testing.T) {
 
 // Several malformed frames in a row must not accumulate a drift.
 func TestWriteAudio_RepeatedOddFramesStayAligned(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -76,7 +76,7 @@ func TestWriteAudio_RepeatedOddFramesStayAligned(t *testing.T) {
 
 // A lone byte carries no sample at all and must be dropped entirely.
 func TestWriteAudio_SingleByteFrameIsDropped(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -90,7 +90,7 @@ func TestWriteAudio_SingleByteFrameIsDropped(t *testing.T) {
 // Well-formed traffic is untouched: this guard must cost nothing in the
 // ordinary case.
 func TestWriteAudio_EvenFrameIsForwardedVerbatim(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 

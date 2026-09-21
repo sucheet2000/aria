@@ -44,7 +44,7 @@ func writeScript(t *testing.T, body string) (dir, path string) {
 // Without mutex protection the -race detector flags the unsynchronised access.
 func TestMute_ConcurrentWithRestart_NoRace(t *testing.T) {
 	dir, script := writeScript(t, "sleep 0.2\n")
-	w := New("/bin/sh", script, dir, "base", (&slowHub{}).sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", (&slowHub{}).sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -87,7 +87,7 @@ func TestRun_JoinsScannerGoroutines(t *testing.T) {
 	const runs = 8
 	dir, script := writeScript(t, "echo '{\"a\":1}'\n")
 	hub := &slowHub{}
-	w := New("/bin/sh", script, dir, "base", hub.sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", hub.sink)
 
 	for i := 0; i < runs; i++ {
 		if err := w.run(context.Background()); err != nil {
@@ -108,7 +108,7 @@ func TestRun_JoinsScannerGoroutines(t *testing.T) {
 func TestStart_RestartsOnUnexpectedExit(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
 	hub := &countingHub{}
-	w := New("/bin/sh", script, dir, "base", hub.sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", hub.sink)
 	w.restartDelay = time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -136,7 +136,7 @@ func TestStart_RestartsOnUnexpectedExit(t *testing.T) {
 // keeps reassigning w.cmd, proving the process handle is read/written under a lock.
 func TestStop_DuringRestart_NoRace(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
-	w := New("/bin/sh", script, dir, "base", (&countingHub{}).sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", (&countingHub{}).sink)
 	w.restartDelay = time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -166,7 +166,7 @@ func TestStop_DuringRestart_NoRace(t *testing.T) {
 // without entering the restart backoff, even with a very long restart delay.
 func TestStart_CancelledContextReturnsPromptly(t *testing.T) {
 	dir, script := writeScript(t, "echo '{\"a\":1}'\nexit 1\n")
-	w := New("/bin/sh", script, dir, "base", (&countingHub{}).sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", (&countingHub{}).sink)
 	w.restartDelay = time.Hour
 
 	ctx, cancel := context.WithCancel(context.Background())

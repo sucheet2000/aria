@@ -64,7 +64,7 @@ func newTestManager(t *testing.T, maxSessions int) (*SessionManager, *routerReco
 	rec := newRouterRecorder()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	m := NewSessionManager(ctx, "/bin/sh", script, dir, "base", maxSessions, rec.route)
+	m := NewSessionManager(ctx, "/bin/sh", script, dir, "base", "cpu", maxSessions, rec.route)
 	t.Cleanup(m.Stop)
 	return m, rec
 }
@@ -311,7 +311,7 @@ func TestSessionManager_ReacquireWaitsForDrainingSession(t *testing.T) {
 	rec := newRouterRecorder()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	m := NewSessionManager(ctx, "/bin/sh", script, dir, "base", 8, rec.route)
+	m := NewSessionManager(ctx, "/bin/sh", script, dir, "base", "cpu", 8, rec.route)
 	t.Cleanup(m.Stop)
 
 	acquire(t, m, "a")

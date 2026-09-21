@@ -30,7 +30,7 @@ func (p *recordingPipe) Bytes() []byte {
 }
 
 func TestWriteAudio_ForwardsPCMToStdin(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -43,7 +43,7 @@ func TestWriteAudio_ForwardsPCMToStdin(t *testing.T) {
 }
 
 func TestWriteAudio_DropsFramesWhenMuted(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -61,7 +61,7 @@ func TestWriteAudio_DropsFramesWhenMuted(t *testing.T) {
 }
 
 func TestWriteAudio_NoStdinPipe_NoPanic(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	// stdinPipe is nil (no subprocess running); WriteAudio must be a no-op.
 	w.WriteAudio([]byte{1, 2, 3})
 }
@@ -69,7 +69,7 @@ func TestWriteAudio_NoStdinPipe_NoPanic(t *testing.T) {
 // TestMute_DoesNotWriteToStdin proves the mute path no longer emits JSON to the
 // subprocess stdin — stdin now carries raw PCM only, so muting is a Go-edge gate.
 func TestMute_DoesNotWriteToStdin(t *testing.T) {
-	w := New("python3", "s.py", "/tmp", "base", nopSink)
+	w := New("python3", "s.py", "/tmp", "base", "cpu", nopSink)
 	pipe := &recordingPipe{}
 	w.setStdinPipe(pipe)
 
@@ -86,7 +86,7 @@ func TestMute_DoesNotWriteToStdin(t *testing.T) {
 // lifecycle. Without stdinMu protection the -race detector flags the access.
 func TestWriteAudio_ConcurrentWithRestart_NoRace(t *testing.T) {
 	dir, script := writeScript(t, "sleep 0.2\n")
-	w := New("/bin/sh", script, dir, "base", (&slowHub{}).sink)
+	w := New("/bin/sh", script, dir, "base", "cpu", (&slowHub{}).sink)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
