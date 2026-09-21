@@ -78,3 +78,51 @@ def test_anthropic_reliability_from_environment(monkeypatch: pytest.MonkeyPatch)
     settings = Settings(_env_file=None)
     assert settings.ANTHROPIC_TIMEOUT_SECONDS == 12.5
     assert settings.ANTHROPIC_MAX_RETRIES == 7
+
+
+# The link between the two, which neither end covers.
+#
+# The predicate above is tested directly, and require_internal_auth is tested
+# against a missing or wrong header. What nothing tested is that the app
+# actually CONSULTS the predicate at startup: the call lives inside `lifespan`
+# (app/main.py), and every other test builds TestClient(app) without the
+# context manager, so lifespan never runs. Deleting the call left ruff clean
+# and 276 tests passing.
+#
+# It matters more since /metrics joined the internal boundary. When
+# INTERNAL_AUTH_SECRET is empty, require_internal_auth returns early
+# (deps.py) — so the startup guard is the only thing making "the Python
+# metrics route is internally gated" true in production. Before /metrics was
+# gated, this guard did not bear on metrics at all.
+def test_startup_refuses_to_boot_with_an_open_trust_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.config import settings as live_settings
+
+    monkeypatch.setattr(live_settings, "INTERNAL_AUTH_SECRET", "")
+    monkeypatch.setattr(live_settings, "ENV", "production")
+
+    from app.main import app
+
+    with pytest.raises(RuntimeError, match="INTERNAL_AUTH_SECRET"):
+        # Entering the context manager is what runs lifespan.
+        with TestClient(app):
+            pass
+
+
+def test_startup_proceeds_when_the_boundary_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.config import settings as live_settings
+
+    monkeypatch.setattr(live_settings, "INTERNAL_AUTH_SECRET", "a-configured-secret")
+    monkeypatch.setattr(live_settings, "ENV", "production")
+
+    from app.main import app
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
