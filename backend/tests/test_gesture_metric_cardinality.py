@@ -104,7 +104,10 @@ class TestVocabularyMatchesItsProducers:
     def test_8_single_hand_names_match_the_browser_classifier(self) -> None:
         producer = _FRONTEND / "lib" / "perception" / "gesture.ts"
         assert producer.exists(), f"the gesture producer moved: {producer}"
-        emitted = set(re.findall(r'\]:\s*"([a-z]+)"', producer.read_text()))
+        # [^"]+ , not [a-z]+ : the narrower class silently parsed a PARTIAL
+        # set, and the `assert emitted` guard below could not tell, because a
+        # partial set is still non-empty.
+        emitted = set(re.findall(r'\]:\s*"([^"]+)"', producer.read_text()))
         assert emitted, "no wire names parsed from GESTURE_NAMES; re-aim this test"
 
         missing = emitted - set(KNOWN_GESTURE_EVENTS)
@@ -129,4 +132,29 @@ class TestVocabularyMatchesItsProducers:
         assert not missing, (
             f"the proto defines {sorted(missing)}, which the metric would "
             "bucket as unknown"
+        )
+
+    def test_10_the_allowlist_invents_nothing_of_its_own(self) -> None:
+        """The other direction. Checking only producer-minus-allowlist let a
+        name be added here that no producer can emit - half a contract check
+        presented as a whole one."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "gen" / "python"))
+        from perception.v1 import perception_pb2
+
+        single = set(
+            re.findall(
+                r'\]:\s*"([^"]+)"',
+                (_FRONTEND / "lib" / "perception" / "gesture.ts").read_text(),
+            )
+        )
+        enum = perception_pb2.DESCRIPTOR.enum_types_by_name["TwoHandGestureType"]
+        two_hand = {
+            v.name.removeprefix("TWO_HAND_GESTURE_TYPE_")
+            for v in enum.values
+            if v.name != "TWO_HAND_GESTURE_TYPE_UNSPECIFIED"
+        }
+
+        invented = set(KNOWN_GESTURE_EVENTS) - (single | two_hand)
+        assert not invented, (
+            f"the allowlist carries {sorted(invented)}, which no producer emits"
         )

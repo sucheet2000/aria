@@ -97,7 +97,9 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 	// the cap produced a 200 labelled JSON carrying a document cut in half,
 	// with nothing to tell the scraper it was incomplete — a silent wrong
 	// answer is worse than a loud failure.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetricsBodyBytes+1))
+	counted := &countingReader{r: io.LimitReader(resp.Body, maxMetricsBodyBytes+1)}
+	body, err := io.ReadAll(counted)
+	lastMetricsBytesRead = counted.n
 	if err != nil {
 		log.Error().Err(err).Msg("metrics stream interrupted")
 		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
@@ -129,6 +131,27 @@ func isJSONContentType(ct string) bool {
 	return media == "application/json"
 }
 
+// lastMetricsBytesRead is how many bytes the most recent scrape pulled from
+// the upstream. Test-only window: the cap is a promise about what we read, and
+// the response alone cannot show it was kept.
+var lastMetricsBytesRead int64
+
+// countingReader records how many bytes were actually pulled from the
+// upstream. Without it the cap was only ever a check on a buffer we had
+// already filled: reading the whole body and then refusing it still passes a
+// test that asserts the refusal, while a 10 GB upstream is held in memory
+// first. What matters is that we stop reading.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
 // metricsAuthorized reports whether the request carries the scrape credential.
 //
 // When no token is configured the endpoint stays open: that is the documented
@@ -136,9 +159,12 @@ func isJSONContentType(ct string) bool {
 // non-loopback bind, so it cannot silently become the production posture.
 func (s *Server) metricsAuthorized(r *http.Request) bool {
 	// A token that is only whitespace is not a credential; treat it as unset so
-	// it cannot be "presented" and matched against itself.
-	want := strings.TrimSpace(s.cfg.MetricsToken)
-	if want == "" {
+	// it cannot be "presented" and matched against itself. The COMPARISON uses
+	// the raw value: trimming it too would mean METRICS_TOKEN=" abc " silently
+	// accepts only "abc", and since the denial deliberately gives no oracle the
+	// operator would debug an identical 401 with no signal at all.
+	want := s.cfg.MetricsToken
+	if strings.TrimSpace(want) == "" {
 		return true
 	}
 

@@ -233,6 +233,28 @@ func TestMetrics_UpstreamFailureIsNormalisedAndNeverLeaksItsBody(t *testing.T) {
 	}
 }
 
+// F4 — every case above is text/html, so the content-type check fires first
+// and the status check is never the thing that refuses. This one is JSON, so
+// only the status check can catch it. It is the shape Python actually returns
+// now that the metrics router sits behind require_internal_auth: a 403
+// application/json, which without this check relayed as a 200 carrying
+// {"detail":"forbidden"}.
+func TestMetrics_JSONNon200IsRefusedByTheStatusCheck(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 500, 503} {
+		t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+			up := upstream(t, status, "application/json", `{"detail":"forbidden"}`)
+			rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("status = %d for a JSON %d upstream, want 502", rec.Code, status)
+			}
+			if strings.Contains(rec.Body.String(), "forbidden") {
+				t.Fatalf("upstream body relayed: %q", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestMetrics_UpstreamUnreachableIsSafe(t *testing.T) {
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := dead.URL
@@ -251,14 +273,23 @@ func TestMetrics_UpstreamUnreachableIsSafe(t *testing.T) {
 	}
 }
 
-func TestMetrics_OversizedUpstreamBodyIsBounded(t *testing.T) {
-	huge := strings.Repeat("x", int(maxMetricsBodyBytes)+4096)
-	up := upstream(t, 200, "application/json", huge)
-	rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+// F5 — the cap must bound what we READ, not merely what we accept. Reading a
+// whole 10 GB body and then refusing it passes a test that only asserts the
+// refusal, while the edge has already held it all in memory.
+func TestMetrics_OversizedUpstreamIsNotFullyBuffered(t *testing.T) {
+	const overshoot = 8 << 20
+	up := upstream(t, 200, "application/json",
+		strings.Repeat("x", int(maxMetricsBodyBytes)+overshoot))
 
-	if int64(rec.Body.Len()) > maxMetricsBodyBytes {
-		t.Fatalf("relayed %d bytes, cap is %d — an upstream can exhaust the edge",
-			rec.Body.Len(), maxMetricsBodyBytes)
+	s := newMetricsServer(up.URL, testMetricsToken)
+	rec := scrape(s, "Bearer "+testMetricsToken)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+	if lastMetricsBytesRead > maxMetricsBodyBytes+1 {
+		t.Fatalf("read %d bytes from the upstream; the cap is %d — the body was buffered whole",
+			lastMetricsBytesRead, maxMetricsBodyBytes)
 	}
 }
 
@@ -531,14 +562,6 @@ func TestMetrics_ClerkOptOutDoesNotOpenMetrics(t *testing.T) {
 	if !metricsGuardRefusesBoot("", "0.0.0.0", os.Getenv(allowInsecureMetricsEnv)) {
 		t.Fatal("ALLOW_INSECURE_NO_AUTH=1 still disarms the metrics guard")
 	}
-}
-
-func mustReq(auth string) *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	if auth != "" {
-		r.Header.Set("Authorization", auth)
-	}
-	return r
 }
 
 // F2 — the call site, not just the predicate. Replacing the call with
