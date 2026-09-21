@@ -103,6 +103,11 @@ export function useCognition() {
     if (!text.trim() || isLoading) return;
 
     const { conversationHistory, visionState } = useAriaStore.getState();
+    // Client-generated notices are shown to the user but are not part of what
+    // ARIA said, so they are not replayed to the model (B22).
+    const modelHistory = conversationHistory
+      .filter((turn) => !turn.localOnly)
+      .map(({ role, content }) => ({ role, content }));
 
     addMessage("user", text.trim());
     setIsLoading(true);
@@ -126,7 +131,7 @@ export function useCognition() {
           message: text.trim(),
           session_id: useAriaStore.getState().sessionId,
           vision_state: buildCognitionVisionState(visionState, Date.now()),
-          conversation_history: conversationHistory,
+          conversation_history: modelHistory,
           gesture: visionState?.gesture_name ?? "none",
           pointing_vector: visionState?.pointing_vector ?? null,
         }),
@@ -177,7 +182,7 @@ export function useCognition() {
           : "I could not process that request.";
       setError(msg);
       setIsThinking(false);
-      addMessage("assistant", "I could not process that request.");
+      addMessage("assistant", "I could not process that request.", { localOnly: true });
     } finally {
       clearTimeout(timeoutId);
       abortCognitionRef.current = null;
