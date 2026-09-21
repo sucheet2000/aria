@@ -1,7 +1,6 @@
 package tts
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -23,8 +22,7 @@ func TestStream_SetsOwnerHeader(t *testing.T) {
 	c.pythonURL = fake.URL
 
 	ctx := auth.WithOwner(context.Background(), "user_tts_1")
-	var buf bytes.Buffer
-	if err := c.Stream(ctx, "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, ctx, "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if gotOwner != "user_tts_1" {
@@ -44,8 +42,7 @@ func TestStream_NoOwnerHeaderWhenAbsent(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if hadHeader {
@@ -66,8 +63,7 @@ func TestStream_SetsInternalAuthHeader(t *testing.T) {
 	c.pythonURL = fake.URL
 	c.SetInternalAuthSecret("boundary-secret")
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if gotSecret != "boundary-secret" {
@@ -87,8 +83,7 @@ func TestStream_NoInternalAuthHeaderWhenSecretEmpty(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	var buf bytes.Buffer
-	if err := c.Stream(context.Background(), "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, context.Background(), "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if hadHeader {

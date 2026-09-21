@@ -1,0 +1,378 @@
+package tts
+
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+)
+
+// Closure 2 — when no speech can be produced, the endpoint must not advertise a
+// successful audio response.
+//
+// The handler set Content-Type: audio/mpeg and then called Stream. Go commits
+// the status on the first body byte, so by the time Stream failed the response
+// was already a 200 carrying an empty audio body. The caller could not tell a
+// silent reply from a broken one, and the log was the only place the failure
+// appeared.
+
+func newFailingUpstream(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func newWorkingUpstream(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Write([]byte(body)) //nolint:errcheck
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func post(t *testing.T, h http.Handler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/tts", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// 1 — the ordinary path is untouched.
+func TestTTSHandler_UpstreamSuccessReturnsAudio(t *testing.T) {
+	c := New("", "")
+	c.SetPythonURL(newWorkingUpstream(t, "mp3-bytes").URL)
+	rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Body.String(); got != "mp3-bytes" {
+		t.Fatalf("body = %q", got)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/mpeg" {
+		t.Fatalf("content-type = %q", ct)
+	}
+}
+
+// 3 and 4 — upstream fails, no local synthesizer: a non-2xx, and no empty
+// audio body pretending to be speech.
+func TestTTSHandler_NoSpeechPossibleReturnsAnError(t *testing.T) {
+	withoutLocalFallback(t)
+	c := New("", "")
+	c.SetPythonURL(newFailingUpstream(t).URL)
+
+	rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("status = 200 with no audio; the client cannot tell silence from failure")
+	}
+	if rec.Code < 500 || rec.Code > 599 {
+		t.Fatalf("status = %d, want a 5xx", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); strings.HasPrefix(ct, "audio/") {
+		t.Fatalf("failure advertised itself as %q", ct)
+	}
+}
+
+// 5 — the audio headers must not be committed before a stream is known to exist.
+func TestTTSHandler_DoesNotCommitAudioHeadersBeforeItHasAStream(t *testing.T) {
+	withoutLocalFallback(t)
+	c := New("", "")
+	c.SetPythonURL(newFailingUpstream(t).URL)
+
+	rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if rec.Header().Get("Transfer-Encoding") != "" {
+		t.Fatal("chunked audio framing was announced for a response that carries none")
+	}
+	if rec.Body.Len() == 0 && rec.Code == http.StatusOK {
+		t.Fatal("empty 200")
+	}
+}
+
+// 8 — the provider's own response body must never be echoed to the caller.
+func TestTTSHandler_DoesNotLeakTheUpstreamBody(t *testing.T) {
+	withoutLocalFallback(t)
+	secret := "upstream-diagnostic-SHOULD-NOT-APPEAR"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(secret)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	c := New("", "")
+	c.SetPythonURL(srv.URL)
+	rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if strings.Contains(rec.Body.String(), secret) {
+		t.Fatal("the upstream response body reached the client")
+	}
+}
+
+// A short but valid stream is still a success: the fix must not treat "small"
+// as "failed".
+func TestTTSHandler_ShortAudioIsStillASuccess(t *testing.T) {
+	c := New("", "")
+	c.SetPythonURL(newWorkingUpstream(t, "x").URL)
+	rec := post(t, NewHandler(c), `{"text":"hi"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for a short but real stream", rec.Code)
+	}
+	if rec.Body.String() != "x" {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+}
+
+// 2 — upstream fails but this machine can synthesize locally: the caller still
+// gets audio and a 200. Uses the OS `say` binary, which is local and free; on a
+// platform without it there is nothing to assert, and test 3 above already
+// covers that case.
+func TestTTSHandler_UpstreamErrorWithLocalFallbackStillReturnsAudio(t *testing.T) {
+	if !localFallbackAvailable() {
+		t.Skipf("no local synthesizer on %s", runtime.GOOS)
+	}
+	c := New("", "")
+	c.SetPythonURL(newFailingUpstream(t).URL)
+
+	rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — the fallback can speak", rec.Code)
+	}
+	if rec.Body.Len() < 100 {
+		t.Fatalf("body = %d bytes; the browser treats anything under 100 as unusable", rec.Body.Len())
+	}
+	// The fallback produces WAVE, and the label has to say so — this assertion
+	// used to demand audio/mpeg, which pinned the mismatch it was meant to catch.
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/wav" {
+		t.Fatalf("content-type = %q for the local fallback", ct)
+	}
+}
+
+// 8 — the provider's body must not reach the log either. It can quote the text
+// ARIA is speaking, which is user content (S2).
+func TestTTSHandler_DoesNotLogTheUpstreamBody(t *testing.T) {
+	withoutLocalFallback(t)
+	secret := "upstream-diagnostic-SHOULD-NOT-APPEAR"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(secret)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	var logged bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&logged)
+	defer func() { log.Logger = prev }()
+
+	c := New("", "")
+	c.SetPythonURL(srv.URL)
+	post(t, NewHandler(c), `{"text":"hello"}`)
+
+	if strings.Contains(logged.String(), secret) {
+		t.Fatalf("the upstream body was written to the log: %s", logged.String())
+	}
+	if !strings.Contains(logged.String(), "tts stream failed") {
+		t.Fatalf("the failure was not logged at all: %s", logged.String())
+	}
+}
+
+// 3 again, through net/http end to end. A recorder agrees with the wire on
+// this case — an earlier version of this comment claimed otherwise and was
+// simply wrong — but the recorder cannot see everything: an aborted response
+// is invisible to it, which is why the truncation test below needs a real
+// server too. This one is here as end-to-end coverage of the status the
+// browser actually receives.
+func TestTTSHandler_TheClientSeesTheFailureStatusOnTheWire(t *testing.T) {
+	withoutLocalFallback(t)
+	c := New("", "")
+	c.SetPythonURL(newFailingUpstream(t).URL)
+
+	srv := httptest.NewServer(NewHandler(c))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"text":"hello"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("the wire carried 200 with %d bytes of body; the browser cannot tell this from silence", len(body))
+	}
+	if resp.StatusCode/100 != 5 {
+		t.Fatalf("status = %d, want a 5xx", resp.StatusCode)
+	}
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "audio/") {
+		t.Fatalf("failure advertised itself as %q", resp.Header.Get("Content-Type"))
+	}
+}
+
+// Closure 2, second half of "no empty or TRUNCATED 200 on failure". The empty
+// case was closed by opening the stream first. This is the other one: the
+// provider dies mid-sentence, after the audio headers are already on the wire.
+// io.Copy fails, and returning normally lets Go finish the chunked body, so the
+// caller receives a short clip that is indistinguishable from a complete one —
+// the user hears half a sentence and nothing anywhere says why.
+func TestTTSHandler_ATruncatedStreamDoesNotLookLikeAWholeOne(t *testing.T) {
+	withoutLocalFallback(t)
+
+	// Promises 100000 bytes, delivers 4096, then hangs up.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100000")
+		w.WriteHeader(http.StatusOK)
+		w.Write(bytes.Repeat([]byte("a"), 4096)) //nolint:errcheck
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		if hj, ok := w.(http.Hijacker); ok {
+			conn, _, err := hj.Hijack()
+			if err == nil {
+				conn.Close()
+			}
+		}
+	}))
+	defer upstream.Close()
+
+	c := New("", "")
+	c.SetPythonURL(upstream.URL)
+
+	srv := httptest.NewServer(NewHandler(c))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"text":"hello"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+
+	got, readErr := io.ReadAll(resp.Body)
+
+	// The caller must be able to tell. Either the status was never 200, or the
+	// body read fails — what it must NOT get is a clean, complete short clip.
+	if resp.StatusCode == http.StatusOK && readErr == nil {
+		t.Fatalf(
+			"a dead provider produced a complete-looking 200 of %d bytes; the browser plays half a sentence and reports success",
+			len(got),
+		)
+	}
+}
+
+// F5 — the failure paths are the ones an operator most needs in the duration
+// and length series, and they are the two that do not reach the completion log:
+// the 503 returns early and the abort unwinds past it. Reverting either set of
+// log fields left the whole suite green, so the fields get their own test.
+func TestTTSHandler_FailedTurnsStillCarryTheirTelemetry(t *testing.T) {
+	capture := func(t *testing.T, setup func(*Handler) string) string {
+		t.Helper()
+		var logged bytes.Buffer
+		prev := log.Logger
+		log.Logger = zerolog.New(&logged)
+		defer func() { log.Logger = prev }()
+
+		c := New("", "")
+		h := NewHandler(c)
+		url := setup(h)
+		c.SetPythonURL(url)
+		func() {
+			defer func() { _ = recover() }() // the abort path panics by design
+			post(t, h, `{"text":"hello there"}`)
+		}()
+		return logged.String()
+	}
+
+	t.Run("nothing could speak", func(t *testing.T) {
+		withoutLocalFallback(t)
+		out := capture(t, func(*Handler) string { return newFailingUpstream(t).URL })
+		for _, want := range []string{"tts stream failed", "text_length", "duration"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %q in: %s", want, out)
+			}
+		}
+	})
+
+	t.Run("the stream died mid-clip", func(t *testing.T) {
+		withoutLocalFallback(t)
+		out := capture(t, func(*Handler) string {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Length", "100000")
+				w.Write(bytes.Repeat([]byte("a"), 4096)) //nolint:errcheck
+				if hj, ok := w.(http.Hijacker); ok {
+					if conn, _, err := hj.Hijack(); err == nil {
+						conn.Close()
+					}
+				}
+			}))
+			t.Cleanup(srv.Close)
+			return srv.URL
+		})
+		for _, want := range []string{"tts stream interrupted after headers", "text_length", "duration"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %q in: %s", want, out)
+			}
+		}
+	})
+}
+
+// F1 (blocking, TEST-2) — the audio/ guard had no coverage in either
+// direction. Replacing the whole block with the constant, or deleting just the
+// prefix check so text/html reaches the browser, both left the suite green:
+// the working upstream declared audio/mpeg, which is byte-identical to the
+// fallback constant, so no test could tell pass-through from hardcode.
+func TestTTSHandler_ForwardsOnlyAudioContentTypes(t *testing.T) {
+	cases := []struct {
+		name       string
+		upstream   string
+		wantServed string
+	}{
+		{"a different audio container is passed through", "audio/ogg", "audio/ogg"},
+		{"a document type is never served from our origin", "text/html", "audio/mpeg"},
+		{"an absent type falls back rather than sniffing", "", "audio/mpeg"},
+		{"case does not change the verdict", "AUDIO/WAV", "AUDIO/WAV"},
+		{"parameters survive on a real audio type", "audio/wav; codecs=1", "audio/wav; codecs=1"},
+		{"a near-miss is not audio", "audiofoo/bar", "audio/mpeg"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.upstream != "" {
+					w.Header().Set("Content-Type", tc.upstream)
+				} else {
+					// Go sniffs when nothing is set; force a bare response.
+					w.Header()["Content-Type"] = nil
+				}
+				w.Write([]byte("mp3-bytes")) //nolint:errcheck
+			}))
+			defer srv.Close()
+
+			c := New("", "")
+			c.SetPythonURL(srv.URL)
+			rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+			if got := rec.Header().Get("Content-Type"); got != tc.wantServed {
+				t.Fatalf("upstream %q served as %q, want %q", tc.upstream, got, tc.wantServed)
+			}
+			if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Fatal("nosniff missing")
+			}
+		})
+	}
+}

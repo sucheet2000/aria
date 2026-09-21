@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,6 +22,14 @@ import (
 // maxErrorBodyBytes caps how much of a non-2xx upstream response body is
 // drained before the connection is released; the body is never logged.
 const maxErrorBodyBytes = 4 << 10
+
+// What each speech source actually produces. WAVE is asked for explicitly in
+// sayArgs; the previous AIFF default was served as audio/mpeg and only Safari
+// could decode it.
+const (
+	proxyAudioContentType = "audio/mpeg"
+	localAudioContentType = "audio/wav"
+)
 
 // Client handles text-to-speech synthesis.
 type Client struct {
@@ -60,31 +70,74 @@ type proxyRequest struct {
 	Emotion string `json:"emotion,omitempty"`
 }
 
-// Stream synthesizes text and writes the resulting audio to w.
-// Proxies to the Python voice engine's TTS endpoint.
-// Falls back to the macOS say command when Python is unavailable.
-func (c *Client) Stream(ctx context.Context, text string, emotion string, w io.Writer) error {
-	if err := c.streamProxy(ctx, text, emotion, w); err != nil {
-		c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
-		return c.streamLocal(ctx, text, w)
-	}
-	return nil
+// haveSayBinary reports whether the macOS `say` command is actually on PATH.
+func haveSayBinary() bool {
+	_, err := exec.LookPath("say")
+	return err == nil
 }
 
-func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w io.Writer) error {
-	body := proxyRequest{
-		Text:    text,
-		Emotion: emotion,
+// localFallbackAvailable reports whether this machine can synthesize speech
+// locally. The fallback shells out to `say`, which ships with macOS and exists
+// nowhere else — so on the Linux hosts this actually deploys to there is no
+// fallback at all, and pretending otherwise turned a dead Python service into a
+// silent, truncated 200 rather than an error anyone could act on.
+func localFallbackAvailable() bool {
+	return localFallbackCheck()
+}
+
+// localFallbackCheck is a variable so tests can exercise BOTH platforms'
+// behaviour. Production runs on Linux while development runs on macOS, and the
+// path that matters most is the one the developer's machine never takes.
+var localFallbackCheck = func() bool {
+	return runtime.GOOS == "darwin" && haveSayBinary()
+}
+
+// Open returns a reader for the synthesized speech, or an error when no speech
+// can be produced at all.
+//
+// The handler needs to know whether a stream exists BEFORE it commits success
+// headers. Streaming straight into the ResponseWriter meant the status was
+// already sent by the time a failure surfaced, so a dead provider reached the
+// caller as a 200 carrying an empty audio body — indistinguishable from ARIA
+// choosing to say nothing. Nothing is buffered: on the proxy path this is the
+// upstream response body itself, and the caller closes it.
+// Open returns a speech stream and the media type of the bytes in it. The two
+// sources do not produce the same container — the proxy returns MP3, the local
+// synthesizer WAVE — and the handler cannot label a response it cannot
+// identify. Labelling everything audio/mpeg is what previously served AIFF
+// under an MP3 content type, which no browser but Safari would decode.
+func (c *Client) Open(ctx context.Context, text string, emotion string) (io.ReadCloser, string, error) {
+	body, contentType, err := c.openProxy(ctx, text, emotion)
+	if err == nil {
+		return body, contentType, nil
 	}
+	if !localFallbackAvailable() {
+		c.log.Error().Err(err).Str("goos", runtime.GOOS).
+			Msg("python TTS proxy failed and no local fallback exists on this platform")
+		return nil, "", fmt.Errorf("tts unavailable: proxy failed and no local synthesizer on %s: %w",
+			runtime.GOOS, err)
+	}
+	c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
+	stream, err := c.openLocal(ctx, text)
+	if err != nil {
+		return nil, "", err
+	}
+	return stream, localAudioContentType, nil
+}
+
+// openProxy performs the upstream request and hands back its body on success.
+// The caller owns closing it.
+func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io.ReadCloser, string, error) {
+	body := proxyRequest{Text: text, Emotion: emotion}
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+		return nil, "", fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.pythonURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, "", fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -96,42 +149,78 @@ func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("proxy request: %w", err)
+		return nil, "", fmt.Errorf("proxy request: %w", err)
 	}
-	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		// S2: drain (bounded) but never embed the body — the error is logged and
-		// a validation body can echo the text being spoken.
+		// S2: drain (bounded) but never embed the body — a validation message
+		// can echo the text being spoken.
 		n, _ := io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return fmt.Errorf("tts upstream returned %d (%d body bytes)", resp.StatusCode, n)
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("tts upstream returned %d (%d body bytes)", resp.StatusCode, n)
 	}
-
-	_, err = io.Copy(w, resp.Body)
-	return err
+	// The upstream's own label, but only if it is audio. This response is
+	// forwarded to a browser from our origin, so an upstream that said
+	// text/html — misconfigured, or worse — would otherwise have us serve
+	// attacker-influenced bytes as a document. MP3 is what the Python TTS route
+	// has always returned and remains the default.
+	ct := resp.Header.Get("Content-Type")
+	// Case-insensitive: RFC 9110 says media types are, and relabelling AUDIO/WAV
+	// as MP3 would recreate the mismatch this whole change removes.
+	if !strings.HasPrefix(strings.ToLower(ct), "audio/") {
+		ct = proxyAudioContentType
+	}
+	return resp.Body, ct, nil
 }
 
-func (c *Client) streamLocal(ctx context.Context, text string, w io.Writer) error {
-	c.log.Warn().Msg("using system TTS fallback")
-
-	tmp, err := os.CreateTemp("", "aria-tts-*.aiff")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+// openLocal synthesizes with the system voice and returns the finished file.
+// It is only reached where localFallbackAvailable() is true.
+// sayArgs builds the argv for the local synthesizer.
+//
+// "--" ends option parsing, so the caller's text can never be read as a flag.
+// Without it, `say` honours --output-file= and --input-file= in this position:
+// a text field starting with a dash overwrites a file as the server user, or
+// speaks the contents of any readable file — including backend/.env — straight
+// down the HTTP response.
+//
+// It is a separate function so the terminator can be asserted on any platform.
+// The behavioural proof needs a real `say` and therefore only runs on macOS,
+// which means CI — where this path has no coverage at all — would never have
+// caught its removal.
+func sayArgs(name, text string) []string {
+	return []string{
+		"-v", "Samantha",
+		"--file-format=WAVE", "--data-format=LEI16@22050",
+		"-o", name,
+		"--", text,
 	}
-	defer os.Remove(tmp.Name())
+}
+
+func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, error) {
+	tmp, err := os.CreateTemp("", "aria-tts-*.wav")
+	if err != nil {
+		return nil, fmt.Errorf("create temp file: %w", err)
+	}
+	name := tmp.Name()
 	tmp.Close()
 
-	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "--data-format=aiff", "-o", tmp.Name(), text)
+	// The .aiff extension selects the container. --data-format was also passed
+	// here, spelled "aiff", which `say` rejects as a format specifier — it
+	// wants a PCM spelling like LEI16@22050. Every local synthesis therefore
+	// exited 1, so the fallback this platform advertises had never produced a
+	// single byte of speech.
+	cmd := exec.CommandContext(ctx, "say", sayArgs(name, text)...)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("say command: %w", err)
+		os.Remove(name)
+		return nil, fmt.Errorf("say command: %w", err)
 	}
 
-	f, err := os.Open(tmp.Name())
+	f, err := os.Open(name)
 	if err != nil {
-		return fmt.Errorf("open temp file: %w", err)
+		os.Remove(name)
+		return nil, fmt.Errorf("open temp file: %w", err)
 	}
-	defer f.Close()
-
-	_, err = io.Copy(w, f)
-	return err
+	// The file is unlinked now; the open handle keeps the bytes alive until the
+	// caller closes it, so there is nothing to clean up afterwards.
+	os.Remove(name)
+	return f, nil
 }

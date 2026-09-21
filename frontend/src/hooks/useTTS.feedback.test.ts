@@ -14,6 +14,7 @@ vi.mock("@clerk/nextjs", () => ({
 import { useTTS, __ttsMuteHoldCount } from "./useTTS";
 import { wsSendRef } from "./useWebSocket";
 import { ttsResyncRef } from "./ttsResyncState";
+import { isTtsCaptureSuppressed } from "./ttsSpeakingState";
 
 const LINE = "Sure, I can help with that.";
 const PRIVATE = "PRIVATE_TTS_FEEDBACK_5197";
@@ -96,12 +97,24 @@ function installAudio(playBehavior: "resolve" | "reject"): void {
   }
   vi.stubGlobal("Audio", FakeAudioCtor);
   vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:fake",
+    createObjectURL: (b: Blob) => {
+      lastBlobType = b.type;
+      return "blob:fake";
+    },
     revokeObjectURL: () => undefined,
   });
 }
 
-type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "timeout";
+type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "unavailable" | "gateway" | "cutoff" | "timeout";
+
+// What type the hook actually handed the audio element.
+let lastBlobType = "";
+
+// A real Response carries headers, and the hook reads Content-Type from them
+// to build the blob. A stub without them is not a Response.
+function audioHeaders(type = "audio/mpeg"): Headers {
+  return new Headers({ "Content-Type": type });
+}
 
 function mockTtsFetch(kind: FetchKind): void {
   vi.stubGlobal(
@@ -113,15 +126,52 @@ function mockTtsFetch(kind: FetchKind): void {
           Object.assign(new Error("signal timed out"), { name: "TimeoutError" })
         );
       }
+      if (kind === "cutoff") {
+        // The server aborted the connection mid-clip, so the status says 200
+        // but the body can never be read to the end.
+        return Promise.resolve({
+          headers: audioHeaders(),
+          ok: true,
+          status: 200,
+          arrayBuffer: () =>
+            Promise.reject(new TypeError("network error: connection closed")),
+        });
+      }
+      if (kind === "gateway") {
+        // An intermediary — Railway's edge, a proxy, Cloudflare — answers a
+        // dead origin with an HTML page. It is a 5xx and it is far larger than
+        // the 100-byte usability floor, so ONLY the status tells the browser
+        // this is not speech.
+        return Promise.resolve({
+          headers: audioHeaders(),
+          ok: false,
+          status: 503,
+          arrayBuffer: async () =>
+            new TextEncoder().encode("<html><body>" + "service unavailable ".repeat(20) + "</body></html>").buffer,
+        });
+      }
+      if (kind === "unavailable") {
+        // Closure 2: the server no longer answers a dead provider with an empty
+        // 200. It says 503 with a JSON error and no audio at all.
+        return Promise.resolve({
+          headers: audioHeaders(),
+          ok: false,
+          status: 503,
+          arrayBuffer: async () => new TextEncoder().encode(
+            '{"error":"speech synthesis unavailable"}'
+          ).buffer,
+        });
+      }
       if (kind === "not-ok") {
         return Promise.resolve({
+          headers: audioHeaders(),
           ok: false,
           status: 502,
           arrayBuffer: async () => new ArrayBuffer(0),
         });
       }
       const bytes = kind === "tiny" ? 0 : 4096;
-      return Promise.resolve({ ok: true, arrayBuffer: async () => new ArrayBuffer(bytes) });
+      return Promise.resolve({ headers: audioHeaders(), ok: true, arrayBuffer: async () => new ArrayBuffer(bytes) });
     })
   );
 }
@@ -134,6 +184,7 @@ function endAllSpeech(): void {
 
 beforeEach(() => {
   trace = [];
+  lastBlobType = "";
   wsSendRef.current = (msg: object) => {
     const t = (msg as { type?: string }).type;
     if (t === "tts_mute" || t === "tts_unmute") trace.push(t);
@@ -251,6 +302,68 @@ describe("V3 — browser SpeechSynthesis fallback (the finding)", () => {
     expect(spoke).toBeGreaterThanOrEqual(0);
     expect(firstIndex("tts_mute")).toBeLessThan(spoke);
     expect(trace).not.toContain("tts_unmute");
+  });
+
+  // ── Closure 2 ────────────────────────────────────────────────────────────
+  // The server used to answer a dead provider with 200 and an empty body, and
+  // the browser fell back because the BODY was unusable. Now it answers 503
+  // with a JSON error body, so the fallback has to be reached by the STATUS.
+  // A JSON error body is over 100 bytes of nothing useful, so the old size
+  // check would have played it as audio.
+  it("Closure 2 test 6: the browser voice still speaks when the server says 503", async () => {
+    mockTtsFetch("unavailable");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
+    expect(firstIndex("tts_mute")).toBeLessThan(firstIndex("browser:speak"));
+    expect(trace.slice(0, firstIndex("browser:speak"))).not.toContain("tts_unmute");
+  });
+
+  it("Closure 2 test 7: the 503 path completes the whole mute lifecycle", async () => {
+    mockTtsFetch("unavailable");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Local gate shut while the fallback voice is talking...
+    expect(isTtsCaptureSuppressed()).toBe(true);
+    expect(__ttsMuteHoldCount()).toBe(1);
+
+    lastUtterance?.onend?.();
+
+    // ...and fully open once it stops, with the server told as well.
+    expect(isTtsCaptureSuppressed()).toBe(false);
+    expect(__ttsMuteHoldCount()).toBe(0);
+    expect(trace[trace.length - 1]).toBe("tts_unmute");
+  });
+
+  it("Closure 2 test 6b: a large 5xx error page is never played as audio", async () => {
+    mockTtsFetch("gateway");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Nothing was handed to the audio element; the browser voice spoke instead.
+    expect(lastAudio).toBeNull();
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
+  });
+
+  it("Closure 2 test 6c: a clip cut off mid-sentence hands over to the browser voice", async () => {
+    mockTtsFetch("cutoff");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Half a clip is not speech. The fallback says the whole line.
+    expect(lastAudio).toBeNull();
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
+    // And the mic is not left shut by the abandoned attempt.
+    expect(trace.slice(0, firstIndex("browser:speak"))).not.toContain("tts_unmute");
   });
 
   it("Test 4: releases capture when fallback speech finishes", async () => {
@@ -458,5 +571,39 @@ describe("V3 — resync when the control socket comes back", () => {
   it("is registered by the hook, so the socket can call it", () => {
     renderHook(() => useTTS());
     expect(typeof ttsResyncRef.current).toBe("function");
+  });
+});
+
+// Closure 2 / container contract: the element must be handed the type the
+// server actually sent. The hook used to hardcode audio/mpeg, which meant the
+// server's label could be wrong — and was, for the whole life of the macOS
+// fallback — without anything noticing.
+describe("the blob carries the type the server declared", () => {
+  it("uses the declared audio type for the local WAVE fallback", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers: new Headers({ "Content-Type": "audio/wav" }),
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4096),
+      })
+    );
+    const { result } = renderHook(() => useTTS());
+    await result.current.speak(LINE);
+    expect(lastBlobType).toBe("audio/wav");
+  });
+
+  it("ignores a non-audio declaration rather than trusting it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers: new Headers({ "Content-Type": "text/html" }),
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4096),
+      })
+    );
+    const { result } = renderHook(() => useTTS());
+    await result.current.speak(LINE);
+    expect(lastBlobType).toBe("audio/mpeg");
   });
 });

@@ -24,10 +24,9 @@ func TestNewClient(t *testing.T) {
 
 func TestStreamEmptyAPIKeyDoesNotPanic(t *testing.T) {
 	c := New("", "")
-	var buf bytes.Buffer
 	// The say command may not exist in all CI environments, so we only check it
 	// does not panic. An error is acceptable.
-	_ = c.Stream(context.Background(), "hello", "", &buf)
+	_, _ = drain(t, c, context.Background(), "hello", "")
 }
 
 func TestTTSRequestJSONMarshal(t *testing.T) {

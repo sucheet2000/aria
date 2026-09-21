@@ -3,14 +3,32 @@ package tts
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 const maxTextLength = 500
+
+// truncateForSpeech caps the text at maxTextLength BYTES, which is what the
+// provider limit counts, without ever splitting a rune. A byte slice alone
+// would cut a multi-byte character in half and put invalid UTF-8 on the wire —
+// silently, since nothing downstream validates it. A rune that straddles the
+// cap is dropped whole.
+func truncateForSpeech(text string) string {
+	if len(text) <= maxTextLength {
+		return text
+	}
+	cut := maxTextLength
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
+}
 
 // maxRequestBodyBytes caps the /api/tts request body. Over-cap requests
 // surface as 413.
@@ -65,19 +83,51 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Text) > maxTextLength {
-		req.Text = req.Text[:maxTextLength]
-	}
+	req.Text = truncateForSpeech(req.Text)
 
-	w.Header().Set("Content-Type", "audio/mpeg")
+	start := time.Now()
+
+	// Open the stream BEFORE announcing success. Setting the audio headers first
+	// committed a 200 on the first byte, so a dead provider reached the caller as
+	// an empty audio body that looked exactly like ARIA choosing to say nothing.
+	stream, contentType, err := h.client.Open(r.Context(), req.Text, req.Emotion)
+	if err != nil {
+		h.log.Error().Err(err).
+			Int("text_length", len(req.Text)).
+			Dur("duration", time.Since(start)).
+			Msg("tts stream failed")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		// S2: the cause is logged, never echoed — an upstream body can quote the
+		// text being spoken.
+		w.Write([]byte(`{"error":"speech synthesis unavailable"}`)) //nolint:errcheck
+		return
+	}
+	defer stream.Close()
+
+	// The type the bytes actually are, not a constant. The two speech sources
+	// return different containers.
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	start := time.Now()
-
-	if err := h.client.Stream(r.Context(), req.Text, req.Emotion, w); err != nil {
-		h.log.Error().Err(err).Msg("tts stream failed")
+	if _, err := io.Copy(w, stream); err != nil {
+		// Carries the same telemetry as the completion log below, which the
+		// panic unwinds straight past — otherwise the turns that fail would be
+		// the only ones missing from the duration and length series.
+		h.log.Error().Err(err).
+			Int("text_length", len(req.Text)).
+			Dur("duration", time.Since(start)).
+			Msg("tts stream interrupted after headers")
+		// The 200 and the audio headers are already on the wire, so there is no
+		// status left to change. Returning normally would let Go close the
+		// chunked body cleanly, and a clean close means "that was all of it" —
+		// the caller would play half a sentence and report success. Aborting
+		// the connection instead leaves the body demonstrably unfinished, which
+		// is the only remaining way to say so. ErrAbortHandler is the sanctioned
+		// spelling: net/http unwinds the connection without logging a panic.
+		panic(http.ErrAbortHandler)
 	}
 
 	h.log.Info().

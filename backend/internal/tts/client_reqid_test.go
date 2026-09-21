@@ -1,7 +1,6 @@
 package tts
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -23,8 +22,7 @@ func TestStream_ForwardsRequestID(t *testing.T) {
 	c.pythonURL = fake.URL
 
 	ctx := reqid.WithID(context.Background(), "rid-tts-1")
-	var buf bytes.Buffer
-	if err := c.Stream(ctx, "hello", "", &buf); err != nil {
+	if _, err := drain(t, c, ctx, "hello", ""); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	if got != "rid-tts-1" {
