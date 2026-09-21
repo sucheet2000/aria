@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -74,12 +75,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// it on a public bind must find out at boot rather than by being scraped.
 	// This mirrors the Clerk guard directly above: the Go edge has no notion of
 	// ENV, so a non-loopback bind is what it uses to mean "production".
-	if metricsGuardRefusesBoot(s.cfg.MetricsToken, s.cfg.Host, os.Getenv("ALLOW_INSECURE_METRICS")) {
-		log.Fatal().Msgf(
-			"refusing to start: METRICS_TOKEN is empty or blank on non-loopback bind %s; "+
-				"set METRICS_TOKEN or ALLOW_INSECURE_METRICS=1",
-			s.cfg.Host,
-		)
+	if err := s.metricsBootRefusal(); err != nil {
+		log.Fatal().Msg(err.Error())
 	}
 	if strings.TrimSpace(s.cfg.MetricsToken) == "" {
 		log.Warn().Msg("METRICS_TOKEN not set; /metrics is unauthenticated (local dev only)")
@@ -347,6 +344,26 @@ func (s *Server) routes(ctx context.Context, verifier auth.Verifier, authEnabled
 //
 // A whitespace-only token counts as unset: it cannot be typed into a scraper
 // config reliably and is far more likely to be an accident than an intent.
+// metricsBootRefusal is the decision Start actually makes, as an error rather
+// than a log.Fatal so a test can reach it. Testing only the pure predicate
+// below left the call site unproven: replacing it with `if false && ...`
+// disarmed the guard with the whole suite still green.
+func (s *Server) metricsBootRefusal() error {
+	if metricsGuardRefusesBoot(s.cfg.MetricsToken, s.cfg.Host, os.Getenv(allowInsecureMetricsEnv)) {
+		return fmt.Errorf(
+			"refusing to start: METRICS_TOKEN is empty or blank on non-loopback bind %s; "+
+				"set METRICS_TOKEN or %s=1",
+			s.cfg.Host, allowInsecureMetricsEnv,
+		)
+	}
+	return nil
+}
+
+// allowInsecureMetricsEnv is the one spelling of the opt-out. It lived as three
+// separate string literals, so a typo in the one that mattered would have
+// disarmed the guard silently.
+const allowInsecureMetricsEnv = "ALLOW_INSECURE_METRICS"
+
 func metricsGuardRefusesBoot(token, host, allowInsecure string) bool {
 	if strings.TrimSpace(token) != "" {
 		return false

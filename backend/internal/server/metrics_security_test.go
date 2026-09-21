@@ -528,7 +528,7 @@ func TestMetrics_BootGuardRefusesAnOpenPublicMetricsEndpoint(t *testing.T) {
 // The compose default must not be enough to open metrics.
 func TestMetrics_ClerkOptOutDoesNotOpenMetrics(t *testing.T) {
 	t.Setenv("ALLOW_INSECURE_NO_AUTH", "1")
-	if !metricsGuardRefusesBoot("", "0.0.0.0", os.Getenv("ALLOW_INSECURE_METRICS")) {
+	if !metricsGuardRefusesBoot("", "0.0.0.0", os.Getenv(allowInsecureMetricsEnv)) {
 		t.Fatal("ALLOW_INSECURE_NO_AUTH=1 still disarms the metrics guard")
 	}
 }
@@ -539,4 +539,36 @@ func mustReq(auth string) *http.Request {
 		r.Header.Set("Authorization", auth)
 	}
 	return r
+}
+
+// F2 — the call site, not just the predicate. Replacing the call with
+// `if false && ...` disarmed the guard with every test still green, because
+// the guard was only ever tested as a pure function.
+func TestMetrics_StartRefusesToBootWhenMetricsWouldBeOpen(t *testing.T) {
+	t.Setenv(allowInsecureMetricsEnv, "")
+
+	open := newMetricsServer("http://127.0.0.1:1", "")
+	open.cfg.Host = "0.0.0.0"
+	if err := open.metricsBootRefusal(); err == nil {
+		t.Fatal("the server would boot with /metrics open on a public bind")
+	}
+
+	closed := newMetricsServer("http://127.0.0.1:1", "a-real-token")
+	closed.cfg.Host = "0.0.0.0"
+	if err := closed.metricsBootRefusal(); err != nil {
+		t.Fatalf("a configured token must boot: %v", err)
+	}
+
+	local := newMetricsServer("http://127.0.0.1:1", "")
+	local.cfg.Host = "127.0.0.1"
+	if err := local.metricsBootRefusal(); err != nil {
+		t.Fatalf("loopback dev must boot without a token: %v", err)
+	}
+
+	t.Setenv(allowInsecureMetricsEnv, "1")
+	optOut := newMetricsServer("http://127.0.0.1:1", "")
+	optOut.cfg.Host = "0.0.0.0"
+	if err := optOut.metricsBootRefusal(); err != nil {
+		t.Fatalf("the deliberate opt-out must be honoured: %v", err)
+	}
 }
