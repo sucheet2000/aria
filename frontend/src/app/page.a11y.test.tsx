@@ -14,7 +14,11 @@ vi.mock("@/hooks/useWebSocket", () => ({
   useWebSocket: () => undefined,
 }));
 
-vi.mock("@/components/Avatar3D", () => ({
+// page.tsx mounts SkullAvatar, not Avatar3D. Mocking the wrong component left
+// the real avatar rendering inside an accessibility test that believed it was
+// stubbed — so the test neither exercised the real thing deliberately nor
+// isolated the page as intended.
+vi.mock("@/components/SkullAvatar", () => ({
   default: () => <div data-testid="avatar" />,
 }));
 
