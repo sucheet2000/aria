@@ -385,3 +385,62 @@ func TestMetrics_RepeatedScrapingDoesNotLeakGoroutines(t *testing.T) {
 		t.Fatalf("goroutines %d -> %d after 1600 scrapes", before, after)
 	}
 }
+
+// An upstream redirect must not be followed. Go's default policy follows up to
+// ten, and it strips Authorization across hosts but NOT a custom header — so a
+// 3xx from a compromised or buggy Python route sent INTERNAL_AUTH_SECRET to
+// whatever host the redirect named, and returned that host's body to the
+// scraper as a 200 which the content-type pin then laundered as JSON.
+//
+// The handler's status check could never see it: by the time a response exists
+// the outbound request has already been made. An earlier version of the comment
+// beside that check claimed 3xx was covered, which was a false assurance.
+func TestMetrics_UpstreamRedirectIsNotFollowed(t *testing.T) {
+	var attackerHits int
+	var gotSecret string
+	var mu sync.Mutex
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		attackerHits++
+		gotSecret = r.Header.Get("X-Internal-Auth")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"attacker":"controlled"}`)) //nolint:errcheck
+	}))
+	defer attacker.Close()
+
+	for _, code := range []int{301, 302, 303, 307, 308} {
+		t.Run(fmt.Sprintf("%d", code), func(t *testing.T) {
+			mu.Lock()
+			attackerHits, gotSecret = 0, ""
+			mu.Unlock()
+
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", attacker.URL+"/exfil")
+				w.WriteHeader(code)
+			}))
+			defer up.Close()
+
+			s := newMetricsServer(up.URL, testMetricsToken)
+			s.cfg.InternalAuthSecret = "internal-shared-secret-XYZ"
+			rec := scrape(s, "Bearer "+testMetricsToken)
+
+			mu.Lock()
+			hits, secret := attackerHits, gotSecret
+			mu.Unlock()
+
+			if hits != 0 {
+				t.Fatalf("the edge followed the redirect: %d request(s) reached the named host", hits)
+			}
+			if secret != "" {
+				t.Fatalf("INTERNAL_AUTH_SECRET left the box: %q", secret)
+			}
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("status = %d, want 502 for a redirecting upstream", rec.Code)
+			}
+			if strings.Contains(rec.Body.String(), "attacker") {
+				t.Fatalf("attacker body reached the scraper: %q", rec.Body.String())
+			}
+		})
+	}
+}

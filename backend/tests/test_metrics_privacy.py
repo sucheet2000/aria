@@ -95,7 +95,10 @@ class TestMetricsCarryNoCallerContent:
         _drive_one_turn()
         snap = MetricsCollector().snapshot()
 
-        from app.observability.metrics import GESTURE_EVENT_UNKNOWN, KNOWN_GESTURE_EVENTS
+        from app.observability.metrics import (
+            GESTURE_EVENT_UNKNOWN,
+            KNOWN_GESTURE_EVENTS,
+        )
 
         allowed = {
             "gesture_events": set(KNOWN_GESTURE_EVENTS) | {GESTURE_EVENT_UNKNOWN},

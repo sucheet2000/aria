@@ -48,7 +48,21 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 	auth.SetInternalAuth(req, s.cfg.InternalAuthSecret)
 	reqid.SetHeader(req, r.Context())
 
-	resp, err := s.httpClient.Do(req)
+	// Refuse redirects. Go's default policy follows up to ten and strips
+	// Authorization across hosts, but NOT a custom header — so a 3xx from the
+	// upstream would send INTERNAL_AUTH_SECRET to whatever host it named and
+	// bring that host's body back as our response. The status check below
+	// cannot help: by the time a response exists the request has been made.
+	//
+	// ErrUseLastResponse hands the 3xx itself back instead of following it, so
+	// the check below sees it and answers 502. The client is copied rather than
+	// mutated because it is shared with the other proxies.
+	noRedirect := *s.httpClient
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	resp, err := noRedirect.Do(req)
 	if err != nil {
 		// S2: the cause is logged, never echoed — the error text carries the
 		// internal upstream URL.
@@ -59,9 +73,9 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	// Anything other than a clean 200 is not metrics. Relaying the upstream
-	// status verbatim turned a Python 403 or a redirect into that same answer
-	// from the edge, which tells an outside caller about our internals and, for
-	// a 3xx, hands them a redirect we did not author.
+	// status verbatim told an outside caller about our internals — a Python 403
+	// surfaced as a 403 from the edge. A 3xx reaches here only because the
+	// redirect policy above declined to follow it.
 	if resp.StatusCode != http.StatusOK {
 		log.Error().Int("upstream_status", resp.StatusCode).Msg("metrics upstream returned a non-200")
 		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
