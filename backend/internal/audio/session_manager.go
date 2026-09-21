@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -16,6 +17,16 @@ var ErrTooManySessions = errors.New("audio: too many concurrent audio sessions")
 
 // ErrManagerStopped is returned by Acquire after Stop has run.
 var ErrManagerStopped = errors.New("audio: session manager stopped")
+
+// mutedOwnerTTL ages out the RETAINED RECORD below — the intent consulted when
+// a session is rebuilt. It does NOT bound a mute already applied to a running
+// worker: that flag is cleared only by an explicit tts_unmute or by the session
+// being torn down. What heals a live session is the browser's resync, which
+// re-states the truth every time the control socket opens (resyncTtsMuteState).
+// Chosen far longer than any single spoken reply, so a rebuilt session is never
+// unmuted mid-sentence, and short enough that a record left by a client which
+// never returns does not outlive the conversation.
+const mutedOwnerTTL = 60 * time.Second
 
 // TranscriptRouter delivers one transcript envelope to exactly the owner whose
 // audio produced it. The composition root binds this to hub.BroadcastToOwner.
@@ -60,6 +71,26 @@ type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	stopped  bool
+	// V3: owners whose TTS is currently playing, with the time the mute was
+	// taken. The browser sends tts_mute once when ARIA starts speaking and
+	// tts_unmute once when it stops, so the intent outlives any single worker:
+	// if the owner's /ws/audio socket blips mid-speech, the rebuilt session
+	// must come up muted rather than forward ARIA's own voice into Whisper.
+	//
+	// Workstream A: holders are per CONNECTION, not per owner. One owner can
+	// have several tabs sharing one audio session, and a single owner-level
+	// flag was last-writer-wins — a tab that finished speaking, or merely
+	// reconnected, cleared the mute while a sibling was still talking, and that
+	// sibling's microphone carried ARIA's voice into Whisper. The owner is
+	// muted while ANY of its connections holds.
+	//
+	// The timestamp bounds each HOLD, so a connection that vanished without
+	// notice cannot mute its owner for the life of the process. It does not
+	// expire a mute already set on a live worker — see mutedOwnerTTL, and
+	// TestSessionManager_LiveSessionIsHealedByAnExplicitUnmute, which pins that
+	// distinction. A live session is healed by the browser's resync, not by
+	// this clock.
+	mutedOwners map[string]map[string]time.Time
 }
 
 // NewSessionManager creates a manager whose sessions are children of ctx.
@@ -76,6 +107,7 @@ func NewSessionManager(ctx context.Context, pythonBin, scriptPath, workDir, whis
 		route:        route,
 		log:          log.With().Str("component", "audio-sessions").Logger(),
 		sessions:     make(map[string]*Session),
+		mutedOwners:  make(map[string]map[string]time.Time),
 	}
 }
 
@@ -112,6 +144,11 @@ func (m *SessionManager) Acquire(owner string) error {
 	ctx, cancel := context.WithCancel(m.ctx)
 	sink := func(data []byte) { m.route(owner, data) }
 	w := New(m.pythonBin, m.scriptPath, m.workDir, m.whisperModel, sink)
+	if m.stillSpeakingLocked(owner, time.Now()) {
+		// Still mid-TTS: come up muted so the reconnect cannot leak ARIA's
+		// own voice into this owner's pipeline (V3).
+		w.Mute(true)
+	}
 	s := &Session{owner: owner, worker: w, refs: 1, cancel: cancel, done: make(chan struct{})}
 	m.sessions[owner] = s
 
@@ -149,6 +186,11 @@ func (m *SessionManager) Release(owner string) {
 	if cur, ok := m.sessions[owner]; ok && cur == s {
 		delete(m.sessions, owner)
 	}
+	for o := range m.mutedOwners {
+		// Clients come and go here, so this is the natural moment to prune the
+		// holds of connections that left mid-sentence and never came back.
+		m.stillSpeakingLocked(o, time.Now())
+	}
 	m.mu.Unlock()
 	m.log.Info().Str("owner", owner).Msg("audio session stopped")
 }
@@ -176,14 +218,103 @@ func (m *SessionManager) WriteAudio(owner string, pcm []byte) {
 
 // SetMuted gates owner's PCM at the edge while that owner's TTS plays. It
 // affects only owner's session.
-func (m *SessionManager) SetMuted(owner string, muted bool) {
+func (m *SessionManager) SetMuted(owner, holder string, muted bool) {
+	// The lock is held across worker.Mute so two connections of one owner
+	// cannot update the map in one order and reach the worker in the other,
+	// leaving the flag and the record disagreeing. Mute is a non-blocking
+	// atomic store, so holding the lock costs nothing.
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if muted {
+		holders := m.mutedOwners[owner]
+		if holders == nil {
+			holders = make(map[string]time.Time)
+			m.mutedOwners[owner] = holders
+		}
+		holders[holder] = time.Now()
+	} else {
+		m.dropHolderLocked(owner, holder)
+	}
 	s, ok := m.sessions[owner]
-	m.mu.Unlock()
 	if !ok {
+		// No live session yet. The intent is recorded, and Acquire applies it.
 		return
 	}
-	s.worker.Mute(muted)
+	s.worker.Mute(m.stillSpeakingLocked(owner, time.Now()))
+}
+
+// ReleaseMuteHolder drops one connection's hold, leaving its siblings' holds
+// alone. Called when a connection goes away: it can never send tts_unmute
+// itself, and the page it belonged to is no longer producing audio.
+func (m *SessionManager) ReleaseMuteHolder(owner, holder string) {
+	m.SetMuted(owner, holder, false)
+}
+
+// dropHolderLocked removes one holder and the owner's entry when it was the
+// last. Callers must hold m.mu.
+func (m *SessionManager) dropHolderLocked(owner, holder string) {
+	holders := m.mutedOwners[owner]
+	if holders == nil {
+		return
+	}
+	delete(holders, holder)
+	if len(holders) == 0 {
+		delete(m.mutedOwners, owner)
+	}
+}
+
+// stillSpeakingLocked reports whether owner holds an unexpired TTS mute, and
+// drops the entry when it has aged out. Callers must hold m.mu.
+func (m *SessionManager) stillSpeakingLocked(owner string, now time.Time) bool {
+	holders := m.mutedOwners[owner]
+	for holder, taken := range holders {
+		// A hold older than the TTL belongs to a connection that vanished
+		// without notice. Prune it, but leave its live siblings alone.
+		if now.Sub(taken) > mutedOwnerTTL {
+			delete(holders, holder)
+		}
+	}
+	if len(holders) == 0 {
+		delete(m.mutedOwners, owner)
+		return false
+	}
+	return true
+}
+
+// ageMuteHolder backdates one hold. Test-only seam for driving TTL expiry
+// without sleeping through it.
+func (m *SessionManager) ageMuteHolder(owner, holder string, by time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if holders := m.mutedOwners[owner]; holders != nil {
+		if taken, ok := holders[holder]; ok {
+			holders[holder] = taken.Add(-by)
+		}
+	}
+}
+
+// muteHolderCount reports how many connections currently hold owner's mute.
+// Test-only window proving holds do not accumulate.
+func (m *SessionManager) muteHolderCount(owner string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.mutedOwners[owner])
+}
+
+// mutedOwnerCount reports how many owners currently have any holder.
+// Test-only window proving the set does not grow without bound.
+func (m *SessionManager) mutedOwnerCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.mutedOwners)
+}
+
+// isMutedOwner reports whether owner holds a retained mute. Test-only.
+func (m *SessionManager) isMutedOwner(owner string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.mutedOwners[owner]
+	return ok
 }
 
 // Running reports whether owner currently has a live subprocess.

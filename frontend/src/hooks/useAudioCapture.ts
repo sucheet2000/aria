@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { AUDIO_WS_URL } from "@/lib/config";
+import { isTtsCaptureSuppressed } from "./ttsSpeakingState";
 import {
   PcmDownsampler,
   floatTo16BitPCM,
@@ -135,6 +136,14 @@ export function useAudioCapture(enabled: boolean): UseAudioCaptureResult {
       while (pending.length >= FRAME_SAMPLES) {
         const frame = new Int16Array(pending.subarray(0, FRAME_SAMPLES));
         pending = new Int16Array(pending.subarray(FRAME_SAMPLES));
+        // V3.1: while ARIA is audibly speaking, drop the frame here rather than
+        // send it and rely on the server to discard it. The server gate is
+        // driven by a control message on a DIFFERENT socket, which is dropped
+        // silently whenever that socket is down — so this is the only point
+        // where the guarantee holds regardless of the network. The frame is
+        // still sliced off `pending` so the buffer drains normally, and the
+        // MediaStream, worklet and socket are all left untouched.
+        if (isTtsCaptureSuppressed()) continue;
         if (ws?.readyState === WebSocket.OPEN) {
           ws.send(frame.buffer);
         }

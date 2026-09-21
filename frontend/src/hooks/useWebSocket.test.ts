@@ -9,6 +9,7 @@ vi.mock("@clerk/nextjs", () => ({
 }));
 
 import { useWebSocket } from "./useWebSocket";
+import { ttsResyncRef } from "./ttsResyncState";
 
 // Minimal WebSocket stand-in that records how it was constructed. The hook only
 // reads the static readyState constants and assigns event handlers.
@@ -116,6 +117,57 @@ describe("useWebSocket frame validation (FE-3)", () => {
     expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("SECRET_PII_XYZ");
 
     warnSpy.mockRestore();
+    unmount();
+  });
+});
+
+describe("useWebSocket drives the TTS duplex resync", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    MockWebSocket.instances = [];
+    mockGetToken.mockReset();
+    mockGetToken.mockResolvedValue("jwt");
+    vi.stubGlobal("WebSocket", MockWebSocket);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    ttsResyncRef.current = null;
+  });
+
+  // Deleting this call from the hook's onopen passed all 277 frontend tests.
+  // resyncTtsMuteState was well covered, but nothing asserted it is ever
+  // CALLED — and that call is the entire reconnect half of V3. Found by the
+  // final code review.
+  // Note: the reconnect case is covered by resyncTtsMuteState's own tests in
+  // localDuplexSuppression.test.ts, which assert it re-asserts a held mute.
+  // What was missing, and what this file now holds, is that it is called at all.
+  it("re-states the speaking state when the socket opens", async () => {
+    let resyncs = 0;
+    ttsResyncRef.current = () => {
+      resyncs += 1;
+    };
+
+    const { unmount } = renderHook(() => useWebSocket());
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const ws = MockWebSocket.instances.at(-1)!;
+    ws.readyState = MockWebSocket.OPEN;
+    ws.onopen?.();
+
+    expect(resyncs).toBe(1);
+    unmount();
+  });
+
+  it("survives a socket opening with no resync registered", async () => {
+    ttsResyncRef.current = null;
+
+    const { unmount } = renderHook(() => useWebSocket());
+    await vi.advanceTimersByTimeAsync(1000);
+    const ws = MockWebSocket.instances.at(-1)!;
+
+    expect(() => ws.onopen?.()).not.toThrow();
     unmount();
   });
 });

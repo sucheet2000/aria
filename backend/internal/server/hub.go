@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,7 +27,13 @@ type AudioController interface {
 	Acquire(owner string) error
 	Release(owner string)
 	WriteAudio(owner string, pcm []byte)
-	SetMuted(owner string, muted bool)
+	// SetMuted records or clears ONE connection's TTS mute hold. The owner is
+	// muted while any of its connections holds, so a tab that finished
+	// speaking cannot un-gate a sibling that is still talking.
+	SetMuted(owner, holder string, muted bool)
+	// ReleaseMuteHolder drops one connection's hold when that connection goes
+	// away and can no longer release it itself.
+	ReleaseMuteHolder(owner, holder string)
 }
 
 // broadcastMsg is a queued broadcast. When scoped is true the message is only
@@ -52,6 +60,17 @@ type Client struct {
 	conn  *websocket.Conn
 	send  chan []byte
 	owner string
+	// id distinguishes this connection from the owner's other tabs, so a TTS
+	// mute hold belongs to one connection rather than to the account.
+	id string
+}
+
+// nextClientID hands out a unique id per accepted connection. Only uniqueness
+// within the process matters; it never leaves the server.
+var nextClientID atomic.Uint64
+
+func newClientID() string {
+	return strconv.FormatUint(nextClientID.Add(1), 10)
 }
 
 // NewHub creates and returns a new Hub.
@@ -157,6 +176,13 @@ func (c *Client) writePump() {
 // authenticated owner; any owner-like field in the payload is ignored.
 func (c *Client) readPump() {
 	defer func() {
+		// This connection can no longer send tts_unmute, so drop its hold and
+		// only its hold. A sibling tab that is still speaking keeps the owner
+		// muted; the page that owned this hold is gone, and the browser's own
+		// local gate covers a page that is merely reconnecting.
+		if c.hub.audio != nil {
+			c.hub.audio.ReleaseMuteHolder(c.owner, c.id)
+		}
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
@@ -177,11 +203,11 @@ func (c *Client) readPump() {
 			switch msg.Type {
 			case "tts_mute":
 				if c.hub.audio != nil {
-					c.hub.audio.SetMuted(c.owner, true)
+					c.hub.audio.SetMuted(c.owner, c.id, true)
 				}
 			case "tts_unmute":
 				if c.hub.audio != nil {
-					c.hub.audio.SetMuted(c.owner, false)
+					c.hub.audio.SetMuted(c.owner, c.id, false)
 				}
 			}
 		}
