@@ -23,6 +23,18 @@ services:
       # Local dev only — never set this in production. Production sets a real
       # CLERK_SECRET_KEY instead so the server does not run unauthenticated.
       - ALLOW_INSECURE_NO_AUTH=${ALLOW_INSECURE_NO_AUTH:-1}
+      # /metrics carries its own credential (M1). A container always binds
+      # 0.0.0.0, so without this the server refuses to start rather than
+      # publish Claude token spend to anyone who can reach the mapped port.
+      # ALLOW_INSECURE_NO_AUTH deliberately does NOT disarm that guard: this
+      # file publishes 8080, so reusing it would put metrics on your LAN.
+      # No default on purpose. A committed default is a credential every
+      # reader of this repo already knows, and this file publishes 8080 —
+      # so shipping one would hand token spend to anyone on the LAN, which
+      # is the exposure the note above describes. Compose stops with this
+      # message until you set one, or you opt out deliberately.
+      - METRICS_TOKEN=${METRICS_TOKEN:?set METRICS_TOKEN (or ALLOW_INSECURE_METRICS=1) for local dev}
+      - ALLOW_INSECURE_METRICS=${ALLOW_INSECURE_METRICS:-}
       # No microphone in a container; the server-local audio worker is disabled.
       - AUDIO_ENABLED=true
       - DEBUG=true

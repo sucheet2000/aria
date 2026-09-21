@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -54,9 +56,6 @@ func New(cfg *config.Config, hub *Hub, wm *memory.WorkingMemory) *Server {
 
 // Start registers routes, starts the HTTP server, and blocks until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) error {
-	s.router.Use(requestIDMiddleware(log.Logger))
-	s.router.Use(middleware.Recoverer)
-
 	authEnabled := s.cfg.ClerkSecretKey != ""
 	var verifier auth.Verifier
 	if authEnabled {
@@ -72,58 +71,18 @@ func (s *Server) Start(ctx context.Context) error {
 		log.Warn().Msg("clerk auth disabled on /api and /ws (CLERK_SECRET_KEY not set)")
 	}
 
-	s.router.Get("/health", s.handleHealth)
-	s.router.Get("/ready", s.handleReady)
-	s.router.Get("/metrics", s.handleMetricsProxy)
-	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
-	})
-	s.router.Get("/ws/audio", func(w http.ResponseWriter, r *http.Request) {
-		ServeAudioWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
-	})
+	// M1: /metrics now carries a credential, and an operator who forgets to set
+	// it on a public bind must find out at boot rather than by being scraped.
+	// This mirrors the Clerk guard directly above: the Go edge has no notion of
+	// ENV, so a non-loopback bind is what it uses to mean "production".
+	if err := s.metricsBootRefusal(); err != nil {
+		log.Fatal().Msg(err.Error())
+	}
+	if strings.TrimSpace(s.cfg.MetricsToken) == "" {
+		log.Warn().Msg("METRICS_TOKEN not set; /metrics is unauthenticated (local dev only)")
+	}
 
-	cogClient := cognition.NewWithLogger(s.pythonURL+"/api/cognition", s.workingMemory, log.Logger)
-	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
-	cogHandler := cognition.NewHandler(cogClient, log.Logger)
-
-	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
-	ttsClient.SetPythonURL(s.pythonURL + "/api/tts")
-	ttsClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
-	ttsHandler := tts.NewHandler(ttsClient)
-
-	rl := newRateLimiter(
-		s.cfg.RateLimitRPS, s.cfg.RateLimitBurst,
-		s.cfg.RateLimitGlobalRPS, s.cfg.RateLimitGlobalBurst,
-	)
-	rl.start(ctx)
-
-	s.router.Route("/api", func(r chi.Router) {
-		r.Use(corsMiddleware(s.cfg.AllowedOrigins))
-		r.Use(auth.RequireAuth(verifier, authEnabled))
-
-		// Paid endpoints: rate-limited per authenticated caller (or IP) with a
-		// global ceiling. Auth runs first so OwnerFromContext keys the bucket.
-		r.Group(func(r chi.Router) {
-			r.Use(rl.Middleware)
-			r.Post("/cognition", cogHandler.ServeHTTP)
-			r.Post("/tts", ttsHandler.ServeHTTP)
-		})
-
-		r.Get("/memory/working", s.handleWorkingMemory)
-		r.Get("/memory/profile", s.handleMemoryProfileProxy)
-		r.Get("/memory/episodic", s.handleMemoryEpisodicProxy)
-		r.Get("/anchors", s.handleAnchorsProxy)
-		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
-
-		// Owner data controls (S3): export and delete are rate-limited like the
-		// paid endpoints so repeated full-store operations cannot be spammed.
-		r.Group(func(r chi.Router) {
-			r.Use(rl.Middleware)
-			r.Get("/memory/export", s.handleMemoryExportProxy)
-			r.Delete("/memory", s.handleMemoryDeleteAll)
-			r.Delete("/memory/{entry_id}", s.handleMemoryDeleteEntryProxy)
-		})
-	})
+	s.routes(ctx, verifier, authEnabled)
 
 	// Wait (bounded, non-fatal) for FastAPI so the first cognition/tts request
 	// does not fail with a connection-refused 500 during startup.
@@ -310,6 +269,109 @@ func waitForPython(ctx context.Context, client *http.Client, healthURL string, r
 		}
 	}
 	return false
+}
+
+// routes registers the middleware chain and every route. Split out of Start so
+// a test can drive the real router — registration, middleware order and all —
+// without binding a port. Which group a route sits in is a security property,
+// and the only honest way to check it is through the router itself.
+func (s *Server) routes(ctx context.Context, verifier auth.Verifier, authEnabled bool) {
+	s.router.Use(requestIDMiddleware(log.Logger))
+	s.router.Use(middleware.Recoverer)
+
+	s.router.Get("/health", s.handleHealth)
+	s.router.Get("/ready", s.handleReady)
+	s.router.Get("/metrics", s.handleMetricsProxy)
+	s.router.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
+		ServeWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
+	})
+	s.router.Get("/ws/audio", func(w http.ResponseWriter, r *http.Request) {
+		ServeAudioWs(s.hub, verifier, authEnabled, s.cfg.AllowedOrigins, w, r)
+	})
+
+	cogClient := cognition.NewWithLogger(s.pythonURL+"/api/cognition", s.workingMemory, log.Logger)
+	cogClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
+	cogHandler := cognition.NewHandler(cogClient, log.Logger)
+
+	ttsClient := tts.New(s.cfg.ElevenLabsKey, s.cfg.ElevenLabsVoiceID)
+	ttsClient.SetPythonURL(s.pythonURL + "/api/tts")
+	ttsClient.SetInternalAuthSecret(s.cfg.InternalAuthSecret)
+	ttsHandler := tts.NewHandler(ttsClient)
+
+	rl := newRateLimiter(
+		s.cfg.RateLimitRPS, s.cfg.RateLimitBurst,
+		s.cfg.RateLimitGlobalRPS, s.cfg.RateLimitGlobalBurst,
+	)
+	rl.start(ctx)
+
+	s.router.Route("/api", func(r chi.Router) {
+		r.Use(corsMiddleware(s.cfg.AllowedOrigins))
+		r.Use(auth.RequireAuth(verifier, authEnabled))
+
+		// Paid endpoints: rate-limited per authenticated caller (or IP) with a
+		// global ceiling. Auth runs first so OwnerFromContext keys the bucket.
+		r.Group(func(r chi.Router) {
+			r.Use(rl.Middleware)
+			r.Post("/cognition", cogHandler.ServeHTTP)
+			r.Post("/tts", ttsHandler.ServeHTTP)
+		})
+
+		r.Get("/memory/working", s.handleWorkingMemory)
+		r.Get("/memory/profile", s.handleMemoryProfileProxy)
+		r.Get("/memory/episodic", s.handleMemoryEpisodicProxy)
+		r.Get("/anchors", s.handleAnchorsProxy)
+		r.Delete("/anchors/{anchor_id}", s.handleAnchorDeleteProxy)
+
+		// Owner data controls (S3): export and delete are rate-limited like the
+		// paid endpoints so repeated full-store operations cannot be spammed.
+		r.Group(func(r chi.Router) {
+			r.Use(rl.Middleware)
+			r.Get("/memory/export", s.handleMemoryExportProxy)
+			r.Delete("/memory", s.handleMemoryDeleteAll)
+			r.Delete("/memory/{entry_id}", s.handleMemoryDeleteEntryProxy)
+		})
+	})
+}
+
+// metricsGuardRefusesBoot reports whether the server must refuse to start
+// because /metrics would be publicly readable with no credential.
+//
+// It deliberately does NOT honour ALLOW_INSECURE_NO_AUTH. That flag disables
+// Clerk for local work and docker-compose sets it to 1 by default alongside
+// HOST=0.0.0.0 and a published port — so reusing it meant anyone on the same
+// network could read Claude token spend from a developer's machine. Opening
+// metrics is a separate decision and needs its own deliberate flag.
+//
+// A whitespace-only token counts as unset: it cannot be typed into a scraper
+// config reliably and is far more likely to be an accident than an intent.
+// metricsBootRefusal is the decision Start actually makes, as an error rather
+// than a log.Fatal so a test can reach it. Testing only the pure predicate
+// below left the call site unproven: replacing it with `if false && ...`
+// disarmed the guard with the whole suite still green.
+func (s *Server) metricsBootRefusal() error {
+	if metricsGuardRefusesBoot(s.cfg.MetricsToken, s.cfg.Host, os.Getenv(allowInsecureMetricsEnv)) {
+		return fmt.Errorf(
+			"refusing to start: METRICS_TOKEN is empty or blank on non-loopback bind %s; "+
+				"set METRICS_TOKEN or %s=1",
+			s.cfg.Host, allowInsecureMetricsEnv,
+		)
+	}
+	return nil
+}
+
+// allowInsecureMetricsEnv is the one spelling of the opt-out. It lived as three
+// separate string literals, so a typo in the one that mattered would have
+// disarmed the guard silently.
+const allowInsecureMetricsEnv = "ALLOW_INSECURE_METRICS"
+
+func metricsGuardRefusesBoot(token, host, allowInsecure string) bool {
+	if strings.TrimSpace(token) != "" {
+		return false
+	}
+	if isLoopback(host) {
+		return false
+	}
+	return allowInsecure != "1"
 }
 
 // isLoopback reports whether host is a loopback (or unset) bind address, i.e. one

@@ -62,6 +62,7 @@ Vercel (Next.js) ──> Railway Go URL
 | `CLERK_JWT_ISSUER` | Yes | no | Clerk issuer/JWKS URL. Enforced when verifying tokens. |
 | `ENV` | **Yes** | no | Deploy environment name. Set to `production` in the cloud (defaults to `local`). A non-local `ENV` makes the Python service fail closed without `INTERNAL_AUTH_SECRET`. |
 | `INTERNAL_AUTH_SECRET` | Yes | **yes** | Shared Go↔Python secret (invariant #2). Random long string. |
+| `METRICS_TOKEN` | **Yes** | **yes** | Scrape credential for `GET /metrics`, which publishes operational counters and Claude token spend. A scraper sends `Authorization: Bearer $METRICS_TOKEN`. **Mandatory in the cloud** — the image bakes `HOST=0.0.0.0`, so the Go server refuses to start without it (fail-closed), exactly like `CLERK_SECRET_KEY`. Not a Clerk user token: monitoring is a machine caller and a person's session is neither required nor accepted. Set `ALLOW_INSECURE_METRICS=1` only to deliberately serve metrics with no credential. |
 | `ALLOWED_ORIGINS` | Yes | no | Comma-separated CORS allow-list. Set to your Vercel URL, e.g. `https://aria.vercel.app`. |
 | `RATE_LIMIT_RPS` | No | no | Per-user requests/sec on paid endpoints. Default `5`. |
 | `RATE_LIMIT_BURST` | No | no | Per-user burst. Default `10`. |
@@ -131,8 +132,11 @@ keeps writing to `backend/` exactly as before.
 3. **Set the environment variables** from the backend table in section 3
    (Service → **Variables**). At minimum: `ANTHROPIC_API_KEY`,
    `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `CLERK_SECRET_KEY`,
-   `CLERK_JWT_ISSUER`, `INTERNAL_AUTH_SECRET`, `ALLOWED_ORIGINS`,
-   `AUDIO_ENABLED=true` (browser-side capture — required for voice). Do **not** set `PORT` — Railway provides it.
+   `CLERK_JWT_ISSUER`, `INTERNAL_AUTH_SECRET`, `METRICS_TOKEN`, `ALLOWED_ORIGINS`,
+   `AUDIO_ENABLED=true` (browser-side capture — required for voice).
+   **`METRICS_TOKEN` is not optional**: the image binds `0.0.0.0`, so without it
+   the container exits at startup, `/health` never answers, and the deploy fails
+   its health check rather than coming up with metrics readable by anyone. Do **not** set `PORT` — Railway provides it.
 4. **Deploy.** Railway builds the Dockerfile (heavy — several minutes for the ML
    deps) and starts the container. Health check hits `GET /health` on `$PORT`.
 5. **Get the URL.** Service → **Settings → Networking → Generate Domain**. Copy the
