@@ -107,7 +107,7 @@ func TestStream_ProxySuccessNeverConsultsTheFallback(t *testing.T) {
 // bytes the handler would forward.
 func drain(t *testing.T, c *Client, ctx context.Context, text, emotion string) (string, error) {
 	t.Helper()
-	rc, err := c.Open(ctx, text, emotion)
+	rc, _, err := c.Open(ctx, text, emotion)
 	if err != nil {
 		return "", err
 	}

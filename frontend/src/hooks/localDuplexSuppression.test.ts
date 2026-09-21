@@ -171,6 +171,7 @@ function mockTtsFetch(kind: "ok" | "tiny" | "reject"): void {
       kind === "reject"
         ? Promise.reject(new Error("network down"))
         : Promise.resolve({
+            headers: new Headers({ "Content-Type": "audio/mpeg" }),
             ok: true,
             arrayBuffer: async () => new ArrayBuffer(kind === "tiny" ? 0 : 4096),
           })

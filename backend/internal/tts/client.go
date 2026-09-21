@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -21,6 +22,14 @@ import (
 // maxErrorBodyBytes caps how much of a non-2xx upstream response body is
 // drained before the connection is released; the body is never logged.
 const maxErrorBodyBytes = 4 << 10
+
+// What each speech source actually produces. WAVE is asked for explicitly in
+// sayArgs; the previous AIFF default was served as audio/mpeg and only Safari
+// could decode it.
+const (
+	proxyAudioContentType = "audio/mpeg"
+	localAudioContentType = "audio/wav"
+)
 
 // Client handles text-to-speech synthesis.
 type Client struct {
@@ -92,34 +101,43 @@ var localFallbackCheck = func() bool {
 // caller as a 200 carrying an empty audio body — indistinguishable from ARIA
 // choosing to say nothing. Nothing is buffered: on the proxy path this is the
 // upstream response body itself, and the caller closes it.
-func (c *Client) Open(ctx context.Context, text string, emotion string) (io.ReadCloser, error) {
-	body, err := c.openProxy(ctx, text, emotion)
+// Open returns a speech stream and the media type of the bytes in it. The two
+// sources do not produce the same container — the proxy returns MP3, the local
+// synthesizer WAVE — and the handler cannot label a response it cannot
+// identify. Labelling everything audio/mpeg is what previously served AIFF
+// under an MP3 content type, which no browser but Safari would decode.
+func (c *Client) Open(ctx context.Context, text string, emotion string) (io.ReadCloser, string, error) {
+	body, contentType, err := c.openProxy(ctx, text, emotion)
 	if err == nil {
-		return body, nil
+		return body, contentType, nil
 	}
 	if !localFallbackAvailable() {
 		c.log.Error().Err(err).Str("goos", runtime.GOOS).
 			Msg("python TTS proxy failed and no local fallback exists on this platform")
-		return nil, fmt.Errorf("tts unavailable: proxy failed and no local synthesizer on %s: %w",
+		return nil, "", fmt.Errorf("tts unavailable: proxy failed and no local synthesizer on %s: %w",
 			runtime.GOOS, err)
 	}
 	c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
-	return c.openLocal(ctx, text)
+	stream, err := c.openLocal(ctx, text)
+	if err != nil {
+		return nil, "", err
+	}
+	return stream, localAudioContentType, nil
 }
 
 // openProxy performs the upstream request and hands back its body on success.
 // The caller owns closing it.
-func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io.ReadCloser, error) {
+func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io.ReadCloser, string, error) {
 	body := proxyRequest{Text: text, Emotion: emotion}
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, "", fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.pythonURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, "", fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -131,16 +149,25 @@ func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("proxy request: %w", err)
+		return nil, "", fmt.Errorf("proxy request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		// S2: drain (bounded) but never embed the body — a validation message
 		// can echo the text being spoken.
 		n, _ := io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
 		resp.Body.Close()
-		return nil, fmt.Errorf("tts upstream returned %d (%d body bytes)", resp.StatusCode, n)
+		return nil, "", fmt.Errorf("tts upstream returned %d (%d body bytes)", resp.StatusCode, n)
 	}
-	return resp.Body, nil
+	// The upstream's own label, but only if it is audio. This response is
+	// forwarded to a browser from our origin, so an upstream that said
+	// text/html — misconfigured, or worse — would otherwise have us serve
+	// attacker-influenced bytes as a document. MP3 is what the Python TTS route
+	// has always returned and remains the default.
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "audio/") {
+		ct = proxyAudioContentType
+	}
+	return resp.Body, ct, nil
 }
 
 // openLocal synthesizes with the system voice and returns the finished file.
@@ -158,11 +185,16 @@ func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io
 // which means CI — where this path has no coverage at all — would never have
 // caught its removal.
 func sayArgs(name, text string) []string {
-	return []string{"-v", "Samantha", "-o", name, "--", text}
+	return []string{
+		"-v", "Samantha",
+		"--file-format=WAVE", "--data-format=LEI16@22050",
+		"-o", name,
+		"--", text,
+	}
 }
 
 func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, error) {
-	tmp, err := os.CreateTemp("", "aria-tts-*.aiff")
+	tmp, err := os.CreateTemp("", "aria-tts-*.wav")
 	if err != nil {
 		return nil, fmt.Errorf("create temp file: %w", err)
 	}

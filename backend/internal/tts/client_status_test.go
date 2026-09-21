@@ -22,7 +22,7 @@ func TestStreamProxy_Non2xxReturnsMeaningfulError(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	_, err := c.openProxy(context.Background(), "hello", "")
+	_, _, err := c.openProxy(context.Background(), "hello", "")
 	if err == nil {
 		t.Fatal("expected error on 500, got nil")
 	}
@@ -51,7 +51,7 @@ func TestStreamProxy_ErrorBodyIsBounded(t *testing.T) {
 	c := New("", "")
 	c.pythonURL = fake.URL
 
-	_, err := c.openProxy(context.Background(), "hello", "")
+	_, _, err := c.openProxy(context.Background(), "hello", "")
 	if err == nil {
 		t.Fatal("expected error on 502, got nil")
 	}

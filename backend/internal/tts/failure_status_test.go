@@ -34,6 +34,7 @@ func newFailingUpstream(t *testing.T) *httptest.Server {
 func newWorkingUpstream(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
 		w.Write([]byte(body)) //nolint:errcheck
 	}))
 	t.Cleanup(srv.Close)
@@ -155,8 +156,10 @@ func TestTTSHandler_UpstreamErrorWithLocalFallbackStillReturnsAudio(t *testing.T
 	if rec.Body.Len() < 100 {
 		t.Fatalf("body = %d bytes; the browser treats anything under 100 as unusable", rec.Body.Len())
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "audio/mpeg" {
-		t.Fatalf("content-type = %q", ct)
+	// The fallback produces WAVE, and the label has to say so — this assertion
+	// used to demand audio/mpeg, which pinned the mismatch it was meant to catch.
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/wav" {
+		t.Fatalf("content-type = %q for the local fallback", ct)
 	}
 }
 

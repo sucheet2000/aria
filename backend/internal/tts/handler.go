@@ -90,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Open the stream BEFORE announcing success. Setting the audio headers first
 	// committed a 200 on the first byte, so a dead provider reached the caller as
 	// an empty audio body that looked exactly like ARIA choosing to say nothing.
-	stream, err := h.client.Open(r.Context(), req.Text, req.Emotion)
+	stream, contentType, err := h.client.Open(r.Context(), req.Text, req.Emotion)
 	if err != nil {
 		h.log.Error().Err(err).
 			Int("text_length", len(req.Text)).
@@ -105,7 +105,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stream.Close()
 
-	w.Header().Set("Content-Type", "audio/mpeg")
+	// The type the bytes actually are, not a constant. The two speech sources
+	// return different containers.
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -2,6 +2,7 @@ package tts
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestLocalFallback_TextIsNeverParsedAsAnOption(t *testing.T) {
 	c := New("", "")
 	c.SetPythonURL(newFailingUpstream(t).URL)
 
-	stream, err := c.Open(context.Background(), "--output-file="+victim, "")
+	stream, _, err := c.Open(context.Background(), "--output-file="+victim, "")
 	if err == nil {
 		stream.Close()
 	}
@@ -69,5 +70,50 @@ func TestSayArgs_EndsOptionParsingBeforeTheText(t *testing.T) {
 		if strings.Contains(a, text) {
 			t.Fatalf("the text leaked into an earlier argument: %q", args)
 		}
+	}
+}
+
+// The bytes must be the format the response advertises. The fallback emitted
+// AIFF-C while the handler labelled every success audio/mpeg, and the test that
+// was supposed to prove the fallback "actually produces audio" asserted only
+// that bytes existed and that the label said audio/mpeg — it pinned the
+// mismatch. AIFF is not in Chromium's demuxer set, so what the fix delivered
+// was most likely still the browser voice.
+func TestSayArgs_RequestsTheFormatTheResponseAdvertises(t *testing.T) {
+	args := sayArgs("/tmp/out.wav", "hello")
+	joined := strings.Join(args, " ")
+
+	for _, want := range []string{"--file-format=WAVE", "--data-format=LEI16@22050"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("argv does not request the advertised container: %q", args)
+		}
+	}
+	// And the safety terminator survives the format flags.
+	if args[len(args)-2] != "--" {
+		t.Fatalf("option parsing is no longer terminated: %q", args)
+	}
+}
+
+// End to end: what the caller receives really is a RIFF/WAVE stream.
+func TestLocalFallback_ProducesTheAdvertisedContainer(t *testing.T) {
+	if !localFallbackAvailable() {
+		t.Skipf("no local synthesizer here")
+	}
+	c := New("", "")
+	c.SetPythonURL(newFailingUpstream(t).URL)
+
+	rec := post(t, NewHandler(c), `{"text":"hello there"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.Bytes()
+	if len(body) < 12 {
+		t.Fatalf("only %d bytes", len(body))
+	}
+	if string(body[0:4]) != "RIFF" || string(body[8:12]) != "WAVE" {
+		t.Fatalf("container signature is %q/%q, not RIFF/WAVE", body[0:4], body[8:12])
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/wav" {
+		t.Fatalf("advertised %q for a RIFF/WAVE body", ct)
 	}
 }

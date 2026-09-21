@@ -97,12 +97,24 @@ function installAudio(playBehavior: "resolve" | "reject"): void {
   }
   vi.stubGlobal("Audio", FakeAudioCtor);
   vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:fake",
+    createObjectURL: (b: Blob) => {
+      lastBlobType = b.type;
+      return "blob:fake";
+    },
     revokeObjectURL: () => undefined,
   });
 }
 
 type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "unavailable" | "gateway" | "cutoff" | "timeout";
+
+// What type the hook actually handed the audio element.
+let lastBlobType = "";
+
+// A real Response carries headers, and the hook reads Content-Type from them
+// to build the blob. A stub without them is not a Response.
+function audioHeaders(type = "audio/mpeg"): Headers {
+  return new Headers({ "Content-Type": type });
+}
 
 function mockTtsFetch(kind: FetchKind): void {
   vi.stubGlobal(
@@ -118,6 +130,7 @@ function mockTtsFetch(kind: FetchKind): void {
         // The server aborted the connection mid-clip, so the status says 200
         // but the body can never be read to the end.
         return Promise.resolve({
+          headers: audioHeaders(),
           ok: true,
           status: 200,
           arrayBuffer: () =>
@@ -130,6 +143,7 @@ function mockTtsFetch(kind: FetchKind): void {
         // the 100-byte usability floor, so ONLY the status tells the browser
         // this is not speech.
         return Promise.resolve({
+          headers: audioHeaders(),
           ok: false,
           status: 503,
           arrayBuffer: async () =>
@@ -140,6 +154,7 @@ function mockTtsFetch(kind: FetchKind): void {
         // Closure 2: the server no longer answers a dead provider with an empty
         // 200. It says 503 with a JSON error and no audio at all.
         return Promise.resolve({
+          headers: audioHeaders(),
           ok: false,
           status: 503,
           arrayBuffer: async () => new TextEncoder().encode(
@@ -149,13 +164,14 @@ function mockTtsFetch(kind: FetchKind): void {
       }
       if (kind === "not-ok") {
         return Promise.resolve({
+          headers: audioHeaders(),
           ok: false,
           status: 502,
           arrayBuffer: async () => new ArrayBuffer(0),
         });
       }
       const bytes = kind === "tiny" ? 0 : 4096;
-      return Promise.resolve({ ok: true, arrayBuffer: async () => new ArrayBuffer(bytes) });
+      return Promise.resolve({ headers: audioHeaders(), ok: true, arrayBuffer: async () => new ArrayBuffer(bytes) });
     })
   );
 }
@@ -168,6 +184,7 @@ function endAllSpeech(): void {
 
 beforeEach(() => {
   trace = [];
+  lastBlobType = "";
   wsSendRef.current = (msg: object) => {
     const t = (msg as { type?: string }).type;
     if (t === "tts_mute" || t === "tts_unmute") trace.push(t);
@@ -554,5 +571,39 @@ describe("V3 — resync when the control socket comes back", () => {
   it("is registered by the hook, so the socket can call it", () => {
     renderHook(() => useTTS());
     expect(typeof ttsResyncRef.current).toBe("function");
+  });
+});
+
+// Closure 2 / container contract: the element must be handed the type the
+// server actually sent. The hook used to hardcode audio/mpeg, which meant the
+// server's label could be wrong — and was, for the whole life of the macOS
+// fallback — without anything noticing.
+describe("the blob carries the type the server declared", () => {
+  it("uses the declared audio type for the local WAVE fallback", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers: new Headers({ "Content-Type": "audio/wav" }),
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4096),
+      })
+    );
+    const { result } = renderHook(() => useTTS());
+    await result.current.speak(LINE);
+    expect(lastBlobType).toBe("audio/wav");
+  });
+
+  it("ignores a non-audio declaration rather than trusting it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers: new Headers({ "Content-Type": "text/html" }),
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4096),
+      })
+    );
+    const { result } = renderHook(() => useTTS());
+    await result.current.speak(LINE);
+    expect(lastBlobType).toBe("audio/mpeg");
   });
 });

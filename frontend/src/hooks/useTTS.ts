@@ -181,7 +181,13 @@ export function useTTS() {
         throw new Error(`TTS request failed: HTTP ${response.status}`);
       }
 
-      const blob = new Blob([await response.arrayBuffer()], { type: "audio/mpeg" });
+      // The server says what it sent: the remote voice returns MP3, the local
+      // fallback WAVE. Hardcoding audio/mpeg here meant the element was handed
+      // a type that did not match its bytes, and the server's own label was
+      // free to be wrong because nothing downstream ever read it.
+      const declared = response.headers.get("Content-Type") ?? "audio/mpeg";
+      const type = declared.startsWith("audio/") ? declared.split(";")[0].trim() : "audio/mpeg";
+      const blob = new Blob([await response.arrayBuffer()], { type });
       if (blob.size < 100) {
         // Unusable body: the fallback speaks, and takes its own mute first.
         speakWithBrowser(text);
