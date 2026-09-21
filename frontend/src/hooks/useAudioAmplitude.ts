@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export interface AudioAmplitudeHook {
-  amplitude: number;
+  /** Latest measured amplitude, 0..1. Read it from your own render loop.
+   *
+   *  A ref rather than state on purpose: this value changes on every animation
+   *  frame, and both consumers drive a requestAnimationFrame loop of their own.
+   *  Holding it in state re-rendered the whole avatar subtree ~60 times a
+   *  second to deliver a number that no render ever read. */
+  amplitudeRef: { readonly current: number };
   connectAudio: (audioElement: HTMLAudioElement) => void;
 }
 
 export function useAudioAmplitude(): AudioAmplitudeHook {
-  const [amplitude, setAmplitude] = useState(0);
+  const amplitudeRef = useRef(0);
 
   const contextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -52,7 +58,7 @@ export function useAudioAmplitude(): AudioAmplitudeHook {
       for (let i = 0; i < dataRef.current.length; i++) {
         sum += dataRef.current[i];
       }
-      setAmplitude(sum / dataRef.current.length / 255);
+      amplitudeRef.current = sum / dataRef.current.length / 255;
       rafRef.current = requestAnimationFrame(tick);
     }
 
@@ -68,5 +74,5 @@ export function useAudioAmplitude(): AudioAmplitudeHook {
     };
   }, []);
 
-  return { amplitude, connectAudio };
+  return { amplitudeRef, connectAudio };
 }

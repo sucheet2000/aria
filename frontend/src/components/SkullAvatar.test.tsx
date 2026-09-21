@@ -3,10 +3,12 @@ import { render, act, cleanup } from "@testing-library/react";
 import { useAriaStore } from "@/store/ariaStore";
 
 const connectAudio = vi.fn();
-let mockAmplitude = 0;
+// The hook reports amplitude through a ref, not state, so the avatar can read
+// it from its own animation loop without a render per frame.
+const mockAmplitudeRef = { current: 0 };
 
 vi.mock("@/hooks/useAudioAmplitude", () => ({
-  useAudioAmplitude: () => ({ amplitude: mockAmplitude, connectAudio }),
+  useAudioAmplitude: () => ({ amplitudeRef: mockAmplitudeRef, connectAudio }),
 }));
 
 import SkullAvatar, { STATE_PALETTES } from "./SkullAvatar";
@@ -35,7 +37,7 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore();
-  mockAmplitude = 0;
+  mockAmplitudeRef.current = 0;
   connectAudio.mockClear();
   rafCallbacks = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
@@ -103,7 +105,7 @@ describe("SkullAvatar", () => {
   });
 
   it("drops the jaw with audio amplitude while speaking", () => {
-    mockAmplitude = 0.6;
+    mockAmplitudeRef.current = 0.6;
     act(() => {
       useAriaStore.setState({ isSpeaking: true });
     });

@@ -47,12 +47,10 @@ export default function SkullAvatar() {
   const isSpeaking = useAriaStore((s) => s.isSpeaking);
   const isListening = useAriaStore((s) => s.isListening);
 
-  const { amplitude, connectAudio } = useAudioAmplitude();
+  const { amplitudeRef: ampRef, connectAudio } = useAudioAmplitude();
 
   const jawRef = useRef<SVGGElement>(null);
-  const ampRef = useRef(0);
   const speakingRef = useRef(false);
-  ampRef.current = amplitude;
   speakingRef.current = isSpeaking;
 
   const prefersReduced =
@@ -98,7 +96,9 @@ export default function SkullAvatar() {
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, []);
+    // ampRef is a ref object with a stable identity; the amplitude VALUE is
+    // read inside the loop, so the effect never re-runs on it.
+  }, [ampRef]);
 
   const pal = getPalette(avatarEmotion, isThinking, isSpeaking, isListening);
   const pulseDur = `${(2.6 / Math.max(pal.pulse, 0.2)).toFixed(2)}s`;
