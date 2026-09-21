@@ -498,3 +498,44 @@ class TestConversationHistoryWindow:
             {"role": t.role, "content": t.content} for t in history
         ]
         assert messages[-1] == {"role": "user", "content": "hello"}
+
+
+# ── Workstream J: every rule must be reachable ───────────────────────────────
+
+
+class TestTierKeywordsAreReachable:
+    """A rule that can never fire is worse than a missing rule: it reads as
+    covered. The candidate utterance is lowercased before matching, so any
+    keyword carrying an uppercase letter is dead on arrival — which is what
+    happened to "should I", the one rule meant to catch advice-seeking.
+    """
+
+    def test_no_keyword_is_unreachable(self) -> None:
+        from app.cognition.llm import _TIER2_KEYWORDS
+
+        unreachable = sorted(k for k in _TIER2_KEYWORDS if k != k.casefold())
+        assert unreachable == [], (
+            f"these keywords can never match lowercased input: {unreachable}"
+        )
+
+    @pytest.mark.parametrize(
+        "utterance",
+        [
+            "should I take the job",
+            "Should I take the job",
+            "SHOULD I TAKE THE JOB",
+        ],
+    )
+    def test_advice_seeking_reaches_tier_two(self, utterance: str) -> None:
+        assert classify_tier(utterance) == 2
+
+    def test_every_keyword_routes_its_own_phrase_to_tier_two(self) -> None:
+        from app.cognition.llm import _TIER2_KEYWORDS
+
+        # Each keyword, used in a short utterance, must reach tier 2 on its own
+        # merit rather than via the long-query threshold.
+        failed = []
+        for kw in sorted(_TIER2_KEYWORDS):
+            if classify_tier(kw) != 2:
+                failed.append(kw)
+        assert failed == [], f"keywords that did not route to tier 2: {failed}"

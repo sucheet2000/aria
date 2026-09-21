@@ -39,11 +39,19 @@ _LOCAL_HANDLERS: dict[str, str] = {
     "what's the time": "__TIME__",
 }
 
-# Keywords that push a query to Tier 2 (complex reasoning / Sonnet)
+# Keywords that push a query to Tier 2 (complex reasoning / Sonnet).
+#
+# Candidate utterances are casefolded before matching, so a rule carrying an
+# uppercase letter could never fire — "should I" was dead for exactly that
+# reason, and read as covered. Normalizing the rules at the point of definition
+# keeps every rule reachable by construction rather than by review vigilance,
+# and test_no_keyword_is_unreachable fails if one ever slips back in.
 _TIER2_KEYWORDS = frozenset(
-    {"feel", "feeling", "emotion", "why", "explain", "remember", "memory",
-     "complex", "analyze", "compare", "recommend", "advice", "should I",
-     "help me", "reason", "think about", "understand"}
+    kw.casefold()
+    for kw in {"feel", "feeling", "emotion", "why", "explain", "remember",
+               "memory", "complex", "analyze", "compare", "recommend",
+               "advice", "should I", "help me", "reason", "think about",
+               "understand"}
 )
 
 _TIER2_WORD_THRESHOLD = 15  # queries longer than this default to Tier 2
