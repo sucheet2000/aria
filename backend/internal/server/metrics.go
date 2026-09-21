@@ -24,10 +24,13 @@ import (
 // material lives.
 const metricsContentType = "application/json; charset=utf-8"
 
-// maxMetricsBodyBytes caps what the edge will relay. The sibling proxy has had
-// such a cap all along; this handler streamed an unbounded io.Copy, so a
-// misbehaving or compromised upstream could push arbitrary volume through the
-// edge to any authorised scraper.
+// maxMetricsBodyBytes caps what the edge will relay. This handler streamed an
+// unbounded io.Copy, so a misbehaving or compromised upstream could push
+// arbitrary volume through the edge to any authorised scraper.
+//
+// (On integration the sibling proxyToPython has the same cap, which is where
+// the figure comes from. On this branch it does not yet — bounding that proxy
+// is a separate change and deliberately out of a security hotfix's scope.)
 const maxMetricsBodyBytes int64 = 4 << 20
 
 // handleMetricsProxy exposes GET /metrics through the edge, which OBS-3

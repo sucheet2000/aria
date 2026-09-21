@@ -317,7 +317,7 @@ func TestMetrics_OversizedUpstreamIsNotFullyBuffered(t *testing.T) {
 // become 4<<30 with every other test still green.
 func TestMetrics_BodyCapIsFourMiB(t *testing.T) {
 	if maxMetricsBodyBytes != 4<<20 {
-		t.Fatalf("maxMetricsBodyBytes = %d, want 4 MiB — matching the sibling proxy's cap",
+		t.Fatalf("maxMetricsBodyBytes = %d, want 4 MiB",
 			maxMetricsBodyBytes)
 	}
 }
