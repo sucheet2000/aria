@@ -55,6 +55,10 @@ function isCurled(lm: Landmarks, tip: number, mcp: number, margin = 0.02): boole
 
 function thumbUp(lm: Landmarks): number {
   if (y(lm, THUMB_TIP) >= y(lm, WRIST)) return 0.0;
+  // A pinch satisfies this test too — thumb above wrist, fingers curled — and
+  // scores a flat 0.875 here, which outranked a pinch at any gap wider than a
+  // sixteenth of a palm. The closer, more specific relationship wins.
+  if (pinchRatio(lm) < PINCH_MAX_RATIO) return 0.0;
 
   const curls = [
     isCurled(lm, INDEX_TIP, INDEX_MCP),

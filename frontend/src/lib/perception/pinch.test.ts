@@ -175,3 +175,34 @@ describe("pinch is a pinch, not a fist", () => {
     expect(clf.classify(flat).gestureType).toBe(HAND_GESTURE_UNSPECIFIED);
   });
 });
+
+// Found by the final code review: the module documents PINCH_MAX_RATIO = 0.25,
+// but the effective threshold was 0.0625. pinchGesture's confidence decays from
+// 1.0 at contact to 0.5 at the stated threshold, while thumbUp scores a flat
+// 0.875 on the very same pose — thumb above wrist, three fingers curled, which
+// is true of every pinch. So any gap between a sixteenth and a quarter of a
+// palm-width lost the argmax and the user's pinch was reported as "confirm".
+//
+// A negative assertion could not see it: the hand was still "not PINCH", just
+// for the wrong reason. These assert the POSITIVE classification across the
+// whole documented range.
+describe("the documented pinch range is the real one", () => {
+  const RATIOS = [0.01, 0.05, 0.10, 0.15, 0.20, 0.24];
+
+  it.each(RATIOS)("a gap at ratio %s classifies as PINCH", (ratio) => {
+    // Palm span in the fixture is 0.30, so gap = ratio * 0.30.
+    const g = clf.classify(pinch(ratio * 0.3));
+    expect(g.gestureType).toBe(HAND_GESTURE_PINCH);
+  });
+
+  it("just beyond the threshold it is no longer a pinch", () => {
+    expect(clf.classify(pinch(0.30 * 0.30)).gestureType).not.toBe(HAND_GESTURE_PINCH);
+  });
+
+  it("a pinch outranks thumbs-up on the same hand shape", () => {
+    // The pose satisfies thumbUp's curl test too; the closer relationship wins.
+    const g = clf.classify(pinch(0.05 * 0.3));
+    expect(g.gestureType).toBe(HAND_GESTURE_PINCH);
+    expect(g.confidence).toBeGreaterThan(0);
+  });
+});
