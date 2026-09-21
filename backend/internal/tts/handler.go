@@ -5,12 +5,29 @@ import (
 	"errors"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 const maxTextLength = 500
+
+// truncateForSpeech caps the text at maxTextLength BYTES, which is what the
+// provider limit counts, without ever splitting a rune. A byte slice alone
+// would cut a multi-byte character in half and put invalid UTF-8 on the wire —
+// silently, since nothing downstream validates it. A rune that straddles the
+// cap is dropped whole.
+func truncateForSpeech(text string) string {
+	if len(text) <= maxTextLength {
+		return text
+	}
+	cut := maxTextLength
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
+}
 
 // maxRequestBodyBytes caps the /api/tts request body. Over-cap requests
 // surface as 413.
@@ -65,9 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Text) > maxTextLength {
-		req.Text = req.Text[:maxTextLength]
-	}
+	req.Text = truncateForSpeech(req.Text)
 
 	w.Header().Set("Content-Type", "audio/mpeg")
 	w.Header().Set("Transfer-Encoding", "chunked")
