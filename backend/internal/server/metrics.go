@@ -165,11 +165,13 @@ func (s *Server) metricsAuthorized(r *http.Request) bool {
 	if len(headers) != 1 {
 		return false
 	}
-	got := strings.TrimPrefix(headers[0], "Bearer ")
-	if got == headers[0] {
-		// No "Bearer " prefix at all.
+	// The scheme is case-insensitive (RFC 9110 §11.1); the token after it is a
+	// secret and stays exact.
+	const scheme = "Bearer "
+	if len(headers[0]) < len(scheme) || !strings.EqualFold(headers[0][:len(scheme)], scheme) {
 		return false
 	}
+	got := headers[0][len(scheme):]
 	// Constant-time: a byte-by-byte comparison would let a caller discover the
 	// token one character at a time from response timing.
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1

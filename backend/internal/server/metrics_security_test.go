@@ -663,3 +663,23 @@ func TestMetrics_StartRefusesToBootWhenMetricsWouldBeOpen(t *testing.T) {
 		t.Fatalf("the deliberate opt-out must be honoured: %v", err)
 	}
 }
+
+// F7 — the auth scheme is case-insensitive (RFC 9110 §11.1). The duplicate-
+// header rule beside it cites RFC 7235; this rule sits in the same paragraph
+// and was missed. A scraper or fronting proxy that normalises the scheme got a
+// deliberately oracle-free 401 and no way to tell why.
+func TestMetrics_BearerSchemeIsCaseInsensitive(t *testing.T) {
+	up := upstream(t, 200, "application/json", `{"errors":0}`)
+	s := newMetricsServer(up.URL, testMetricsToken)
+
+	for _, scheme := range []string{"Bearer", "bearer", "BEARER", "BeArEr"} {
+		rec := scrape(s, scheme+" "+testMetricsToken)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("scheme %q => %d, want 200", scheme, rec.Code)
+		}
+	}
+	// The token itself stays case-sensitive: it is a secret, not a keyword.
+	if rec := scrape(s, "Bearer "+strings.ToUpper(testMetricsToken)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("an upper-cased token was accepted: %d", rec.Code)
+	}
+}
