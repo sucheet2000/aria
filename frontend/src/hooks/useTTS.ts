@@ -78,9 +78,13 @@ function acquireMute(text: string): () => void {
 // not open, and neither side acknowledges. So the browser re-states its whole
 // duplex intent every time the main socket comes up, rather than relying on the
 // single edge-triggered message it sent when speech began. A mute lost to a
-// reconnect is re-asserted within milliseconds, and a mute the server is still
-// holding for a page that has since gone away is cleared by the fresh page,
-// which owes nothing. Level-triggered, so it is correct in both directions.
+// reconnect is re-asserted within milliseconds. Level-triggered, so it is
+// correct in both directions.
+//
+// Note what this does NOT do: since holds became per-connection, a fresh page's
+// tts_unmute releases only its OWN hold. A hold left by a page that went away is
+// cleared by the edge when that connection's socket closes, or by the server's
+// TTL if it never does.
 export function resyncTtsMuteState(): void {
   wsSendRef.current?.({
     type: ttsSpeakingHolds() > 0 ? "tts_mute" : "tts_unmute",
@@ -188,7 +192,10 @@ export function useTTS() {
       const audio = new Audio(url);
       ttsAudioRef.current = audio;
       setIsSpeaking(true);
-      releaseRemote = acquireMute(text);   // mute BEFORE play()
+      // Sized from what will actually be spoken: the server caps the text it
+      // sends to the provider, so using the raw reply armed a deadline minutes
+      // long for a few seconds of speech.
+      releaseRemote = acquireMute(text.slice(0, MAX_SPOKEN_CHARS));
 
       const endRemote = (): void => {
         URL.revokeObjectURL(url);
