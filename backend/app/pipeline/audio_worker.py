@@ -307,7 +307,7 @@ def run_stdin(args: argparse.Namespace) -> None:
         from app.pipeline.whisper_coreml import WhisperCoreML
         transcriber = WhisperCoreML(model_size=args.model)  # type: ignore[assignment]
     else:
-        transcriber = Transcriber(model_size=args.model)
+        transcriber = Transcriber(model_size=args.model, device=args.device)
     denoiser = Denoiser()
 
     try:
@@ -344,6 +344,12 @@ def run_stdin(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="ARIA audio worker")
     parser.add_argument("--model", type=str, default="base")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="transcriber compute device (auto, cpu, cuda)",
+    )
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--synthetic", action="store_true", default=False)
     parser.add_argument("--duration", type=float, default=0.0)

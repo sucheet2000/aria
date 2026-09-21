@@ -28,6 +28,7 @@ type Config struct {
 	TTSProvider       string
 	ElevenLabsVoiceID string
 	WhisperModel      string
+	WhisperDevice     string
 	ClerkSecretKey    string
 	ClerkJWTIssuer    string
 	// InternalAuthSecret is the shared secret Go sends (X-Internal-Auth) and
@@ -104,6 +105,14 @@ func Load() *Config {
 	whisperModel := os.Getenv("WHISPER_MODEL")
 	if whisperModel == "" {
 		whisperModel = "base"
+	}
+
+	// Which compute device the transcriber uses. "cpu" is the default because
+	// that is what production has always run; "auto" lets faster-whisper pick.
+	// The worker validates the value and refuses an unknown one at startup.
+	whisperDevice := os.Getenv("WHISPER_DEVICE")
+	if whisperDevice == "" {
+		whisperDevice = "cpu"
 	}
 
 	pythonBaseURL := os.Getenv("PYTHON_BASE_URL")

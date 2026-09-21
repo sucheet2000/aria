@@ -59,14 +59,15 @@ type Session struct {
 // pinned to the replica that terminates the owner's WebSockets; running
 // numReplicas > 1 requires sticky routing of /ws and /ws/audio to one replica.
 type SessionManager struct {
-	ctx          context.Context
-	pythonBin    string
-	scriptPath   string
-	workDir      string
-	whisperModel string
-	maxSessions  int
-	route        TranscriptRouter
-	log          zerolog.Logger
+	ctx           context.Context
+	pythonBin     string
+	scriptPath    string
+	workDir       string
+	whisperModel  string
+	whisperDevice string
+	maxSessions   int
+	route         TranscriptRouter
+	log           zerolog.Logger
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -96,18 +97,19 @@ type SessionManager struct {
 // NewSessionManager creates a manager whose sessions are children of ctx.
 // maxSessions bounds the number of concurrent distinct-owner subprocesses
 // (each loads its own Whisper model); values < 1 mean unbounded.
-func NewSessionManager(ctx context.Context, pythonBin, scriptPath, workDir, whisperModel string, maxSessions int, route TranscriptRouter) *SessionManager {
+func NewSessionManager(ctx context.Context, pythonBin, scriptPath, workDir, whisperModel, whisperDevice string, maxSessions int, route TranscriptRouter) *SessionManager {
 	return &SessionManager{
-		ctx:          ctx,
-		pythonBin:    pythonBin,
-		scriptPath:   scriptPath,
-		workDir:      workDir,
-		whisperModel: whisperModel,
-		maxSessions:  maxSessions,
-		route:        route,
-		log:          log.With().Str("component", "audio-sessions").Logger(),
-		sessions:     make(map[string]*Session),
-		mutedOwners:  make(map[string]map[string]time.Time),
+		ctx:           ctx,
+		pythonBin:     pythonBin,
+		scriptPath:    scriptPath,
+		workDir:       workDir,
+		whisperModel:  whisperModel,
+		whisperDevice: whisperDevice,
+		maxSessions:   maxSessions,
+		route:         route,
+		log:           log.With().Str("component", "audio-sessions").Logger(),
+		sessions:      make(map[string]*Session),
+		mutedOwners:   make(map[string]map[string]time.Time),
 	}
 }
 
@@ -143,7 +145,7 @@ func (m *SessionManager) Acquire(owner string) error {
 
 	ctx, cancel := context.WithCancel(m.ctx)
 	sink := func(data []byte) { m.route(owner, data) }
-	w := New(m.pythonBin, m.scriptPath, m.workDir, m.whisperModel, sink)
+	w := New(m.pythonBin, m.scriptPath, m.workDir, m.whisperModel, m.whisperDevice, sink)
 	if m.stillSpeakingLocked(owner, time.Now()) {
 		// Still mid-TTS: come up muted so the reconnect cannot leak ARIA's
 		// own voice into this owner's pipeline (V3).

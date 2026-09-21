@@ -34,19 +34,20 @@ const cancelWaitDelay = 2 * time.Second
 
 // Worker manages one Python audio subprocess: one owner's private STT stream.
 type Worker struct {
-	pythonBin    string
-	scriptPath   string
-	workDir      string
-	whisperModel string
-	sink         TranscriptSink
-	cmd          *exec.Cmd
-	procMu       sync.Mutex
-	stdinPipe    io.WriteCloser
-	stdinMu      sync.Mutex
-	restartDelay time.Duration
-	running      atomic.Bool
-	muted        atomic.Bool
-	log          zerolog.Logger
+	pythonBin     string
+	scriptPath    string
+	workDir       string
+	whisperModel  string
+	whisperDevice string
+	sink          TranscriptSink
+	cmd           *exec.Cmd
+	procMu        sync.Mutex
+	stdinPipe     io.WriteCloser
+	stdinMu       sync.Mutex
+	restartDelay  time.Duration
+	running       atomic.Bool
+	muted         atomic.Bool
+	log           zerolog.Logger
 }
 
 // Running reports whether the audio subprocess is currently alive.
@@ -74,15 +75,16 @@ func (w *Worker) closeStdin() {
 }
 
 // New creates a new Worker whose transcripts are delivered to sink.
-func New(pythonBin, scriptPath, workDir, whisperModel string, sink TranscriptSink) *Worker {
+func New(pythonBin, scriptPath, workDir, whisperModel, whisperDevice string, sink TranscriptSink) *Worker {
 	return &Worker{
-		pythonBin:    pythonBin,
-		scriptPath:   scriptPath,
-		workDir:      workDir,
-		whisperModel: whisperModel,
-		sink:         sink,
-		restartDelay: 2 * time.Second,
-		log:          log.With().Str("component", "audio-worker").Logger(),
+		pythonBin:     pythonBin,
+		scriptPath:    scriptPath,
+		workDir:       workDir,
+		whisperModel:  whisperModel,
+		whisperDevice: whisperDevice,
+		sink:          sink,
+		restartDelay:  2 * time.Second,
+		log:           log.With().Str("component", "audio-worker").Logger(),
 	}
 }
 
@@ -106,7 +108,7 @@ func (w *Worker) Start(ctx context.Context) error {
 func (w *Worker) run(ctx context.Context) error {
 	w.setStdinPipe(nil)
 
-	cmd := exec.CommandContext(ctx, w.pythonBin, "-u", w.scriptPath, "--model", w.whisperModel)
+	cmd := exec.CommandContext(ctx, w.pythonBin, w.subprocessArgs()...)
 	cmd.Dir = w.workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+w.workDir)
 	// On context cancel ask the process to stop (SIGTERM) and only SIGKILL it
@@ -191,6 +193,18 @@ func (w *Worker) run(ctx context.Context) error {
 	return err
 }
 
+// subprocessArgs is the exact argv handed to the Python worker. Kept as its own
+// function so a test can assert the flags actually reach the subprocess — the
+// device setting was previously validated inside Python while nothing here ever
+// passed it, which made the whole mechanism unreachable in production.
+func (w *Worker) subprocessArgs() []string {
+	return []string{
+		"-u", w.scriptPath,
+		"--model", w.whisperModel,
+		"--device", w.whisperDevice,
+	}
+}
+
 // Mute gates the browser audio stream at the Go edge. When muted, WriteAudio
 // drops incoming PCM frames so the STT pipeline hears silence while ARIA speaks
 // (TTS playback). Muting does not touch the subprocess stdin — that pipe
@@ -204,6 +218,18 @@ func (w *Worker) Mute(muted bool) {
 // are dropped while muted, and silently ignored when no subprocess is running.
 func (w *Worker) WriteAudio(pcm []byte) {
 	if w.muted.Load() {
+		return
+	}
+	// The subprocess reads stdin as a flat run of little-endian Int16 samples;
+	// it counts bytes and has no frame markers. A single odd-length write would
+	// therefore shift the parity of everything after it, assembling every later
+	// sample from the high byte of one and the low byte of the next — the audio
+	// would not fail, it would turn to noise for the rest of the session.
+	// Forward whole samples only; a trailing half-sample is dropped.
+	if n := len(pcm) &^ 1; n != len(pcm) {
+		pcm = pcm[:n]
+	}
+	if len(pcm) == 0 {
 		return
 	}
 	w.stdinMu.Lock()
