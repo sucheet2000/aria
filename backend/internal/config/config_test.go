@@ -136,3 +136,25 @@ func TestLoad_RateLimitFromEnv(t *testing.T) {
 		t.Errorf("RateLimitGlobalBurst = %v, want 80", cfg.RateLimitGlobalBurst)
 	}
 }
+
+// The scrape credential is read here and consumed in internal/server. Every
+// metrics test builds a Config by hand, so the handler was proven to honour a
+// token the loader was never proven to supply — and an empty token makes
+// metricsAuthorized return true for everyone. This is the same shape that let
+// WHISPER_DEVICE be parsed and discarded for months on the integration branch.
+func TestLoad_MetricsTokenReachesTheConfig(t *testing.T) {
+	t.Setenv("METRICS_TOKEN", "scrape-secret-value")
+
+	if got := Load().MetricsToken; got != "scrape-secret-value" {
+		t.Fatalf("MetricsToken = %q, want %q — the env value never reached the struct",
+			got, "scrape-secret-value")
+	}
+}
+
+func TestLoad_MetricsTokenDefaultsToEmpty(t *testing.T) {
+	t.Setenv("METRICS_TOKEN", "")
+
+	if got := Load().MetricsToken; got != "" {
+		t.Fatalf("MetricsToken = %q, want empty when unset", got)
+	}
+}
