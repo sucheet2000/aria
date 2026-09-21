@@ -11,6 +11,11 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
+      // A real Response has headers and the hook reads Content-Type from them.
+      // Without this the hook threw, the outer catch swallowed it, and these
+      // two tests silently asserted against the browser-fallback path instead
+      // of the one they name.
+      headers: new Headers({ "Content-Type": "audio/mpeg" }),
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(0),
     })

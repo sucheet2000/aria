@@ -328,3 +328,51 @@ func TestTTSHandler_FailedTurnsStillCarryTheirTelemetry(t *testing.T) {
 		}
 	})
 }
+
+// F1 (blocking, TEST-2) — the audio/ guard had no coverage in either
+// direction. Replacing the whole block with the constant, or deleting just the
+// prefix check so text/html reaches the browser, both left the suite green:
+// the working upstream declared audio/mpeg, which is byte-identical to the
+// fallback constant, so no test could tell pass-through from hardcode.
+func TestTTSHandler_ForwardsOnlyAudioContentTypes(t *testing.T) {
+	cases := []struct {
+		name       string
+		upstream   string
+		wantServed string
+	}{
+		{"a different audio container is passed through", "audio/ogg", "audio/ogg"},
+		{"a document type is never served from our origin", "text/html", "audio/mpeg"},
+		{"an absent type falls back rather than sniffing", "", "audio/mpeg"},
+		{"case does not change the verdict", "AUDIO/WAV", "AUDIO/WAV"},
+		{"parameters survive on a real audio type", "audio/wav; codecs=1", "audio/wav; codecs=1"},
+		{"a near-miss is not audio", "audiofoo/bar", "audio/mpeg"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.upstream != "" {
+					w.Header().Set("Content-Type", tc.upstream)
+				} else {
+					// Go sniffs when nothing is set; force a bare response.
+					w.Header()["Content-Type"] = nil
+				}
+				w.Write([]byte("mp3-bytes")) //nolint:errcheck
+			}))
+			defer srv.Close()
+
+			c := New("", "")
+			c.SetPythonURL(srv.URL)
+			rec := post(t, NewHandler(c), `{"text":"hello"}`)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d", rec.Code)
+			}
+			if got := rec.Header().Get("Content-Type"); got != tc.wantServed {
+				t.Fatalf("upstream %q served as %q, want %q", tc.upstream, got, tc.wantServed)
+			}
+			if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Fatal("nosniff missing")
+			}
+		})
+	}
+}

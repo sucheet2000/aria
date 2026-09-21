@@ -164,7 +164,9 @@ func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io
 	// attacker-influenced bytes as a document. MP3 is what the Python TTS route
 	// has always returned and remains the default.
 	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "audio/") {
+	// Case-insensitive: RFC 9110 says media types are, and relabelling AUDIO/WAV
+	// as MP3 would recreate the mismatch this whole change removes.
+	if !strings.HasPrefix(strings.ToLower(ct), "audio/") {
 		ct = proxyAudioContentType
 	}
 	return resp.Body, ct, nil
