@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -60,15 +61,45 @@ type proxyRequest struct {
 	Emotion string `json:"emotion,omitempty"`
 }
 
+// haveSayBinary reports whether the macOS `say` command is actually on PATH.
+func haveSayBinary() bool {
+	_, err := exec.LookPath("say")
+	return err == nil
+}
+
+// localFallbackAvailable reports whether this machine can synthesize speech
+// locally. The fallback shells out to `say`, which ships with macOS and exists
+// nowhere else — so on the Linux hosts this actually deploys to there is no
+// fallback at all, and pretending otherwise turned a dead Python service into a
+// silent, truncated 200 rather than an error anyone could act on.
+func localFallbackAvailable() bool {
+	return localFallbackCheck()
+}
+
+// localFallbackCheck is a variable so tests can exercise BOTH platforms'
+// behaviour. Production runs on Linux while development runs on macOS, and the
+// path that matters most is the one the developer's machine never takes.
+var localFallbackCheck = func() bool {
+	return runtime.GOOS == "darwin" && haveSayBinary()
+}
+
 // Stream synthesizes text and writes the resulting audio to w.
-// Proxies to the Python voice engine's TTS endpoint.
-// Falls back to the macOS say command when Python is unavailable.
+// Proxies to the Python voice engine's TTS endpoint. On macOS, and only there,
+// it can fall back to the system `say` command; elsewhere a proxy failure is
+// reported as a failure instead of being papered over.
 func (c *Client) Stream(ctx context.Context, text string, emotion string, w io.Writer) error {
-	if err := c.streamProxy(ctx, text, emotion, w); err != nil {
-		c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
-		return c.streamLocal(ctx, text, w)
+	err := c.streamProxy(ctx, text, emotion, w)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if !localFallbackAvailable() {
+		c.log.Error().Err(err).Str("goos", runtime.GOOS).
+			Msg("python TTS proxy failed and no local fallback exists on this platform")
+		return fmt.Errorf("tts unavailable: proxy failed and no local synthesizer on %s: %w",
+			runtime.GOOS, err)
+	}
+	c.log.Warn().Err(err).Msg("python TTS proxy failed, falling back to local")
+	return c.streamLocal(ctx, text, w)
 }
 
 func (c *Client) streamProxy(ctx context.Context, text string, emotion string, w io.Writer) error {
