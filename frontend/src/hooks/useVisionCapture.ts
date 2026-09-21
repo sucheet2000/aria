@@ -97,6 +97,27 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
     let video: HTMLVideoElement | null = null;
     let faceLandmarker: FaceLandmarker | null = null;
     let handLandmarker: HandLandmarker | null = null;
+    // Model creation is async, so an unmount can land while landmarkers are
+    // still being built. Cleanup would then run against variables that are
+    // still null and close nothing, and the awaits would resolve into a dead
+    // closure — stranding two MediaPipe instances and their WASM memory for
+    // the life of the page, once per camera toggle. Every post-await
+    // cancellation check therefore routes through here, and so does cleanup.
+    // Safe to call repeatedly: each resource is released and nulled, so a
+    // second call is a no-op and a resource created AFTER an earlier call is
+    // still released by the next one.
+    function dispose(): void {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = 0;
+      stream?.getTracks().forEach((t) => t.stop());
+      stream = null;
+      if (video) video.srcObject = null;
+      video = null;
+      faceLandmarker?.close();
+      faceLandmarker = null;
+      handLandmarker?.close();
+      handLandmarker = null;
+    }
 
     const emotionClassifier = new EmotionClassifier();
     const gestureClassifier = new GestureClassifier();
@@ -186,12 +207,14 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
           runningMode: "VIDEO",
           numHands: 2,
         });
-        if (cancelled) return;
+        if (cancelled) {
+          dispose();
+          return;
+        }
 
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          stream = null;
+          dispose();
           return;
         }
 
@@ -203,7 +226,10 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
           // jsdom / autoplay-restricted contexts: detection loop still gates on
           // readyState, so a failed play() just delays the first frame.
         });
-        if (cancelled) return;
+        if (cancelled) {
+          dispose();
+          return;
+        }
 
         visionCaptureActiveRef.current = true;
         setActive(true);
@@ -211,6 +237,8 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
         setError(null);
         rafId = requestAnimationFrame(processFrame);
       } catch (err) {
+        // Whatever was built before the failure must not outlive it.
+        dispose();
         if (cancelled) return;
         setError(mapErrorMessage(err));
         setActive(false);
@@ -223,11 +251,7 @@ export function useVisionCapture(enabled: boolean): UseVisionCaptureResult {
 
     return () => {
       cancelled = true;
-      if (rafId) cancelAnimationFrame(rafId);
-      stream?.getTracks().forEach((t) => t.stop());
-      if (video) video.srcObject = null;
-      faceLandmarker?.close();
-      handLandmarker?.close();
+      dispose();
       useAriaStore.getState().clearVisionFrame();
       visionCaptureActiveRef.current = false;
       setActive(false);
