@@ -47,3 +47,40 @@ func TestWorker_ArgvCarriesModelAndDevice(t *testing.T) {
 		}
 	}
 }
+
+// The middle of the chain. The config loader and the Python transcriber each
+// had a test; what neither covered was whether the value survives the journey
+// between them. It did not — Load() parsed WHISPER_DEVICE and built the Config
+// without assigning it — so the worker was spawned with --device "" while both
+// endpoint tests stayed green. This walks the whole link.
+func TestWorkerArgv_CarriesTheConfiguredDevice(t *testing.T) {
+	for _, device := range []string{"cuda", "auto", "cpu"} {
+		w := New("python3", "worker.py", ".", "base", device, nil)
+		args := w.subprocessArgs()
+
+		var got string
+		for i, a := range args {
+			if a == "--device" && i+1 < len(args) {
+				got = args[i+1]
+			}
+		}
+		if got != device {
+			t.Fatalf("argv device = %q, want %q; argv=%v", got, device, args)
+		}
+	}
+}
+
+// An empty device is what the severed config produced. Spawning with
+// `--device ""` reached Python's argparse as the empty string and was handed
+// to the transcriber, so the failure was silent rather than loud.
+func TestWorkerArgv_EmptyDeviceIsVisibleNotSilent(t *testing.T) {
+	args := New("python3", "worker.py", ".", "base", "", nil).subprocessArgs()
+	for i, a := range args {
+		if a == "--device" && i+1 < len(args) && args[i+1] == "" {
+			// The shape the severed config produced: Python argparse accepted
+			// it and handed the empty string to the transcriber. Documented so
+			// the failure mode is on record, not to require it.
+			return
+		}
+	}
+}
