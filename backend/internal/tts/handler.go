@@ -108,7 +108,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	if _, err := io.Copy(w, stream); err != nil {
-		h.log.Error().Err(err).Msg("tts stream interrupted after headers")
+		// Carries the same telemetry as the completion log below, which the
+		// panic unwinds straight past — otherwise these turns would vanish from
+		// the duration and length series entirely (OBS-3).
+		h.log.Error().Err(err).
+			Int("text_length", len(req.Text)).
+			Dur("duration", time.Since(start)).
+			Msg("tts stream interrupted after headers")
 		// The 200 and the audio headers are already on the wire, so there is no
 		// status left to change. Returning normally would let Go close the
 		// chunked body cleanly, and a clean close means "that was all of it" —
