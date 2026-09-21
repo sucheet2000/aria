@@ -15,6 +15,7 @@ Gesture priority (single-hand takes precedence for POINT):
 from __future__ import annotations
 
 import math
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -82,16 +83,25 @@ class GestureAnchorBridge:
         self._registry = anchor_registry
         self._clock = clock or time.monotonic
         self._tracks: dict[str, _PointTrack] = {}
+        # One bridge serves the whole app and cognition runs its handlers on a
+        # threadpool, so two overlapping turns for one owner reach this state in
+        # parallel. Deciding whether to anchor is a read-modify-write over the
+        # owner's record: without the lock both turns can see an satisfied dwell
+        # and both register an anchor, which is the duplicate this class exists
+        # to prevent. The sweep's delete can also race a concurrent one.
+        self._lock = threading.Lock()
 
     # ── point tracking ────────────────────────────────────────────────────────
 
     def forget_owner(self, owner: str) -> None:
         """Drop an owner's point tracking, e.g. when their camera stops."""
-        self._tracks.pop(owner, None)
+        with self._lock:
+            self._tracks.pop(owner, None)
 
     def tracked_owner_count(self) -> int:
         """How many owners currently have point tracking. Test-only window."""
-        return len(self._tracks)
+        with self._lock:
+            return len(self._tracks)
 
     def _sweep(self, now: float) -> None:
         if len(self._tracks) <= _MAX_TRACKED_OWNERS:
@@ -108,6 +118,10 @@ class GestureAnchorBridge:
 
     def _should_anchor(self, owner: str, vec: tuple[float, float, float]) -> bool:
         """True when this point has been held long enough to mean it."""
+        with self._lock:
+            return self._should_anchor_locked(owner, vec)
+
+    def _should_anchor_locked(self, owner: str, vec: tuple[float, float, float]) -> bool:
         now = self._clock()
         track = self._tracks.get(owner)
 
@@ -173,9 +187,10 @@ class GestureAnchorBridge:
         if gesture != "point":
             # The hand stopped pointing, so any dwell in progress is abandoned;
             # coming back to the same target must earn its dwell again.
-            track = self._tracks.get(owner)
-            if track is not None:
-                track.candidate = None
+            with self._lock:
+                track = self._tracks.get(owner)
+                if track is not None:
+                    track.candidate = None
 
         if gesture == "point":
             vec = _finite_vec(pointing_vector)

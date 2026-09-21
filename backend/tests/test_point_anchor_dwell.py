@@ -196,3 +196,58 @@ class TestIsolationAndSafety:
         point(bridge, FORWARD)
 
         assert anchors_for(registry) == 0
+
+
+class TestConcurrentAccess:
+    """The bridge is one app-scoped object and cognition runs its handlers on a
+    threadpool, so two overlapping turns for one owner touch the same tracking
+    record in parallel. Found by the final security and code reviews.
+    """
+
+    def test_overlapping_turns_do_not_duplicate_an_anchor(
+        self, registry: AnchorRegistry, clock: FakeClock
+    ) -> None:
+        import threading
+
+        bridge = GestureAnchorBridge(registry, clock=clock)
+        point(bridge, FORWARD)          # start the dwell
+        clock.advance(2.0)              # dwell satisfied for both racers
+
+        barrier = threading.Barrier(8)
+
+        def racer() -> None:
+            barrier.wait()
+            point(bridge, FORWARD)
+
+        threads = [threading.Thread(target=racer) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Eight simultaneous turns, one intentional point, one anchor.
+        assert anchors_for(registry) == 1
+
+    def test_the_sweep_does_not_race_a_concurrent_delete(
+        self, registry: AnchorRegistry, clock: FakeClock
+    ) -> None:
+        import threading
+
+        bridge = GestureAnchorBridge(registry, clock=clock)
+        errors: list[BaseException] = []
+
+        def churn(start: int) -> None:
+            try:
+                for i in range(start, start + 40):
+                    bridge.on_gesture_event("point", "NONE", FORWARD, "s1", f"o{i}")
+                    bridge.forget_owner(f"o{i}")
+            except BaseException as exc:  # noqa: BLE001 - recorded, then asserted
+                errors.append(exc)
+
+        threads = [threading.Thread(target=churn, args=(n * 40,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == [], f"concurrent sweep raised: {errors}"
