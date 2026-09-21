@@ -158,7 +158,12 @@ func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, err
 	// wants a PCM spelling like LEI16@22050. Every local synthesis therefore
 	// exited 1, so the fallback this platform advertises had never produced a
 	// single byte of speech.
-	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "-o", name, text)
+	// "--" ends option parsing, so the caller's text can never be read as a
+	// flag. Without it, `say` honours --output-file= and --input-file= in this
+	// position: a text field starting with a dash overwrites a file as the
+	// server user, or speaks the contents of any readable file — including
+	// backend/.env — straight down the HTTP response.
+	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "-o", name, "--", text)
 	if err := cmd.Run(); err != nil {
 		os.Remove(name)
 		return nil, fmt.Errorf("say command: %w", err)
