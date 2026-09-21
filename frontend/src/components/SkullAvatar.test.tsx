@@ -3,13 +3,15 @@ import { render, act, cleanup } from "@testing-library/react";
 import { useAriaStore } from "@/store/ariaStore";
 
 const connectAudio = vi.fn();
-let mockAmplitude = 0;
+// The hook reports amplitude through a ref, not state, so the avatar can read
+// it from its own animation loop without a render per frame.
+const mockAmplitudeRef = { current: 0 };
 
 vi.mock("@/hooks/useAudioAmplitude", () => ({
-  useAudioAmplitude: () => ({ amplitude: mockAmplitude, connectAudio }),
+  useAudioAmplitude: () => ({ amplitudeRef: mockAmplitudeRef, connectAudio }),
 }));
 
-import SkullAvatar, { STATE_PALETTES } from "./SkullAvatar";
+import SkullAvatar, { EMOTION_PALETTE_KEY, STATE_PALETTES } from "./SkullAvatar";
 import { ttsAudioRef } from "@/hooks/useTTS";
 
 let rafCallbacks: FrameRequestCallback[] = [];
@@ -35,7 +37,7 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore();
-  mockAmplitude = 0;
+  mockAmplitudeRef.current = 0;
   connectAudio.mockClear();
   rafCallbacks = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
@@ -57,16 +59,20 @@ describe("SkullAvatar", () => {
     expect(svg.getAttribute("aria-label")).toMatch(/skull/i);
   });
 
-  it.each(Object.keys(STATE_PALETTES))(
-    "applies the %s palette's iris color as a CSS variable",
-    (state) => {
+  // STATE_PALETTES holds both UI states (idle/listening/thinking/speaking) and
+  // emotions. Only the emotions can arrive as avatarEmotion; the states are
+  // chosen by the component from store flags. Iterating every key used to pass
+  // only because both kinds shared one lookup table.
+  it.each(Object.keys(EMOTION_PALETTE_KEY))(
+    "applies the %s emotion's iris color as a CSS variable",
+    (emotion) => {
       act(() => {
-        useAriaStore.setState({ avatarEmotion: state });
+        useAriaStore.setState({ avatarEmotion: emotion });
       });
       const { getByRole } = render(<SkullAvatar />);
       const svg = getByRole("img");
       expect(svg.style.getPropertyValue("--skullav-iris")).toBe(
-        STATE_PALETTES[state].iris,
+        STATE_PALETTES[EMOTION_PALETTE_KEY[emotion]].iris,
       );
     },
   );
@@ -103,7 +109,7 @@ describe("SkullAvatar", () => {
   });
 
   it("drops the jaw with audio amplitude while speaking", () => {
-    mockAmplitude = 0.6;
+    mockAmplitudeRef.current = 0.6;
     act(() => {
       useAriaStore.setState({ isSpeaking: true });
     });

@@ -182,7 +182,7 @@ export default function Avatar3D() {
   const symbolicInference = useAriaStore(s => s.symbolicInference);
   const wsConnected       = useAriaStore(s => s.wsConnected);
 
-  const { amplitude } = useAudioAmplitude();
+  const { amplitudeRef } = useAudioAmplitude();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -324,7 +324,8 @@ export default function Avatar3D() {
       // Jaw: driven by amplitude when speaking, else phoneme sim closes to 0
       if (tgt.speaking) {
         speakPhase += 0.17;
-        const ampJaw = amplitude > 0.01 ? Math.min(1, amplitude * 4) : (
+        const amp = amplitudeRef.current;
+        const ampJaw = amp > 0.01 ? Math.min(1, amp * 4) : (
           0.42*Math.abs(Math.sin(speakPhase*1.8)) +
           0.30*Math.abs(Math.sin(speakPhase*3.1+1.0)) +
           0.28*Math.abs(Math.sin(speakPhase*0.7+2.2))
@@ -447,7 +448,10 @@ export default function Avatar3D() {
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [avatarEmotion, isThinking, isSpeaking, isListening, symbolicInference, wsConnected, amplitude]);
+    // amplitudeRef is a ref object, so its identity is stable across renders:
+    // listing it satisfies the linter without rebuilding the scene per frame.
+    // The amplitude VALUE is read inside the loop, never from the deps.
+  }, [avatarEmotion, isThinking, isSpeaking, isListening, symbolicInference, wsConnected, amplitudeRef]);
 
   return (
     <div style={{ position:"relative", width:"100%", height:"100%" }}>
