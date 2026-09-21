@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EmotionClassifier, computeActionUnits } from "./emotion";
+import { EmotionClassifier, computeActionUnits, scoreEmotions } from "./emotion";
 
 // Ported from backend/tests/test_vision.py emotion cases + faithful action-unit
 // checks. MediaPipe normalized coords: x,y in [0,1], y increases downward.
@@ -140,5 +140,33 @@ describe("EmotionClassifier", () => {
     const { confidence } = clf.classify(happyFace());
     expect(Number.isFinite(confidence)).toBe(true);
     expect(confidence).toBe(Number(confidence.toFixed(3)));
+  });
+});
+
+// The vocabulary the server accepts is a restatement of this file's labels
+// (backend/app/models/schemas.py PERCEPTION_EMOTIONS, checked by
+// backend/tests/test_input_contracts.py). That Python test can only watch what
+// this module exports, so what it exports has to BE what the classifier emits.
+// Previously EMOTIONS was hand-written beside the scoring: adding a label to
+// the scoring and not to the list left both sides silent, and every frame
+// carrying the new label was downgraded to "neutral" by the server forever.
+describe("the exported vocabulary is the one the classifier can actually emit", () => {
+  const zeroAU = {
+    smile: 0, cheekRaise: 0, lipDepress: 0, browLower: 0,
+    browRaise: 0, jawDrop: 0, lipStretch: 0,
+  };
+
+  it("every scored label is in EMOTIONS", () => {
+    for (const [label] of scoreEmotions(zeroAU)) {
+      expect(EmotionClassifier.EMOTIONS).toContain(label);
+    }
+  });
+
+  it("EMOTIONS contains nothing the classifier cannot produce", () => {
+    const scoredLabels = scoreEmotions(zeroAU).map(([label]) => label);
+    // "neutral" is the below-threshold fallback, not a scored label.
+    expect([...EmotionClassifier.EMOTIONS].sort()).toEqual(
+      ["neutral", ...scoredLabels].sort(),
+    );
   });
 });

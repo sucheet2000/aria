@@ -25,7 +25,44 @@ export interface EmotionResult {
 type Landmarks = readonly number[][];
 
 const HISTORY_SIZE = 5;
-const EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "fearful", "disgusted"];
+// The scores and the thresholds ARE the vocabulary: every label this classifier
+// can return is a key here, and EMOTIONS is derived from them rather than
+// written out beside them. A hand-written list next to the real emitter is how
+// this codebase ended up with four emotion vocabularies that disagree — and a
+// contract test watching the list would have gone on passing while a new label
+// was added to the scoring and silently downgraded by the server forever.
+const EMOTION_THRESHOLDS: Record<string, number> = {
+  happy: 0.45,
+  sad: 0.4,
+  angry: 0.45,
+  surprised: 0.4,
+  fearful: 0.38,
+  disgusted: 0.38,
+};
+
+// "neutral" is not scored; it is what the classifier falls back to when nothing
+// clears its threshold, so it is prepended rather than derived.
+const EMOTIONS = ["neutral", ...Object.keys(EMOTION_THRESHOLDS)];
+
+// Exported for the contract test, which asserts the scored labels and the
+// threshold keys are the same set. Insertion order matches emotion.py so that
+// ties resolve identically (first maximal score wins).
+export function scoreEmotions(au: ActionUnits): Array<[string, number]> {
+  return [
+    ["happy", au.smile * 0.5 + au.cheekRaise * 0.3 + (1.0 - au.lipDepress) * 0.2],
+    ["sad", au.lipDepress * 0.5 + au.browLower * 0.3 + (1.0 - au.smile) * 0.2],
+    ["angry", au.browLower * 0.6 + (1.0 - au.smile) * 0.2 + au.lipDepress * 0.2],
+    ["surprised", au.browRaise * 0.4 + au.jawDrop * 0.4 + (1.0 - au.browLower) * 0.2],
+    [
+      "fearful",
+      au.browRaise * 0.3 + au.lipStretch * 0.4 + au.jawDrop * 0.2 + (1.0 - au.smile) * 0.1,
+    ],
+    [
+      "disgusted",
+      au.lipDepress * 0.3 + au.browLower * 0.3 + (1.0 - au.smile) * 0.2 + au.cheekRaise * 0.2,
+    ],
+  ];
+}
 
 const BROW_UPPER_INDICES = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300];
 const BROW_LOWER_INDICES = [46, 53, 52, 65, 276, 283, 282, 295];
@@ -116,36 +153,12 @@ export class EmotionClassifier {
   classify(landmarks: Landmarks): EmotionResult {
     const au = computeActionUnits(landmarks);
 
-    // Insertion order matches emotion.py so that ties resolve identically
-    // (first maximal score wins).
-    const scored: Array<[string, number]> = [
-      ["happy", au.smile * 0.5 + au.cheekRaise * 0.3 + (1.0 - au.lipDepress) * 0.2],
-      ["sad", au.lipDepress * 0.5 + au.browLower * 0.3 + (1.0 - au.smile) * 0.2],
-      ["angry", au.browLower * 0.6 + (1.0 - au.smile) * 0.2 + au.lipDepress * 0.2],
-      ["surprised", au.browRaise * 0.4 + au.jawDrop * 0.4 + (1.0 - au.browLower) * 0.2],
-      [
-        "fearful",
-        au.browRaise * 0.3 + au.lipStretch * 0.4 + au.jawDrop * 0.2 + (1.0 - au.smile) * 0.1,
-      ],
-      [
-        "disgusted",
-        au.lipDepress * 0.3 + au.browLower * 0.3 + (1.0 - au.smile) * 0.2 + au.cheekRaise * 0.2,
-      ],
-    ];
-
-    const thresholds: Record<string, number> = {
-      happy: 0.45,
-      sad: 0.4,
-      angry: 0.45,
-      surprised: 0.4,
-      fearful: 0.38,
-      disgusted: 0.38,
-    };
+    const scored = scoreEmotions(au);
 
     const scores: Record<string, number> = Object.fromEntries(scored);
 
     // Disambiguate disgusted vs angry: require brow_lower > 0.6 for angry.
-    if (scores.angry > thresholds.angry && au.browLower <= 0.6) {
+    if (scores.angry > EMOTION_THRESHOLDS.angry && au.browLower <= 0.6) {
       scores.angry = 0.0;
     }
 
@@ -160,7 +173,7 @@ export class EmotionClassifier {
 
     let rawEmotion: string;
     let rawConfidence: number;
-    if (bestScore < thresholds[bestEmotion]) {
+    if (bestScore < EMOTION_THRESHOLDS[bestEmotion]) {
       rawEmotion = "neutral";
       rawConfidence = 1.0 - bestScore;
     } else {

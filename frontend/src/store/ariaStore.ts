@@ -64,7 +64,15 @@ export interface ARIAStore {
 
   // Conversation
   transcript: string;
-  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  // `localOnly` marks a message the client generated itself — an error notice,
+  // not something ARIA said. It is shown to the user but never replayed to the
+  // model, which must not read its own transcript as containing words it never
+  // produced.
+  conversationHistory: Array<{
+    role: "user" | "assistant";
+    content: string;
+    localOnly?: boolean;
+  }>;
 
   // Memory
   profileFacts: string[];
@@ -96,7 +104,11 @@ export interface ARIAStore {
   enqueueAudio: (text: string) => void;
   dequeueAudio: () => string | undefined;
   setTranscript: (v: string) => void;
-  addMessage: (role: "user" | "assistant", content: string) => void;
+  addMessage: (
+    role: "user" | "assistant",
+    content: string,
+    options?: { localOnly?: boolean },
+  ) => void;
   clearConversation: () => void;
   setEmotionConfidence: (v: number) => void;
   setProcessingMs: (v: number) => void;
@@ -186,9 +198,12 @@ export const useAriaStore = create<ARIAStore>((set, get) => ({
   },
   setTranscript: (v) => set({ transcript: v }),
   clearConversation: () => set({ conversationHistory: [] }),
-  addMessage: (role, content) =>
+  addMessage: (role, content, options) =>
     set((state) => ({
-      conversationHistory: [...state.conversationHistory, { role, content }],
+      conversationHistory: [
+        ...state.conversationHistory,
+        options?.localOnly ? { role, content, localOnly: true } : { role, content },
+      ],
     })),
   setEmotionConfidence: (v) => set({ emotionConfidence: v }),
   setProcessingMs: (v) => set({ processingMs: v }),
