@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -73,14 +74,14 @@ func (s *Server) Start(ctx context.Context) error {
 	// it on a public bind must find out at boot rather than by being scraped.
 	// This mirrors the Clerk guard directly above: the Go edge has no notion of
 	// ENV, so a non-loopback bind is what it uses to mean "production".
-	if s.cfg.MetricsToken == "" && !isLoopback(s.cfg.Host) && os.Getenv("ALLOW_INSECURE_NO_AUTH") != "1" {
+	if metricsGuardRefusesBoot(s.cfg.MetricsToken, s.cfg.Host, os.Getenv("ALLOW_INSECURE_METRICS")) {
 		log.Fatal().Msgf(
-			"refusing to start: METRICS_TOKEN is empty on non-loopback bind %s; "+
-				"set METRICS_TOKEN or ALLOW_INSECURE_NO_AUTH=1",
+			"refusing to start: METRICS_TOKEN is empty or blank on non-loopback bind %s; "+
+				"set METRICS_TOKEN or ALLOW_INSECURE_METRICS=1",
 			s.cfg.Host,
 		)
 	}
-	if s.cfg.MetricsToken == "" {
+	if strings.TrimSpace(s.cfg.MetricsToken) == "" {
 		log.Warn().Msg("METRICS_TOKEN not set; /metrics is unauthenticated (local dev only)")
 	}
 
@@ -333,6 +334,27 @@ func (s *Server) routes(ctx context.Context, verifier auth.Verifier, authEnabled
 			r.Delete("/memory/{entry_id}", s.handleMemoryDeleteEntryProxy)
 		})
 	})
+}
+
+// metricsGuardRefusesBoot reports whether the server must refuse to start
+// because /metrics would be publicly readable with no credential.
+//
+// It deliberately does NOT honour ALLOW_INSECURE_NO_AUTH. That flag disables
+// Clerk for local work and docker-compose sets it to 1 by default alongside
+// HOST=0.0.0.0 and a published port — so reusing it meant anyone on the same
+// network could read Claude token spend from a developer's machine. Opening
+// metrics is a separate decision and needs its own deliberate flag.
+//
+// A whitespace-only token counts as unset: it cannot be typed into a scraper
+// config reliably and is far more likely to be an accident than an intent.
+func metricsGuardRefusesBoot(token, host, allowInsecure string) bool {
+	if strings.TrimSpace(token) != "" {
+		return false
+	}
+	if isLoopback(host) {
+		return false
+	}
+	return allowInsecure != "1"
 }
 
 // isLoopback reports whether host is a loopback (or unset) bind address, i.e. one

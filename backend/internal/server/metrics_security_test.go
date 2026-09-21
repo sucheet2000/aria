@@ -3,10 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -443,4 +445,98 @@ func TestMetrics_UpstreamRedirectIsNotFollowed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// F4 — a body that overflows the cap must not be served as a successful scrape.
+// Truncating mid-document produced a 200 labelled application/json carrying
+// invalid JSON, with nothing in the response or the log to say it was cut.
+func TestMetrics_OversizedUpstreamIsRefusedNotTruncated(t *testing.T) {
+	huge := `{"gesture_events":{"point":1},"pad":"` +
+		strings.Repeat("x", int(maxMetricsBodyBytes)) + `"}`
+	up := upstream(t, 200, "application/json", huge)
+	rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+
+	if rec.Code == http.StatusOK {
+		var v any
+		if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+			t.Fatalf("served a 200 carrying invalid JSON (%d bytes): %v", rec.Body.Len(), err)
+		}
+	}
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 for an oversized upstream", rec.Code)
+	}
+	if int64(rec.Body.Len()) > maxMetricsBodyBytes {
+		t.Fatalf("relayed %d bytes past the cap", rec.Body.Len())
+	}
+}
+
+// F6 — duplicate Authorization headers are malformed (RFC 7235). Go's Get
+// returns the first, so `valid, garbage` was accepted while `garbage, valid`
+// was refused; a fronting proxy that picks the other one desyncs from us.
+func TestMetrics_DuplicateAuthorizationIsRefused(t *testing.T) {
+	up := upstream(t, 200, "application/json", `{"errors":0}`)
+	s := newMetricsServer(up.URL, testMetricsToken)
+
+	for _, order := range [][2]string{
+		{"Bearer " + testMetricsToken, "Bearer garbage"},
+		{"Bearer garbage", "Bearer " + testMetricsToken},
+		{"Bearer " + testMetricsToken, "Bearer " + testMetricsToken},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		req.Header.Add("Authorization", order[0])
+		req.Header.Add("Authorization", order[1])
+		rec := httptest.NewRecorder()
+		s.handleMetricsProxy(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d for duplicate Authorization %v, want 401", rec.Code, order)
+		}
+	}
+}
+
+// F5 — a blank token is an unset token, so the boot guard must refuse it on a
+// public bind rather than letting the server come up silently open.
+//
+// F2 — and the guard must not be disarmed by ALLOW_INSECURE_NO_AUTH, which
+// docker-compose sets to 1 by default alongside HOST=0.0.0.0 and a published
+// port. Reusing that flag put Claude token spend on the LAN of anyone running
+// docker compose up.
+func TestMetrics_BootGuardRefusesAnOpenPublicMetricsEndpoint(t *testing.T) {
+	cases := []struct {
+		name          string
+		token, host   string
+		allowInsecure string
+		wantRefuse    bool
+	}{
+		{"public bind, no token", "", "0.0.0.0", "", true},
+		{"public bind, blank token", "   ", "0.0.0.0", "", true},
+		{"public bind, tab token", "\t", "0.0.0.0", "", true},
+		{"public bind, real token", "a-real-token", "0.0.0.0", "", false},
+		{"loopback, no token", "", "127.0.0.1", "", false},
+		{"loopback, blank token", "  ", "localhost", "", false},
+		{"public bind, deliberate opt-out", "", "0.0.0.0", "1", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := metricsGuardRefusesBoot(tc.token, tc.host, tc.allowInsecure); got != tc.wantRefuse {
+				t.Fatalf("refuseBoot = %v, want %v", got, tc.wantRefuse)
+			}
+		})
+	}
+}
+
+// The compose default must not be enough to open metrics.
+func TestMetrics_ClerkOptOutDoesNotOpenMetrics(t *testing.T) {
+	t.Setenv("ALLOW_INSECURE_NO_AUTH", "1")
+	if !metricsGuardRefusesBoot("", "0.0.0.0", os.Getenv("ALLOW_INSECURE_METRICS")) {
+		t.Fatal("ALLOW_INSECURE_NO_AUTH=1 still disarms the metrics guard")
+	}
+}
+
+func mustReq(auth string) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	if auth != "" {
+		r.Header.Set("Authorization", auth)
+	}
+	return r
 }

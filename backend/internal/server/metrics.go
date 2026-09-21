@@ -93,16 +93,29 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read one byte past the cap so an overflow is detectable. Truncating at
+	// the cap produced a 200 labelled JSON carrying a document cut in half,
+	// with nothing to tell the scraper it was incomplete — a silent wrong
+	// answer is worse than a loud failure.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetricsBodyBytes+1))
+	if err != nil {
+		log.Error().Err(err).Msg("metrics stream interrupted")
+		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
+		return
+	}
+	if int64(len(body)) > maxMetricsBodyBytes {
+		log.Error().Int("bytes", len(body)).Msg("metrics upstream exceeded the response cap")
+		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
+		return
+	}
+
 	w.Header().Set("Content-Type", metricsContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Operational counters are a point-in-time reading; a cached copy is both
 	// wrong and needlessly retained by any intermediary.
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-
-	if _, err := io.Copy(w, io.LimitReader(resp.Body, maxMetricsBodyBytes)); err != nil {
-		log.Error().Err(err).Msg("metrics stream interrupted")
-	}
+	w.Write(body) //nolint:errcheck
 }
 
 // isJSONContentType reports whether an upstream media type is JSON. Parameters
@@ -122,12 +135,23 @@ func isJSONContentType(ct string) bool {
 // local-development posture, and Start refuses to boot in that state on a
 // non-loopback bind, so it cannot silently become the production posture.
 func (s *Server) metricsAuthorized(r *http.Request) bool {
-	want := s.cfg.MetricsToken
+	// A token that is only whitespace is not a credential; treat it as unset so
+	// it cannot be "presented" and matched against itself.
+	want := strings.TrimSpace(s.cfg.MetricsToken)
 	if want == "" {
 		return true
 	}
-	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if got == r.Header.Get("Authorization") {
+
+	// Exactly one Authorization header. Two is malformed (RFC 7235), and Go's
+	// Get returns the first — so "valid, garbage" was accepted while
+	// "garbage, valid" was refused, which desyncs us from any fronting proxy
+	// that picks the other one.
+	headers := r.Header.Values("Authorization")
+	if len(headers) != 1 {
+		return false
+	}
+	got := strings.TrimPrefix(headers[0], "Bearer ")
+	if got == headers[0] {
 		// No "Bearer " prefix at all.
 		return false
 	}
