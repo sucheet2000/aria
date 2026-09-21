@@ -104,12 +104,13 @@ class PerceptionFrame(BaseModel):
 # (frontend/src/store/ariaStore.ts: role: "user" | "assistant") and nothing else
 # produces history — the Go proxy forwards whatever it is given without looking.
 #
-# "system" is excluded on purpose. It is not merely unused: llm.py hands these
-# roles to the provider unmapped, so a "system" turn accepted here would become
-# a second system message sitting beside ARIA's own identity prompt, written by
-# whoever posted the request. An "assistant" turn is already words put into
-# ARIA's mouth; that one is inherent to replaying a conversation, and is fenced
-# elsewhere. A caller-authored system turn has no such excuse.
+# "system" is excluded on purpose, though not for the reason an earlier version
+# of this comment gave: the provider's Messages API takes only user/assistant in
+# ``messages``, so a "system" turn was never going to land beside ARIA's identity
+# prompt — llm.py hands the role over unmapped (llm.py:478) and the provider
+# rejects the call. The real cost was a 400 on a request already paid for, and a
+# failure surfacing as a fallback rather than as "you sent something invalid".
+# Refusing it here is the correct place to say so.
 #
 # Unknown roles are rejected rather than coerced: there is no safe reading of a
 # role nobody sends, and a wrong guess silently re-labels who said something.
