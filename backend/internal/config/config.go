@@ -163,6 +163,7 @@ func Load() *Config {
 		TTSProvider:          ttsProvider,
 		ElevenLabsVoiceID:    elevenLabsVoiceID,
 		WhisperModel:         whisperModel,
+		WhisperDevice:        whisperDevice,
 		ClerkSecretKey:       os.Getenv("CLERK_SECRET_KEY"),
 		ClerkJWTIssuer:       os.Getenv("CLERK_JWT_ISSUER"),
 		InternalAuthSecret:   os.Getenv("INTERNAL_AUTH_SECRET"),
