@@ -21,11 +21,16 @@ type ownerAudio struct {
 	released   []string
 	frames     map[string][][]byte
 	muted      map[string]bool
+	holders    map[string]map[string]bool
 	acquireErr error
 }
 
 func newOwnerAudio() *ownerAudio {
-	return &ownerAudio{frames: make(map[string][][]byte), muted: make(map[string]bool)}
+	return &ownerAudio{
+		frames:  make(map[string][][]byte),
+		muted:   make(map[string]bool),
+		holders: make(map[string]map[string]bool),
+	}
 }
 
 func (o *ownerAudio) Acquire(owner string) error {
@@ -50,10 +55,30 @@ func (o *ownerAudio) WriteAudio(owner string, pcm []byte) {
 	o.frames[owner] = append(o.frames[owner], append([]byte(nil), pcm...))
 }
 
-func (o *ownerAudio) SetMuted(owner string, muted bool) {
+func (o *ownerAudio) SetMuted(owner, holder string, muted bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.muted[owner] = muted
+	if o.holders[owner] == nil {
+		o.holders[owner] = make(map[string]bool)
+	}
+	if muted {
+		o.holders[owner][holder] = true
+	} else {
+		delete(o.holders[owner], holder)
+	}
+	// The fake mirrors the real rule: muted while any connection holds.
+	o.muted[owner] = len(o.holders[owner]) > 0
+}
+
+func (o *ownerAudio) ReleaseMuteHolder(owner, holder string) {
+	o.SetMuted(owner, holder, false)
+}
+
+// holderCount reports how many connections hold owner's mute in the fake.
+func (o *ownerAudio) holderCount(owner string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.holders[owner])
 }
 
 func (o *ownerAudio) framesFor(owner string) [][]byte {

@@ -143,7 +143,7 @@ func TestSessionManager_MuteIsOwnerScoped(t *testing.T) {
 	acquire(t, m, "a")
 	acquire(t, m, "b")
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	writeLine(t, m, "a", "muted-A")
 	writeLine(t, m, "b", "B-still-live")
 
@@ -155,7 +155,7 @@ func TestSessionManager_MuteIsOwnerScoped(t *testing.T) {
 		t.Fatalf("muted A still produced %v", gotA)
 	}
 
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 	writeLine(t, m, "a", "A-after-unmute")
 	gotA := rec.waitFor(t, "a", 1)
 	if gotA[0] != "A-after-unmute" {
@@ -278,7 +278,7 @@ func TestSessionManager_StopTerminatesAll(t *testing.T) {
 func TestSessionManager_UnknownOwnerIsNoop(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 	m.WriteAudio("nobody", []byte("x\n"))
-	m.SetMuted("nobody", true)
+	m.SetMuted("nobody", "tab", true)
 	time.Sleep(50 * time.Millisecond)
 	if got := rec.got("nobody"); len(got) != 0 {
 		t.Fatalf("unknown owner produced %v", got)

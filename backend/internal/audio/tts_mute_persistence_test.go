@@ -17,7 +17,7 @@ func TestSessionManager_MuteSurvivesSessionChurnMidSpeech(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 	acquire(t, m, "a")
 
-	m.SetMuted("a", true) // ARIA starts speaking
+	m.SetMuted("a", "tab", true) // ARIA starts speaking
 	writeLine(t, m, "a", "suppressed-while-speaking")
 
 	// The audio socket drops and reconnects while ARIA is still speaking.
@@ -25,7 +25,7 @@ func TestSessionManager_MuteSurvivesSessionChurnMidSpeech(t *testing.T) {
 	acquire(t, m, "a")
 	writeLine(t, m, "a", "aria-hearing-itself")
 
-	m.SetMuted("a", false) // ARIA stops speaking
+	m.SetMuted("a", "tab", false) // ARIA stops speaking
 	writeLine(t, m, "a", "user-again")
 
 	got := rec.waitFor(t, "a", 1)
@@ -42,11 +42,11 @@ func TestSessionManager_MuteSurvivesSessionChurnMidSpeech(t *testing.T) {
 func TestSessionManager_MuteBeforeAcquireApplies(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	acquire(t, m, "a")
 	writeLine(t, m, "a", "should-not-reach-whisper")
 
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 	writeLine(t, m, "a", "live-again")
 
 	got := rec.waitFor(t, "a", 1)
@@ -64,11 +64,11 @@ func TestSessionManager_UnmuteDropsRetainedState(t *testing.T) {
 	m, _ := newTestManager(t, 8)
 	acquire(t, m, "a")
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	if n := m.mutedOwnerCount(); n != 1 {
 		t.Fatalf("muted owners = %d, want 1", n)
 	}
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 	if n := m.mutedOwnerCount(); n != 0 {
 		t.Fatalf("retained mute state for %d owners after unmute, want 0", n)
 	}
@@ -80,7 +80,7 @@ func TestSessionManager_RetainedMuteIsOwnerScoped(t *testing.T) {
 	acquire(t, m, "a")
 	acquire(t, m, "b")
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	m.Release("a")
 	acquire(t, m, "a")
 
@@ -89,5 +89,5 @@ func TestSessionManager_RetainedMuteIsOwnerScoped(t *testing.T) {
 	if got[0] != "B-unaffected" {
 		t.Fatalf("owner B disturbed by owner A's mute: %v", got)
 	}
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 }

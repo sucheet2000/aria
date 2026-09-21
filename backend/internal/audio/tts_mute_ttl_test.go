@@ -23,12 +23,12 @@ func TestSessionManager_FreshRetainedMuteSurvivesAReconnect(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 	acquire(t, m, "a")
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	m.Release("a")
 	acquire(t, m, "a")
 	writeLine(t, m, "a", "aria-hearing-itself")
 
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 	writeLine(t, m, "a", "user-again")
 
 	got := rec.waitFor(t, "a", 1)
@@ -46,9 +46,9 @@ func TestSessionManager_RetainedMuteExpiresAfterTTL(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 	acquire(t, m, "a")
 
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	m.Release("a")
-	m.ageMutedOwner("a", mutedOwnerTTL+time.Second)
+	m.ageMuteHolder("a", "tab", mutedOwnerTTL+time.Second)
 
 	acquire(t, m, "a")
 	writeLine(t, m, "a", "user-after-the-tab-came-back")
@@ -67,11 +67,11 @@ func TestSessionManager_RetainedMuteExpiresAfterTTL(t *testing.T) {
 func TestSessionManager_ReleaseSweepsStaleRetainedMutes(t *testing.T) {
 	m, _ := newTestManager(t, 8)
 	acquire(t, m, "gone")
-	m.SetMuted("gone", true)
-	m.ageMutedOwner("gone", mutedOwnerTTL+time.Second)
+	m.SetMuted("gone", "tab", true)
+	m.ageMuteHolder("gone", "tab", mutedOwnerTTL+time.Second)
 
 	acquire(t, m, "here")
-	m.SetMuted("here", true)
+	m.SetMuted("here", "tab", true)
 
 	m.Release("here") // any release is a sweep point
 
@@ -84,7 +84,7 @@ func TestSessionManager_ReleaseSweepsStaleRetainedMutes(t *testing.T) {
 	if n := m.mutedOwnerCount(); n != 1 {
 		t.Fatalf("muted owners after sweep = %d, want 1", n)
 	}
-	m.SetMuted("here", false)
+	m.SetMuted("here", "tab", false)
 }
 
 // Two of an owner's connections can call SetMuted concurrently, each from its
@@ -99,8 +99,8 @@ func TestSessionManager_ConcurrentSetMutedLeavesFlagAndRecordAgreeing(t *testing
 
 	for round := 0; round < 200; round++ {
 		done := make(chan struct{}, 2)
-		go func() { m.SetMuted("a", true); done <- struct{}{} }()
-		go func() { m.SetMuted("a", false); done <- struct{}{} }()
+		go func() { m.SetMuted("a", "tab", true); done <- struct{}{} }()
+		go func() { m.SetMuted("a", "tab", false); done <- struct{}{} }()
 		<-done
 		<-done
 
@@ -132,18 +132,18 @@ func TestSessionManager_ConcurrentSetMutedLeavesFlagAndRecordAgreeing(t *testing
 func TestSessionManager_LiveSessionIsHealedByAnExplicitUnmute(t *testing.T) {
 	m, rec := newTestManager(t, 8)
 	acquire(t, m, "a")
-	m.SetMuted("a", true)
+	m.SetMuted("a", "tab", true)
 	m.Release("a")
 
 	acquire(t, m, "a") // the reload, inside the TTL: comes up muted, correctly
 	writeLine(t, m, "a", "should-still-be-suppressed")
 
 	// Age it past the TTL to show that time alone does not free a live session.
-	m.ageMutedOwner("a", 10*mutedOwnerTTL)
+	m.ageMuteHolder("a", "tab", 10*mutedOwnerTTL)
 	writeLine(t, m, "a", "still-suppressed-despite-the-ttl")
 
 	// The fresh page comes up, holds nothing, and says so.
-	m.SetMuted("a", false)
+	m.SetMuted("a", "tab", false)
 	writeLine(t, m, "a", "user-speaking-again")
 
 	got := rec.waitFor(t, "a", 1)

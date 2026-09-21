@@ -91,6 +91,7 @@ func ServeWs(hub *Hub, verifier auth.Verifier, authEnabled bool, allowedOrigins 
 		conn:  conn,
 		send:  make(chan []byte, 256),
 		owner: owner,
+		id:    newClientID(),
 	}
 
 	hub.register <- client

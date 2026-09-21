@@ -32,7 +32,9 @@ func (r *recordingAudio) WriteAudio(_ string, pcm []byte) {
 	r.frames = append(r.frames, append([]byte(nil), pcm...))
 }
 
-func (r *recordingAudio) SetMuted(_ string, _ bool) {}
+func (r *recordingAudio) SetMuted(_, _ string, _ bool) {}
+
+func (r *recordingAudio) ReleaseMuteHolder(_, _ string) {}
 
 func (r *recordingAudio) frameCount() int {
 	r.mu.Lock()
