@@ -30,6 +30,17 @@ SENTINELS = {
 }
 
 
+# MERGE-BACK HAZARD - resolve in integration's favour.
+#
+# The three lookups below are conditional because main's MetricsCollector has
+# no prompt_cache, llm_response or cognition_timeout. That is correct here and
+# WRONG on integration, where those metrics exist and must be swept for caller
+# content. A conditional assertion does not fail when the metric is missing -
+# it skips, silently, which is the exact failure mode this file was written
+# against. When this branch merges back, take integration's unconditional
+# version of this file, not this one.
+
+
 @pytest.fixture(autouse=True)
 def _reset() -> None:
     # Only what this build actually has. The metric set differs between
