@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -276,20 +277,87 @@ func TestMetrics_UpstreamUnreachableIsSafe(t *testing.T) {
 // F5 — the cap must bound what we READ, not merely what we accept. Reading a
 // whole 10 GB body and then refusing it passes a test that only asserts the
 // refusal, while the edge has already held it all in memory.
+//
+// The count is taken on the UPSTREAM side. An earlier version of this test
+// exported the figure from the handler through a package-level variable, which
+// put an unsynchronised write in the production hot path for the sake of an
+// observation — `go test -race` caught it. What the server wrote is the same
+// measurement, and it costs production nothing.
 func TestMetrics_OversizedUpstreamIsNotFullyBuffered(t *testing.T) {
-	const overshoot = 8 << 20
-	up := upstream(t, 200, "application/json",
-		strings.Repeat("x", int(maxMetricsBodyBytes)+overshoot))
+	const offered = 64 << 20
 
-	s := newMetricsServer(up.URL, testMetricsToken)
-	rec := scrape(s, "Bearer "+testMetricsToken)
+	var served int64
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		chunk := bytes.Repeat([]byte("x"), 64<<10)
+		for written := int64(0); written < offered; written += int64(len(chunk)) {
+			n, err := w.Write(chunk)
+			atomic.AddInt64(&served, int64(n))
+			if err != nil {
+				return // the edge hung up, which is the point
+			}
+		}
+	}))
+	defer up.Close()
+
+	rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
 	}
-	if lastMetricsBytesRead > maxMetricsBodyBytes+1 {
-		t.Fatalf("read %d bytes from the upstream; the cap is %d — the body was buffered whole",
-			lastMetricsBytesRead, maxMetricsBodyBytes)
+	// Transport buffering means this will exceed the cap somewhat; what must
+	// not happen is the whole 64 MiB being drawn through the edge.
+	if got := atomic.LoadInt64(&served); got > maxMetricsBodyBytes*4 {
+		t.Fatalf("upstream served %d bytes of the %d offered; the edge did not stop reading at the %d cap",
+			got, offered, maxMetricsBodyBytes)
+	}
+}
+
+// F5b — and the cap's VALUE, which the mechanism test cannot see: 4<<20 could
+// become 4<<30 with every other test still green.
+func TestMetrics_BodyCapIsFourMiB(t *testing.T) {
+	if maxMetricsBodyBytes != 4<<20 {
+		t.Fatalf("maxMetricsBodyBytes = %d, want 4 MiB — matching the sibling proxy's cap",
+			maxMetricsBodyBytes)
+	}
+}
+
+// F4 — markup under a JSON label must be refused, not relayed. The declared
+// content type is the upstream's claim; this is the check on the substance.
+func TestMetrics_NonJSONBodyUnderAJSONLabelIsRefused(t *testing.T) {
+	for _, body := range []string{
+		`<html><script>alert(document.domain)</script></html>`,
+		`this is not json at all`,
+		`{"unterminated": `,
+	} {
+		up := upstream(t, 200, "application/json", body)
+		rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("status = %d for body %q, want 502", rec.Code, body)
+		}
+		if strings.Contains(rec.Body.String(), "script") || strings.Contains(rec.Body.String(), "not json") {
+			t.Fatalf("upstream body relayed: %q", rec.Body.String())
+		}
+	}
+}
+
+// F6 — the error path's headers, which no test pinned.
+func TestMetrics_FailureResponsesCarryTheSafeHeaders(t *testing.T) {
+	withNoUpstream := newMetricsServer("http://127.0.0.1:1", testMetricsToken)
+	for _, rec := range []*httptest.ResponseRecorder{
+		scrape(withNoUpstream, ""),                         // 401
+		scrape(withNoUpstream, "Bearer "+testMetricsToken), // 502
+	} {
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Fatalf("Cache-Control = %q on a %d, want no-store", got, rec.Code)
+		}
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Fatalf("nosniff missing on a %d", rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != metricsContentType {
+			t.Fatalf("Content-Type = %q on a %d", got, rec.Code)
+		}
 	}
 }
 

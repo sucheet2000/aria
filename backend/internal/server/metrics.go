@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/subtle"
+	"encoding/json"
 	"io"
 	"mime"
 	"net/http"
@@ -97,9 +98,7 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 	// the cap produced a 200 labelled JSON carrying a document cut in half,
 	// with nothing to tell the scraper it was incomplete — a silent wrong
 	// answer is worse than a loud failure.
-	counted := &countingReader{r: io.LimitReader(resp.Body, maxMetricsBodyBytes+1)}
-	body, err := io.ReadAll(counted)
-	lastMetricsBytesRead = counted.n
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetricsBodyBytes+1))
 	if err != nil {
 		log.Error().Err(err).Msg("metrics stream interrupted")
 		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
@@ -107,6 +106,17 @@ func (s *Server) handleMetricsProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if int64(len(body)) > maxMetricsBodyBytes {
 		log.Error().Int("bytes", len(body)).Msg("metrics upstream exceeded the response cap")
+		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
+		return
+	}
+
+	// And it must BE json, not merely say so. Checking the declared type alone
+	// let markup through verbatim under an application/json label — harmless to
+	// a browser given nosniff and no CORS header, but the claim above that such
+	// a body is "refused rather than relayed" was simply false. Cheap here: the
+	// document is already in memory and bounded.
+	if !json.Valid(body) {
+		log.Error().Msg("metrics upstream returned a body that is not valid JSON")
 		writeMetricsError(w, http.StatusBadGateway, `{"error":"metrics unavailable"}`)
 		return
 	}
@@ -129,27 +139,6 @@ func isJSONContentType(ct string) bool {
 		return false
 	}
 	return media == "application/json"
-}
-
-// lastMetricsBytesRead is how many bytes the most recent scrape pulled from
-// the upstream. Test-only window: the cap is a promise about what we read, and
-// the response alone cannot show it was kept.
-var lastMetricsBytesRead int64
-
-// countingReader records how many bytes were actually pulled from the
-// upstream. Without it the cap was only ever a check on a buffer we had
-// already filled: reading the whole body and then refusing it still passes a
-// test that asserts the refusal, while a 10 GB upstream is held in memory
-// first. What matters is that we stop reading.
-type countingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += int64(n)
-	return n, err
 }
 
 // metricsAuthorized reports whether the request carries the scrape credential.
