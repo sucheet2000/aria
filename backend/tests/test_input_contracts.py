@@ -29,11 +29,23 @@ from app.models.schemas import (
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "src"
 
 
-def _ts_string_array(source: str, name: str) -> list[str]:
-    """Pull `const NAME = ["a", "b"];` out of a TypeScript file."""
-    match = re.search(rf"{name}\s*=\s*\[(.*?)\]", source, re.DOTALL)
-    assert match, f"{name} is no longer an array literal; re-aim this test"
-    return re.findall(r'"([^"]+)"', match.group(1))
+def _classifier_emotions(source: str) -> list[str]:
+    """The labels the browser classifier can return.
+
+    Read from EMOTION_THRESHOLDS, which is what the classifier scores against
+    and what its own EMOTIONS list is derived from — not from a list written
+    out beside it. A reviewer proved the difference: adding a label to the
+    scoring while leaving a hand-written list alone kept both sides silent,
+    and every frame carrying it would have been downgraded forever.
+    """
+    match = re.search(
+        r"const EMOTION_THRESHOLDS: Record<string, number> = \{(.*?)\};", source, re.DOTALL
+    )
+    assert match, "EMOTION_THRESHOLDS is gone from emotion.ts; re-aim this test"
+    scored = re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", match.group(1), re.MULTILINE)
+    assert scored, "no threshold keys parsed; re-aim this test"
+    # "neutral" is the below-threshold fallback, not a scored label.
+    return ["neutral", *scored]
 
 
 class TestVocabulariesMatchTheirProducers:
@@ -42,7 +54,7 @@ class TestVocabulariesMatchTheirProducers:
     def test_1_the_emotion_vocabulary_is_the_browser_classifier_s(self) -> None:
         producer = _FRONTEND / "lib" / "perception" / "emotion.ts"
         assert producer.exists(), f"the emotion producer moved: {producer}"
-        emitted = _ts_string_array(producer.read_text(), "const EMOTIONS")
+        emitted = _classifier_emotions(producer.read_text())
 
         assert list(PERCEPTION_EMOTIONS) == emitted, (
             "the server's accepted emotions no longer match the only thing that "
