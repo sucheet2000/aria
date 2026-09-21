@@ -206,6 +206,18 @@ func (w *Worker) WriteAudio(pcm []byte) {
 	if w.muted.Load() {
 		return
 	}
+	// The subprocess reads stdin as a flat run of little-endian Int16 samples;
+	// it counts bytes and has no frame markers. A single odd-length write would
+	// therefore shift the parity of everything after it, assembling every later
+	// sample from the high byte of one and the low byte of the next — the audio
+	// would not fail, it would turn to noise for the rest of the session.
+	// Forward whole samples only; a trailing half-sample is dropped.
+	if n := len(pcm) &^ 1; n != len(pcm) {
+		pcm = pcm[:n]
+	}
+	if len(pcm) == 0 {
+		return
+	}
 	w.stdinMu.Lock()
 	pipe := w.stdinPipe
 	w.stdinMu.Unlock()

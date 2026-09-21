@@ -34,7 +34,8 @@ func (r *routerRecorder) route(owner string, data []byte) {
 	}
 	_ = json.Unmarshal(data, &env)
 	r.mu.Lock()
-	r.recv[owner] = append(r.recv[owner], env.Payload.Transcript)
+	// Trim the even-length padding writeLine adds (see its comment).
+	r.recv[owner] = append(r.recv[owner], strings.TrimRight(env.Payload.Transcript, " "))
 	r.mu.Unlock()
 }
 
@@ -84,9 +85,17 @@ func acquire(t *testing.T, m *SessionManager, owner string) {
 	}
 }
 
+// writeLine feeds one newline-delimited line as this package's stand-in for a
+// PCM frame. WriteAudio forwards whole Int16 samples only, so the payload is
+// padded to an even number of bytes; routerRecorder trims the padding back off
+// so assertions can compare the line verbatim.
 func writeLine(t *testing.T, m *SessionManager, owner, line string) {
 	t.Helper()
-	m.WriteAudio(owner, []byte(line+"\n"))
+	payload := line
+	if (len(payload)+1)%2 != 0 {
+		payload += " "
+	}
+	m.WriteAudio(owner, []byte(payload+"\n"))
 }
 
 // Test 1 — transcript isolation: A's audio produces transcripts only for A,
