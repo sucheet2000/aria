@@ -11,10 +11,15 @@ does not spam, while a genuinely different direction can still anchor.
 """
 from __future__ import annotations
 
+import linecache
+import pathlib
+import sys
+import threading
 from pathlib import Path
 
 import pytest
 
+from app.spatial import gesture_anchor_bridge
 from app.spatial.anchor_registry import AnchorRegistry
 from app.spatial.gesture_anchor_bridge import GestureAnchorBridge
 
@@ -251,3 +256,106 @@ class TestConcurrentAccess:
             t.join()
 
         assert errors == [], f"concurrent sweep raised: {errors}"
+
+
+# ── Closure 4 ────────────────────────────────────────────────────────────────
+# The eight-thread test above passes whether or not the lock is there, so it is
+# not evidence of anything. Two earlier attempts at a real detector failed for
+# the same reason and are worth recording: synchronizing the threads as they
+# ENTER the decision does not interleave them, because the section is a handful
+# of bytecodes with no I/O, so whichever thread the GIL hands over to runs it to
+# completion before the other resumes.
+#
+# What a duplicate anchor actually requires is both turns reading the owner's
+# record and only then writing it back. So the rendezvous is placed at that
+# exact point: the line that records the anchor. A thread arriving there has
+# already read the record and passed every check, and has not yet written
+# anything. Hold two threads there and the duplicate is certain; a lock that
+# works means the second thread never arrives, because it is still waiting
+# outside for the first to finish.
+#
+# This lives entirely in the test. Production has no sleep, no hook, no
+# test-only switch, and no knowledge that any of this exists — the interleave
+# is imposed from outside with sys.settrace, which is what it is for.
+_ANCHOR_WRITE_LINE = "track.anchored = vec"
+_INTERLEAVE_TIMEOUT = 0.5
+
+
+class _HoldAtLine:
+    """Holds every thread that reaches one source line until two have."""
+
+    def __init__(self, func_name: str, line_text: str) -> None:
+        self._func = func_name
+        self._text = line_text
+        self._gate = threading.Barrier(2, timeout=_INTERLEAVE_TIMEOUT)
+        self.arrivals = 0
+        self._mu = threading.Lock()
+
+    def _line(self, frame, event, arg):  # noqa: ANN001 - tracer signature
+        if event == "line":
+            src = linecache.getline(frame.f_code.co_filename, frame.f_lineno).strip()
+            if src.startswith(self._text):
+                with self._mu:
+                    self.arrivals += 1
+                try:
+                    self._gate.wait()
+                except threading.BrokenBarrierError:
+                    # Nobody else arrived: the lock kept them out.
+                    pass
+        return self._line
+
+    def __call__(self, frame, event, arg):  # noqa: ANN001 - tracer signature
+        if event == "call" and frame.f_code.co_name == self._func:
+            return self._line
+        return None
+
+
+class TestAnchorDecisionIsSerialized:
+    """Two turns forced to overlap inside the decision, not left to chance."""
+
+    def test_two_turns_interleaved_at_the_write_still_anchor_once(
+        self, registry: AnchorRegistry
+    ) -> None:
+        # The line the rendezvous targets must exist, or this test proves
+        # nothing while looking like it passed.
+        source = pathlib.Path(gesture_anchor_bridge.__file__).read_text()
+        assert _ANCHOR_WRITE_LINE in source, (
+            f"{_ANCHOR_WRITE_LINE!r} is gone from the bridge; this detector is "
+            "pointing at nothing and must be re-aimed"
+        )
+
+        clock = FakeClock()
+        bridge = GestureAnchorBridge(registry, clock=clock)
+        point(bridge, FORWARD)  # start the dwell
+        clock.advance(2.0)      # dwell satisfied for both turns
+
+        hold = _HoldAtLine("_should_anchor_locked", _ANCHOR_WRITE_LINE)
+        errors: list[BaseException] = []
+
+        def turn() -> None:
+            sys.settrace(hold)
+            try:
+                point(bridge, FORWARD)
+            except BaseException as exc:  # noqa: BLE001 - recorded, then asserted
+                errors.append(exc)
+            finally:
+                sys.settrace(None)
+
+        threads = [threading.Thread(target=turn) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15.0)
+
+        assert errors == [], f"concurrent decision raised: {errors}"
+        assert all(not t.is_alive() for t in threads), "a turn never finished"
+        # One intentional point. Two anchors means both turns decided to record
+        # one from the same reading of the owner's record.
+        assert anchors_for(registry) == 1
+        # And the detector has to have been live: exactly one turn may reach the
+        # write, because the other should still be waiting for the lock when the
+        # first one finishes and puts the target on cooldown.
+        assert hold.arrivals == 1, (
+            f"{hold.arrivals} turns reached the anchor write; 1 is the serialized "
+            "outcome and 2 is the duplicate this lock prevents"
+        )
