@@ -153,7 +153,12 @@ func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, err
 	name := tmp.Name()
 	tmp.Close()
 
-	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "--data-format=aiff", "-o", name, text)
+	// The .aiff extension selects the container. --data-format was also passed
+	// here, spelled "aiff", which `say` rejects as a format specifier — it
+	// wants a PCM spelling like LEI16@22050. Every local synthesis therefore
+	// exited 1, so the fallback this platform advertises had never produced a
+	// single byte of speech.
+	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "-o", name, text)
 	if err := cmd.Run(); err != nil {
 		os.Remove(name)
 		return nil, fmt.Errorf("say command: %w", err)
