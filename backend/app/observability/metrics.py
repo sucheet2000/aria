@@ -3,6 +3,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import Lock
 
+# The gesture names this metric will count, and the single bucket everything
+# else lands in.
+#
+# Both halves restate a contract owned elsewhere, because neither is importable
+# here: the single-hand wire names are produced by a TypeScript map
+# (frontend/src/lib/perception/gesture.ts), and the two-hand names come from the
+# protobuf enum, whose generated Python spells them with a
+# TWO_HAND_GESTURE_TYPE_ prefix the wire does not carry. Restating a vocabulary
+# is how this codebase ended up with several that disagree, so
+# tests/test_gesture_metric_cardinality.py reads both producers and fails if
+# either can emit something this list would silently bucket as unknown.
+KNOWN_GESTURE_EVENTS: frozenset[str] = frozenset(
+    {
+        # single-hand, from GESTURE_NAMES in gesture.ts
+        "none",
+        "confirm",
+        "stop",
+        "cancel",
+        "point",
+        # two-hand, from TwoHandGestureType in perception.proto
+        "NONE",
+        "HOLD",
+        "EXPAND",
+        "THROW",
+        "BOND",
+    }
+)
+
+GESTURE_EVENT_UNKNOWN = "unknown"
+
 
 @dataclass
 class Histogram:
@@ -66,9 +96,19 @@ class MetricsCollector:
         with self._data_lock:
             self._anchors_created += 1
 
-    def record_gesture_event(self, gesture_type: str) -> None:
+    def record_gesture_event(self, gesture_type: object) -> None:
+        """Count one gesture, under a name from the fixed vocabulary.
+
+        The caller is not trusted. This value originates in a request body and
+        reaches here before anything has decided whether it means anything, so
+        an unrecognised one is counted as "unknown" rather than given a key of
+        its own. Without that, the dict grew one permanent entry per distinct
+        string a caller chose to send, and /metrics published them.
+        """
+        name = gesture_type if isinstance(gesture_type, str) else None
+        bucket = name if name in KNOWN_GESTURE_EVENTS else GESTURE_EVENT_UNKNOWN
         with self._data_lock:
-            self._gesture_events[gesture_type] = self._gesture_events.get(gesture_type, 0) + 1
+            self._gesture_events[bucket] = self._gesture_events.get(bucket, 0) + 1
 
     def record_error(self) -> None:
         with self._data_lock:

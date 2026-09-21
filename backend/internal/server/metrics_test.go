@@ -8,15 +8,20 @@ import (
 	"time"
 )
 
+// Re-aimed for M1. This test previously asserted the edge PASSED THROUGH an
+// upstream "text/plain; version=0.0.4" — it pinned the very relay that let a
+// non-metrics upstream response be served from ARIA's origin. It also described
+// a Prometheus exposition format this service has never produced: the Python
+// handler returns MetricsCollector().snapshot(), a dict rendered as JSON.
 func TestHandleMetricsProxy_StreamsBody(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/metrics" || r.Method != http.MethodGet {
 			http.Error(w, "unexpected", http.StatusBadRequest)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("aria_requests_total 42\n"))
+		w.Write([]byte(`{"anchors_created":42}`))
 	}))
 	defer fake.Close()
 
@@ -29,11 +34,11 @@ func TestHandleMetricsProxy_StreamsBody(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "aria_requests_total 42") {
+	if !strings.Contains(rec.Body.String(), `"anchors_created":42`) {
 		t.Errorf("body = %q, want it to contain the upstream metrics", rec.Body.String())
 	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/plain") {
-		t.Errorf("Content-Type = %q, want it to pass through text/plain", ct)
+	if ct := rec.Header().Get("Content-Type"); ct != metricsContentType {
+		t.Errorf("Content-Type = %q, want the edge's own %q", ct, metricsContentType)
 	}
 }
 
@@ -41,8 +46,9 @@ func TestHandleMetricsProxy_ForwardsInternalAuth(t *testing.T) {
 	var gotSecret string
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotSecret = r.Header.Get("X-Internal-Auth")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Write([]byte(`{"errors":0}`))
 	}))
 	defer fake.Close()
 
