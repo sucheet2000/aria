@@ -53,12 +53,49 @@ function isCurled(lm: Landmarks, tip: number, mcp: number, margin = 0.02): boole
   return y(lm, tip) > y(lm, mcp) + margin;
 }
 
+// A thumbs-up is the thumb held CLEAR OF THE FIST. The two tests that used to
+// stand for that — thumb tip above the wrist, three or more fingers curled —
+// are both true of every raised fist, so a resting closed hand was reported as
+// "confirm" (and, where the folded thumb happened to sit near the index tip,
+// as "cancel"). The fixture that was supposed to catch it placed the thumb
+// BELOW the wrist, which no raised fist has, so it passed on an accident.
+//
+// The evidence that actually separates the two poses is how far the thumb
+// reaches along the hand's own axis. Measured from the wrist towards the middle
+// knuckle and divided by that same length, the knuckle line sits at 1.0: a
+// folded thumb lies short of it, an extended one reaches well past. Because
+// both the measurement and its unit come from the hand, this holds at any size,
+// any distance, either hand, and any rotation — unlike a rule written in image
+// coordinates, which a tilted fist defeats.
+const THUMB_EXTENSION_MIN = 1.25;
+
+// How far a fingertip reaches along the hand's own axis, in hand-lengths from
+// the wrist. The knuckle line is 1.0 by construction, so this reads directly:
+// below 1 the tip is inside the palm, above 1 it is out past the knuckles.
+function reachAlongPalm(lm: Landmarks, tip: number): number {
+  const scale = handScale(lm);
+  if (!(scale > 1e-6)) return 0.0;
+  const ax = (lm[MIDDLE_MCP][0] - lm[WRIST][0]) / scale;
+  const ay = (lm[MIDDLE_MCP][1] - lm[WRIST][1]) / scale;
+  const az = ((lm[MIDDLE_MCP][2] ?? 0) - (lm[WRIST][2] ?? 0)) / scale;
+  const tx = lm[tip][0] - lm[WRIST][0];
+  const ty = lm[tip][1] - lm[WRIST][1];
+  const tz = (lm[tip][2] ?? 0) - (lm[WRIST][2] ?? 0);
+  return (tx * ax + ty * ay + tz * az) / scale;
+}
+
+function thumbExtension(lm: Landmarks): number {
+  return reachAlongPalm(lm, THUMB_TIP);
+}
+
 function thumbUp(lm: Landmarks): number {
   if (y(lm, THUMB_TIP) >= y(lm, WRIST)) return 0.0;
   // A pinch satisfies this test too — thumb above wrist, fingers curled — and
   // scores a flat 0.875 here, which outranked a pinch at any gap wider than a
   // sixteenth of a palm. The closer, more specific relationship wins.
   if (pinchRatio(lm) < PINCH_MAX_RATIO) return 0.0;
+  // The thumb has to be out of the fist, not merely somewhere above the wrist.
+  if (thumbExtension(lm) < THUMB_EXTENSION_MIN) return 0.0;
 
   const curls = [
     isCurled(lm, INDEX_TIP, INDEX_MCP),
@@ -131,9 +168,18 @@ function pinchRatio(lm: Landmarks): number {
   return distance(lm, THUMB_TIP, INDEX_TIP) / scale;
 }
 
+// A pinch is made with the index finger OUT, meeting the thumb in front of the
+// hand. In a fist the index is folded back into the palm and the thumb rests
+// across it — a small thumb-to-index gap too, which is why gap alone reported
+// an ordinary resting fist as "cancel". Requiring the index to be clear of the
+// knuckles separates the two without the classifier needing to know what a
+// fist is, which matters because the contract has no value for one.
+const PINCH_INDEX_OUT_MIN = 1.15;
+
 function pinchGesture(lm: Landmarks): number {
   const ratio = pinchRatio(lm);
   if (!(ratio < PINCH_MAX_RATIO)) return 0.0;
+  if (reachAlongPalm(lm, INDEX_TIP) < PINCH_INDEX_OUT_MIN) return 0.0;
   // Touching scores highest, easing to the floor at the threshold.
   return 0.5 + 0.5 * (1 - ratio / PINCH_MAX_RATIO);
 }
