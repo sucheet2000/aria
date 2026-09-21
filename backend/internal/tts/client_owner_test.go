@@ -2,7 +2,6 @@ package tts
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,17 +89,4 @@ func TestStream_NoInternalAuthHeaderWhenSecretEmpty(t *testing.T) {
 	if hadHeader {
 		t.Error("X-Internal-Auth should not be set when secret is empty")
 	}
-}
-
-// drain reads a client's speech stream to a string, so tests can assert on the
-// bytes the handler would forward.
-func drain(t *testing.T, c *Client, ctx context.Context, text, emotion string) (string, error) {
-	t.Helper()
-	rc, err := c.Open(ctx, text, emotion)
-	if err != nil {
-		return "", err
-	}
-	defer rc.Close()
-	b, readErr := io.ReadAll(rc)
-	return string(b), readErr
 }

@@ -145,6 +145,22 @@ func (c *Client) openProxy(ctx context.Context, text string, emotion string) (io
 
 // openLocal synthesizes with the system voice and returns the finished file.
 // It is only reached where localFallbackAvailable() is true.
+// sayArgs builds the argv for the local synthesizer.
+//
+// "--" ends option parsing, so the caller's text can never be read as a flag.
+// Without it, `say` honours --output-file= and --input-file= in this position:
+// a text field starting with a dash overwrites a file as the server user, or
+// speaks the contents of any readable file — including backend/.env — straight
+// down the HTTP response.
+//
+// It is a separate function so the terminator can be asserted on any platform.
+// The behavioural proof needs a real `say` and therefore only runs on macOS,
+// which means CI — where this path has no coverage at all — would never have
+// caught its removal.
+func sayArgs(name, text string) []string {
+	return []string{"-v", "Samantha", "-o", name, "--", text}
+}
+
 func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, error) {
 	tmp, err := os.CreateTemp("", "aria-tts-*.aiff")
 	if err != nil {
@@ -158,12 +174,7 @@ func (c *Client) openLocal(ctx context.Context, text string) (io.ReadCloser, err
 	// wants a PCM spelling like LEI16@22050. Every local synthesis therefore
 	// exited 1, so the fallback this platform advertises had never produced a
 	// single byte of speech.
-	// "--" ends option parsing, so the caller's text can never be read as a
-	// flag. Without it, `say` honours --output-file= and --input-file= in this
-	// position: a text field starting with a dash overwrites a file as the
-	// server user, or speaks the contents of any readable file — including
-	// backend/.env — straight down the HTTP response.
-	cmd := exec.CommandContext(ctx, "say", "-v", "Samantha", "-o", name, "--", text)
+	cmd := exec.CommandContext(ctx, "say", sayArgs(name, text)...)
 	if err := cmd.Run(); err != nil {
 		os.Remove(name)
 		return nil, fmt.Errorf("say command: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,30 @@ func TestLocalFallback_TextIsNeverParsedAsAnOption(t *testing.T) {
 	if string(after) != canary {
 		t.Fatalf("the text field overwrote a file on disk: %d bytes, starts %q",
 			len(after), string(after[:min(12, len(after))]))
+	}
+}
+
+// The invariant, asserted without a synthesizer so it runs in CI too. This is
+// the guard that covers BOTH halves: a partial fix that stripped only
+// "--output-file" from the text would leave --input-file — the half that reads
+// backend/.env — wide open, and the behavioural test above would still pass.
+func TestSayArgs_EndsOptionParsingBeforeTheText(t *testing.T) {
+	const text = "--input-file=/etc/passwd"
+	args := sayArgs("/tmp/out.aiff", text)
+
+	if len(args) < 2 {
+		t.Fatalf("argv too short: %q", args)
+	}
+	if got := args[len(args)-1]; got != text {
+		t.Fatalf("text is not the final argument: %q", args)
+	}
+	if got := args[len(args)-2]; got != "--" {
+		t.Fatalf("option parsing is not terminated before the text: %q", args)
+	}
+	// And nothing may quietly rewrite the caller's words on the way through.
+	for _, a := range args[:len(args)-1] {
+		if strings.Contains(a, text) {
+			t.Fatalf("the text leaked into an earlier argument: %q", args)
+		}
 	}
 }
