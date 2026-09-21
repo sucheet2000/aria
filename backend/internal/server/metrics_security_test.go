@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -317,5 +319,69 @@ func TestMetrics_HealthRemainsOpen(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("/health status = %d without a credential, want 200", resp.StatusCode)
+	}
+}
+
+// ── ABUSE / RESOURCE BEHAVIOUR (Phase 9) ────────────────────────────────────
+
+// The cost question the credential actually answers: a caller without one is
+// refused at the edge and never reaches Python, so an unauthenticated flood
+// cannot be amplified into upstream work. Measured at 0 hops over 2000
+// rejected requests; this pins the property rather than the number.
+func TestMetrics_RejectedScrapesNeverReachUpstream(t *testing.T) {
+	var hops int
+	var mu sync.Mutex
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		hops++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"errors":0}`)) //nolint:errcheck
+	}))
+	defer up.Close()
+
+	s := newMetricsServer(up.URL, testMetricsToken)
+	for i := 0; i < 200; i++ {
+		scrape(s, "")
+		scrape(s, "Bearer wrong")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if hops != 0 {
+		t.Fatalf("%d unauthorised requests reached Python; the credential must stop them at the edge", hops)
+	}
+}
+
+// Repeated authenticated scraping must not accumulate goroutines. Monitoring
+// is by definition a repeating caller, so a per-scrape leak would be unbounded
+// over the life of the process.
+func TestMetrics_RepeatedScrapingDoesNotLeakGoroutines(t *testing.T) {
+	up := upstream(t, 200, "application/json", `{"errors":0}`)
+	s := newMetricsServer(up.URL, testMetricsToken)
+
+	// Warm up so one-time internals are not counted as growth.
+	for i := 0; i < 50; i++ {
+		scrape(s, "Bearer "+testMetricsToken)
+	}
+	runtime.GC()
+	before := runtime.NumGoroutine()
+
+	var wg sync.WaitGroup
+	for w := 0; w < 16; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				scrape(s, "Bearer "+testMetricsToken)
+			}
+		}()
+	}
+	wg.Wait()
+	time.Sleep(200 * time.Millisecond)
+	runtime.GC()
+
+	if after := runtime.NumGoroutine(); after > before+5 {
+		t.Fatalf("goroutines %d -> %d after 1600 scrapes", before, after)
 	}
 }
