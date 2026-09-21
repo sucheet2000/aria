@@ -110,10 +110,15 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware)
 
 # The Go server is the only legitimate caller of the paid/data API routes, so
-# they sit behind the internal trust boundary. /health and /metrics stay open
-# for liveness probes and scraping.
+# they sit behind the internal trust boundary. /health stays open for liveness
+# probes.
+#
+# /metrics joined them (M1). It publishes operational counters and Claude token
+# spend, and the Go edge already sends the header, so leaving it open made the
+# edge's new scrape credential the single wall in front of that data — and left
+# it readable outright by anything that could reach :8000 directly.
 app.include_router(cognition_router, dependencies=[Depends(require_internal_auth)])
-app.include_router(metrics_router)
+app.include_router(metrics_router, dependencies=[Depends(require_internal_auth)])
 app.include_router(router)
 app.include_router(tts_router, dependencies=[Depends(require_internal_auth)])
 app.include_router(ws_router)
