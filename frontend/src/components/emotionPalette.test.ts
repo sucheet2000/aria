@@ -5,11 +5,32 @@
 // deliberate neutral were indistinguishable.
 import { describe, it, expect } from "vitest";
 import { EMOTION_PALETTE_KEY, STATE_PALETTES } from "./SkullAvatar";
-import { EmotionClassifier } from "@/lib/perception/emotion";
 
-// The full vocabulary, plus the extra labels cognition has been observed to
-// emit beyond the vision classifier's set.
-const EMITTED = [...EmotionClassifier.EMOTIONS, "frustrated", "distressed"];
+// The vocabulary the AVATAR actually receives. avatarEmotion is written by
+// cognition, never by browser perception (ariaStore says so explicitly), so the
+// authority is Go's suggestAvatarEmotion in internal/cognition/client.go — not
+// the vision classifier's list.
+//
+// The first version of this suite watched EmotionClassifier.EMOTIONS, and the
+// final code review showed why that was wrong: it added a ninth return value to
+// the Go emitter, both suites passed, and it rendered as idle — the exact bug
+// this file exists to prevent. That list only appeared to work because it
+// happens to be a superset today.
+//
+// Keep this in step with suggestAvatarEmotion. docs/STANDARDS_DEBT.md tracks
+// the wider duplication as ARCH-3.
+const EMITTED_BY_COGNITION = [
+  "neutral",
+  "happy",
+  "sad",
+  "angry",
+  "surprised",
+  "fearful",
+  "disgusted",
+  "frustrated",
+  "distressed",
+];
+const EMITTED = EMITTED_BY_COGNITION;
 
 describe("every emitted emotion has a deliberate visual state", () => {
   it("maps each one to a palette that exists", () => {
