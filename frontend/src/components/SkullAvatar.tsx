@@ -23,6 +23,32 @@ export const STATE_PALETTES: Record<string, StatePalette> = {
   neutral:    { iris: "#50b4ff", acc: "#2ef2cf", pulse: 0.3 },
 };
 
+// One canonical map from the emotion vocabulary to a visual state.
+//
+// The renderer used to index STATE_PALETTES directly and fall back to `idle`,
+// which meant an emotion the table did not know about looked exactly like no
+// emotion at all — "sad", "angry" and "disgusted" all rendered calm blue, with
+// nothing to distinguish a gap in the table from a deliberate neutral.
+//
+// The groupings below reuse existing palettes rather than inventing colours:
+// which distinct visual treatment each emotion deserves is a design decision,
+// not one to make silently in a bug fix. What this does guarantee is that every
+// emitted emotion resolves to a deliberate choice, and that adding a new one to
+// the vocabulary without deciding its appearance fails a test instead of
+// disappearing into the fallback.
+export const EMOTION_PALETTE_KEY: Record<string, string> = {
+  neutral: "neutral",
+  happy: "happy",
+  surprised: "surprised",
+  fearful: "fearful",
+  // Provisional groupings, pending design input:
+  sad: "fearful",          // subdued, withdrawn
+  angry: "distressed",     // high-arousal negative
+  frustrated: "distressed",
+  disgusted: "distressed",
+  distressed: "distressed",
+};
+
 function getPalette(
   emotion: string,
   isThinking: boolean,
@@ -32,7 +58,7 @@ function getPalette(
   if (isSpeaking) return STATE_PALETTES.speaking;
   if (isThinking) return STATE_PALETTES.thinking;
   if (isListening) return STATE_PALETTES.listening;
-  return STATE_PALETTES[emotion] ?? STATE_PALETTES.idle;
+  return STATE_PALETTES[EMOTION_PALETTE_KEY[emotion] ?? "idle"];
 }
 
 const MAX_JAW_PX = 13;

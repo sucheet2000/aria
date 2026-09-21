@@ -11,7 +11,7 @@ vi.mock("@/hooks/useAudioAmplitude", () => ({
   useAudioAmplitude: () => ({ amplitudeRef: mockAmplitudeRef, connectAudio }),
 }));
 
-import SkullAvatar, { STATE_PALETTES } from "./SkullAvatar";
+import SkullAvatar, { EMOTION_PALETTE_KEY, STATE_PALETTES } from "./SkullAvatar";
 import { ttsAudioRef } from "@/hooks/useTTS";
 
 let rafCallbacks: FrameRequestCallback[] = [];
@@ -59,16 +59,20 @@ describe("SkullAvatar", () => {
     expect(svg.getAttribute("aria-label")).toMatch(/skull/i);
   });
 
-  it.each(Object.keys(STATE_PALETTES))(
-    "applies the %s palette's iris color as a CSS variable",
-    (state) => {
+  // STATE_PALETTES holds both UI states (idle/listening/thinking/speaking) and
+  // emotions. Only the emotions can arrive as avatarEmotion; the states are
+  // chosen by the component from store flags. Iterating every key used to pass
+  // only because both kinds shared one lookup table.
+  it.each(Object.keys(EMOTION_PALETTE_KEY))(
+    "applies the %s emotion's iris color as a CSS variable",
+    (emotion) => {
       act(() => {
-        useAriaStore.setState({ avatarEmotion: state });
+        useAriaStore.setState({ avatarEmotion: emotion });
       });
       const { getByRole } = render(<SkullAvatar />);
       const svg = getByRole("img");
       expect(svg.style.getPropertyValue("--skullav-iris")).toBe(
-        STATE_PALETTES[state].iris,
+        STATE_PALETTES[EMOTION_PALETTE_KEY[emotion]].iris,
       );
     },
   );
