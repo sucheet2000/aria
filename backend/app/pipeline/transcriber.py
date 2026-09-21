@@ -20,7 +20,21 @@ class Transcriber:
     Supports dynamic keyword injection from the cognition layer.
     """
 
+    # faster-whisper's own device vocabulary. "auto" lets it pick; the rest are
+    # explicit. Anything else is a configuration mistake and is refused at
+    # construction rather than silently ignored.
+    SUPPORTED_DEVICES = ("auto", "cpu", "cuda")
+
+    # int8 is the right quantization on CPU and the wrong one on an
+    # accelerator, so it follows the device instead of being hardcoded beside it.
+    _COMPUTE_TYPES = {"cpu": "int8", "cuda": "float16", "auto": "int8"}
+
     def __init__(self, model_size: str = "base", device: str = "auto") -> None:
+        if device not in self.SUPPORTED_DEVICES:
+            raise ValueError(
+                f"unsupported device {device!r}; expected one of "
+                f"{', '.join(self.SUPPORTED_DEVICES)}"
+            )
         self._model_size = model_size
         self._device = device
         self._model = None
@@ -29,12 +43,33 @@ class Transcriber:
 
     def load(self) -> None:
         from faster_whisper import WhisperModel
-        self._model = WhisperModel(
-            self._model_size,
-            device="cpu",
-            compute_type="int8",
-        )
-        logger.info("whisper model loaded", model=self._model_size)
+
+        try:
+            self._model = WhisperModel(
+                self._model_size,
+                device=self._device,
+                compute_type=self._COMPUTE_TYPES[self._device],
+            )
+        except Exception as exc:
+            if self._device == "cpu":
+                # CPU is the fallback; there is nothing further to try, and
+                # swallowing this would leave a transcriber that never works.
+                raise
+            # The configured accelerator is unavailable on this machine. Say so
+            # and carry on rather than refusing to transcribe at all.
+            logger.warning(
+                "whisper device unavailable, falling back to cpu",
+                device=self._device,
+                error_type=type(exc).__name__,
+            )
+            self._device = "cpu"
+            self._model = WhisperModel(
+                self._model_size,
+                device="cpu",
+                compute_type=self._COMPUTE_TYPES["cpu"],
+            )
+
+        logger.info("whisper model loaded", model=self._model_size, device=self._device)
 
     # --- Dynamic keyword injection hook ---
     # Sprint 7: ChromaDB will call this method to inject context-relevant
