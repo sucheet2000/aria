@@ -217,3 +217,53 @@ func TestTTSHandler_TheClientSeesTheFailureStatusOnTheWire(t *testing.T) {
 		t.Fatalf("failure advertised itself as %q", resp.Header.Get("Content-Type"))
 	}
 }
+
+// Closure 2, second half of "no empty or TRUNCATED 200 on failure". The empty
+// case was closed by opening the stream first. This is the other one: the
+// provider dies mid-sentence, after the audio headers are already on the wire.
+// io.Copy fails, and returning normally lets Go finish the chunked body, so the
+// caller receives a short clip that is indistinguishable from a complete one —
+// the user hears half a sentence and nothing anywhere says why.
+func TestTTSHandler_ATruncatedStreamDoesNotLookLikeAWholeOne(t *testing.T) {
+	withoutLocalFallback(t)
+
+	// Promises 100000 bytes, delivers 4096, then hangs up.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100000")
+		w.WriteHeader(http.StatusOK)
+		w.Write(bytes.Repeat([]byte("a"), 4096)) //nolint:errcheck
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		if hj, ok := w.(http.Hijacker); ok {
+			conn, _, err := hj.Hijack()
+			if err == nil {
+				conn.Close()
+			}
+		}
+	}))
+	defer upstream.Close()
+
+	c := New("", "")
+	c.SetPythonURL(upstream.URL)
+
+	srv := httptest.NewServer(NewHandler(c))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL, "application/json", strings.NewReader(`{"text":"hello"}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+
+	got, readErr := io.ReadAll(resp.Body)
+
+	// The caller must be able to tell. Either the status was never 200, or the
+	// body read fails — what it must NOT get is a clean, complete short clip.
+	if resp.StatusCode == http.StatusOK && readErr == nil {
+		t.Fatalf(
+			"a dead provider produced a complete-looking 200 of %d bytes; the browser plays half a sentence and reports success",
+			len(got),
+		)
+	}
+}

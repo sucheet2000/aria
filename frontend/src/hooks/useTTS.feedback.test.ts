@@ -102,7 +102,7 @@ function installAudio(playBehavior: "resolve" | "reject"): void {
   });
 }
 
-type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "unavailable" | "gateway" | "timeout";
+type FetchKind = "ok" | "tiny" | "reject" | "not-ok" | "unavailable" | "gateway" | "cutoff" | "timeout";
 
 function mockTtsFetch(kind: FetchKind): void {
   vi.stubGlobal(
@@ -113,6 +113,16 @@ function mockTtsFetch(kind: FetchKind): void {
         return Promise.reject(
           Object.assign(new Error("signal timed out"), { name: "TimeoutError" })
         );
+      }
+      if (kind === "cutoff") {
+        // The server aborted the connection mid-clip, so the status says 200
+        // but the body can never be read to the end.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          arrayBuffer: () =>
+            Promise.reject(new TypeError("network error: connection closed")),
+        });
       }
       if (kind === "gateway") {
         // An intermediary — Railway's edge, a proxy, Cloudflare — answers a
@@ -323,6 +333,20 @@ describe("V3 — browser SpeechSynthesis fallback (the finding)", () => {
     expect(lastAudio).toBeNull();
     expect(trace).toContain("browser:speak");
     expect(lastUtterance?.text).toBe(LINE);
+  });
+
+  it("Closure 2 test 6c: a clip cut off mid-sentence hands over to the browser voice", async () => {
+    mockTtsFetch("cutoff");
+    const { result } = renderHook(() => useTTS());
+
+    await result.current.speak(LINE);
+
+    // Half a clip is not speech. The fallback says the whole line.
+    expect(lastAudio).toBeNull();
+    expect(trace).toContain("browser:speak");
+    expect(lastUtterance?.text).toBe(LINE);
+    // And the mic is not left shut by the abandoned attempt.
+    expect(trace.slice(0, firstIndex("browser:speak"))).not.toContain("tts_unmute");
   });
 
   it("Test 4: releases capture when fallback speech finishes", async () => {

@@ -108,8 +108,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	if _, err := io.Copy(w, stream); err != nil {
-		// The status is already sent; all that is left is to record it.
 		h.log.Error().Err(err).Msg("tts stream interrupted after headers")
+		// The 200 and the audio headers are already on the wire, so there is no
+		// status left to change. Returning normally would let Go close the
+		// chunked body cleanly, and a clean close means "that was all of it" —
+		// the caller would play half a sentence and report success. Aborting
+		// the connection instead leaves the body demonstrably unfinished, which
+		// is the only remaining way to say so. ErrAbortHandler is the sanctioned
+		// spelling: net/http unwinds the connection without logging a panic.
+		panic(http.ErrAbortHandler)
 	}
 
 	h.log.Info().
