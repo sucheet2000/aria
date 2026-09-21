@@ -20,22 +20,52 @@ def registry(tmp_path: Path) -> AnchorRegistry:
     return AnchorRegistry(db_path=tmp_path / "anchors.db")
 
 
+class _Clock:
+    """Monotonic seconds under the test's control."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 @pytest.fixture
-def bridge(registry: AnchorRegistry) -> GestureAnchorBridge:
-    return GestureAnchorBridge(registry)
+def clock() -> _Clock:
+    return _Clock()
+
+
+@pytest.fixture
+def bridge(registry: AnchorRegistry, clock: _Clock) -> GestureAnchorBridge:
+    return GestureAnchorBridge(registry, clock=clock)
+
+
+def hold_point(
+    bridge: GestureAnchorBridge,
+    clock: _Clock,
+    vector: list[float],
+    owner: str | None = None,
+    session_id: str = "s1",
+):
+    """Point steadily at one direction until it becomes an anchor.
+
+    A single point event no longer registers an anchor: it has to be held (see
+    test_point_anchor_dwell.py), so these tests hold it.
+    """
+    kwargs = {"owner": owner} if owner is not None else {}
+    bridge.on_gesture_event("point", "NONE", vector, session_id, **kwargs)
+    clock.advance(2.0)
+    return bridge.on_gesture_event("point", "NONE", vector, session_id, **kwargs)
 
 
 class TestOwnerScoping:
     def test_point_registers_under_owner(
-        self, bridge: GestureAnchorBridge, registry: AnchorRegistry
+        self, bridge: GestureAnchorBridge, registry: AnchorRegistry, clock: _Clock
     ) -> None:
-        bridge.on_gesture_event(
-            gesture="point",
-            two_hand_gesture="NONE",
-            pointing_vector=[0.0, -1.0, 0.0],
-            session_id="s1",
-            owner="a",
-        )
+        hold_point(bridge, clock, [0.0, -1.0, 0.0], owner="a")
         assert len(registry.list_anchors(owner="a")) == 1
         assert registry.list_anchors(owner="b") == []
 
@@ -44,25 +74,22 @@ class TestOwnerScoping:
 
 class TestPointGesture:
     def test_point_with_vector_returns_anchor_registered(
-        self, bridge: GestureAnchorBridge
+        self, bridge: GestureAnchorBridge, clock: _Clock
     ) -> None:
-        result = bridge.on_gesture_event(
-            gesture="point",
-            two_hand_gesture="NONE",
-            pointing_vector=[0.0, -1.0, 0.0],
-            session_id="s1",
-        )
+        result = hold_point(bridge, clock, [0.0, -1.0, 0.0])
         assert result is not None
         assert result.event_type == "anchor_registered"
 
-    def test_point_result_has_anchor_id(self, bridge: GestureAnchorBridge) -> None:
-        result = bridge.on_gesture_event("point", "NONE", [0.5, 0.5, -0.7], "s1")
+    def test_point_result_has_anchor_id(
+        self, bridge: GestureAnchorBridge, clock: _Clock
+    ) -> None:
+        result = hold_point(bridge, clock, [0.5, 0.5, -0.7])
         assert result.anchor_id != ""
 
     def test_point_result_payload_matches_registry(
-        self, bridge: GestureAnchorBridge, registry: AnchorRegistry
+        self, bridge: GestureAnchorBridge, registry: AnchorRegistry, clock: _Clock
     ) -> None:
-        result = bridge.on_gesture_event("point", "NONE", [0.1, 0.2, 0.3], "s1")
+        result = hold_point(bridge, clock, [0.1, 0.2, 0.3])
         anchor = registry.get_anchor(result.anchor_id)
         assert anchor is not None
         assert anchor.x == pytest.approx(0.1)

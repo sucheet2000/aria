@@ -61,6 +61,14 @@ function openPalm(): number[][] {
 function point(): number[][] {
   const lm = baseLandmarks();
   lm[0] = [0.5, 0.9, 0.0];
+  // The thumb has to be placed. baseLandmarks() leaves every point at the
+  // centre of the frame, which put the thumb tip on top of the index tip —
+  // geometrically a pinch, not a point. The old classifier never looked at the
+  // thumb so the fixture passed anyway.
+  lm[1] = [0.42, 0.82, 0.0];
+  lm[2] = [0.38, 0.78, 0.0];
+  lm[3] = [0.35, 0.75, 0.0];
+  lm[4] = [0.33, 0.72, 0.0];
   extendFinger(lm, 5, 6, 7, 8, 0.75);
   curlFinger(lm, 9, 10, 11, 12, 0.7);
   curlFinger(lm, 13, 14, 15, 16, 0.7);
@@ -114,11 +122,20 @@ describe("GestureClassifier", () => {
     expect(Math.sqrt(vx * vx + vy * vy + vz * vz)).toBeCloseTo(1.0, 5);
   });
 
-  it("classifies a fist as PINCH (cancel) with no pointing vector", () => {
-    const r = new GestureClassifier().classify(fist());
-    expect(r.gestureType).toBe(HAND_GESTURE_PINCH);
-    expect(gestureName(r.gestureType)).toBe("cancel");
-    expect(r.pointingVector).toBeNull();
+  // A closed fist is NOT a pinch. It used to be reported as one — and shown to
+  // the user as "cancel" — because PINCH was scored by a curled-finger count
+  // that never looked at the thumb.
+  //
+  // Keep this, but do not trust it: fist() places the thumb BELOW the wrist,
+  // which no raised hand does, and that accident alone was enough to make it
+  // pass while both the pinch and the thumbs-up branches were still broken.
+  // The honest coverage is "a raised fist is not a thumbs-up" further down,
+  // which builds its hands from anatomy.
+  it("does not classify a fist as PINCH", () => {
+    const g = new GestureClassifier().classify(fist());
+    expect(g.gestureType).not.toBe(HAND_GESTURE_PINCH);
+    expect(g.gestureType).toBe(HAND_GESTURE_UNSPECIFIED);
+    expect(g.pointingVector).toBeNull();
   });
 
   it("classifies a thumbs-up as THUMB_UP (confirm)", () => {
@@ -140,5 +157,231 @@ describe("GestureClassifier", () => {
 
   it("maps unspecified/none to the 'none' label", () => {
     expect(gestureName(HAND_GESTURE_UNSPECIFIED)).toBe("none");
+  });
+});
+
+// ── Raised-fist P1 ───────────────────────────────────────────────────────────
+// Found by independent QA and reproduced three ways: every anatomically real
+// raised fist was reported as "confirm", or as "cancel" where the folded thumb
+// sat near the index tip. The fist() fixture above missed it because it places
+// the thumb BELOW the wrist — an inverted hand no raised fist makes.
+//
+// These build hands from enforced anatomy: segment lengths are fractions of
+// palm length taken from published measurements, and the builder throws if a
+// pose would need a thumb longer than a thumb. The first version of these
+// fixtures did not do that, and its "genuine thumbs-up" had a tip bone 4.6x
+// too long — which is what a threshold then got calibrated against.
+
+// Segment lengths as fractions of palm length (wrist -> middle MCP), from
+// published adult hand anthropometry. The builder enforces them, because the
+// previous fixtures did not: their "genuine thumbs-up" had a thumb distal
+// phalanx of 1.146 palm-lengths against a real 0.25 — a tip bone longer than
+// the whole hand — and a threshold was calibrated against it. A fixture that
+// cannot exist will agree with any rule you like.
+const THUMB_MC1 = 0.46;
+const THUMB_PP = 0.32;
+const THUMB_DP = 0.25;
+const THUMB_CHAIN = THUMB_MC1 + THUMB_PP + THUMB_DP;
+const THUMB_CMC_ALONG = 0.18; // how far up the palm the thumb starts
+const THUMB_CMC_LATERAL = -0.28;
+
+interface HandOpts {
+  /** Where the thumb tip goes, in palm-lengths [lateral, along]. */
+  thumb: [number, number];
+  scale?: number;
+  origin?: [number, number];
+  rotation?: number;
+  mirror?: boolean;
+  thumbZ?: number;
+}
+
+function builtHand({
+  thumb, scale = 1, origin = [0.5, 0.6], rotation = 0, mirror = false, thumbZ = 0,
+}: HandOpts): number[][] {
+  const PALM = 0.3; // palm length in image units before `scale`
+  const cmc: [number, number] = [THUMB_CMC_LATERAL, -THUMB_CMC_ALONG];
+  const span = Math.hypot(thumb[0] - cmc[0], thumb[1] - cmc[1]);
+  if (span > THUMB_CHAIN) {
+    throw new Error(
+      `thumb tip is ${span.toFixed(3)} palm-lengths from its CMC but a thumb ` +
+      `chain is only ${THUMB_CHAIN}; this hand cannot exist`,
+    );
+  }
+
+  const canonical: number[][] = [];
+  const set = (i: number, x: number, y: number, z = 0) => {
+    canonical[i] = [x, y, z];
+  };
+  set(0, 0, 0); // wrist; the palm runs in -y, so the knuckle line is at -PALM
+
+  // Thumb: joints placed along the CMC -> tip line at their real proportions,
+  // so a folded thumb is short in projection and a straight one is not.
+  const fracs = [0, THUMB_MC1 / THUMB_CHAIN, (THUMB_MC1 + THUMB_PP) / THUMB_CHAIN, 1];
+  const reach = span / THUMB_CHAIN; // <1 when the thumb is bent
+  [1, 2, 3, 4].forEach((idx, k) => {
+    const f = fracs[k] * (reach > 0 ? 1 : 0);
+    set(idx, cmc[0] + (thumb[0] - cmc[0]) * f, cmc[1] + (thumb[1] - cmc[1]) * f,
+        k === 3 ? thumbZ : thumbZ * f);
+  });
+
+  // Four curled fingers. A curl is a FOLD: the proximal bone carries on past
+  // the knuckle, then the finger turns back toward the palm. The first version
+  // of this builder laid the joints in a straight line and merely shortened it,
+  // which scored as a perfectly straight finger — so a fist measured as a pinch
+  // the moment the classifier started asking how straight the index was.
+  const cols = [-0.2, 0, 0.2, 0.4];
+  [5, 9, 13, 17].forEach((mcp, k) => {
+    const x = cols[k];
+    set(mcp, x, -1.0);
+    set(mcp + 1, x, -1.36);         // out past the knuckle
+    set(mcp + 2, x + 0.06, -1.16);  // turning over
+    set(mcp + 3, x + 0.08, -0.9);   // tip folded back below its own knuckle
+  });
+
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return canonical.map(([x, y, z]) => {
+    const mx = mirror ? -x : x;
+    return [
+      origin[0] + scale * PALM * (mx * cos - y * sin),
+      origin[1] + scale * PALM * (mx * sin + y * cos),
+      scale * PALM * z,
+    ];
+  });
+}
+
+// Poses, in palm-lengths [lateral, along-the-palm]. The knuckle line is -1.0.
+//
+// A thumbs-up: the thumb out to the side and up, clear of every finger bone.
+const UP_THUMB: [number, number] = [-0.68, -0.8];
+// Two fists, because they fail through different branches. Folded across, the
+// thumb lies on the curled fingers near the index tip; tucked alongside, it
+// rests against the index bones further down. Both are in CONTACT with the
+// hand, which is what "fist" means and what separates them from a thumbs-up.
+const FIST_THUMB: [number, number] = [-0.3, -1.05];
+const FIST_THUMB_SIDE: [number, number] = [-0.26, -0.95];
+const FIST_THUMBS: Array<[string, [number, number]]> = [
+  ["folded across the fingers", FIST_THUMB],
+  ["tucked alongside", FIST_THUMB_SIDE],
+];
+
+// A genuine pinch: the index reaches out and the thumb meets it in front of
+// the palm. Where they meet is constrained by anatomy — the thumb chain is
+// 1.03 palm-lengths, so the contact point cannot be far past the knuckles,
+// which is exactly why index-reach cannot tell this pose from a fist.
+//
+// (frontend/src/lib/perception/pinch.test.ts already has a pinch factory with
+// mirrored/scaled/translated variants; an earlier comment here claimed the repo
+// had none, which was wrong. This one exists to exercise the thumbs-up branch
+// against a pinch, not to duplicate that coverage.)
+const PINCH_CONTACT: [number, number] = [-0.5, -1.1];
+
+function builtPinch(opts: { scale?: number; origin?: [number, number]; mirror?: boolean } = {}): number[][] {
+  const { scale = 1, origin = [0.5, 0.6], mirror = false } = opts;
+  const lm = builtHand({ thumb: PINCH_CONTACT, scale, origin, mirror });
+  const PALM = 0.3;
+  const place = (x: number, y: number): number[] => [
+    origin[0] + scale * PALM * (mirror ? -x : x),
+    origin[1] + scale * PALM * y,
+    0,
+  ];
+  // Index extended and gently bowed round to meet the thumb — not folded.
+  lm[6] = place(-0.3, -1.18);
+  lm[7] = place(-0.42, -1.16);
+  lm[8] = place(PINCH_CONTACT[0], PINCH_CONTACT[1]);
+  return lm;
+}
+
+function nameOf(lm: number[][]): string {
+  return gestureName(new GestureClassifier().classify(lm).gestureType);
+}
+
+describe("a raised fist is not a thumbs-up", () => {
+  it("1. a genuine thumbs-up is still confirm", () => {
+    expect(nameOf(builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6] }))).toBe("confirm");
+  });
+
+  it.each(FIST_THUMBS)("2. a raised fist (%s) is no recognized gesture", (_label, thumb: [number, number]) => {
+    expect(nameOf(builtHand({ thumb, origin: [0.5, 0.6] }))).toBe("none");
+  });
+
+  it("3. a rotated and translated raised fist is still no gesture", () => {
+    for (const [label, thumb] of FIST_THUMBS) {
+      for (const rotation of [-0.6, -0.3, 0.3, 0.6]) {
+        const lm = builtHand({ thumb, origin: [0.35, 0.55], rotation });
+        expect(nameOf(lm), `${label} at rotation ${rotation}`).toBe("none");
+      }
+    }
+  });
+
+  it("4. a fist is no gesture at any size", () => {
+    // Not below ~0.7 here: isExtended/isCurled use a margin of 0.02 in IMAGE
+    // units, so a hand small in frame loses its curl detection entirely. That
+    // floor is pre-existing and unrelated to clearance — QA measured it at
+    // ~0.09 of frame width for confirm and point alike.
+    for (const [label, thumb] of FIST_THUMBS) {
+      for (const scale of [0.7, 1, 1.8, 3]) {
+        expect(nameOf(builtHand({ thumb, origin: [0.5, 0.6], scale })), `${label} at scale ${scale}`).toBe("none");
+      }
+    }
+    // and the real thumbs-up survives the same range
+    for (const scale of [0.7, 1, 1.8, 3]) {
+      expect(nameOf(builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6], scale })), `scale ${scale}`).toBe("confirm");
+    }
+  });
+
+  it("5. a genuine pinch is still cancel, at any size and on either hand", () => {
+    expect(nameOf(builtPinch())).toBe("cancel");
+    for (const scale of [0.8, 1, 2.5]) {
+      expect(nameOf(builtPinch({ scale })), `scale ${scale}`).toBe("cancel");
+    }
+    expect(nameOf(builtPinch({ mirror: true }))).toBe("cancel");
+  });
+
+  it("6. a point is still point", () => {
+    expect(nameOf(point())).toBe("point");
+  });
+
+  it("7. an open hand is still stop", () => {
+    expect(nameOf(openPalm())).toBe("stop");
+  });
+
+  it("8. both hands read the same", () => {
+    for (const mirror of [false, true]) {
+      for (const [label, thumb] of FIST_THUMBS) {
+        expect(nameOf(builtHand({ thumb, origin: [0.5, 0.6], mirror })), `${label} mirror=${mirror}`).toBe("none");
+      }
+      expect(nameOf(builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6], mirror })), `up mirror=${mirror}`).toBe("confirm");
+    }
+  });
+
+  it("9. the verdict turns over at the documented clearance, not before", () => {
+    // The index bones run down x = -0.2, so a thumb tip at x = -0.2 - c sits
+    // exactly c palm-lengths clear of them. The threshold is 0.21.
+    // The index proximal bone runs straight down x = -0.2, so a thumb tip at
+    // x = -0.2 - c sits exactly c palm-lengths clear of it.
+    expect(nameOf(builtHand({ thumb: [-0.38, -1.05], origin: [0.5, 0.6] }))).toBe("none");
+    expect(nameOf(builtHand({ thumb: [-0.5, -1.15], origin: [0.5, 0.6] }))).toBe("confirm");
+  });
+
+  it("11. a thumb resting mid-bone is touching the hand, not clear of it", () => {
+    // Against the joints alone this thumb looks 0.22 palm-lengths away — past
+    // the threshold — because the nearest KNUCKLES are at the ends of the bone
+    // it is lying against. Measured to the bone itself it is 0.18 and touching.
+    // Point-to-landmark would call this a thumbs-up.
+    const restingOnTheShaft = builtHand({ thumb: [-0.38, -1.18], origin: [0.5, 0.6] });
+    expect(nameOf(restingOnTheShaft)).toBe("none");
+  });
+
+  it("10. a hand with missing or non-finite landmarks is never a gesture", () => {
+    const nan = builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6] });
+    nan[4] = [Number.NaN, Number.NaN, 0];
+    expect(nameOf(nan)).toBe("none");
+
+    const short = builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6] }).slice(0, 20);
+    expect(nameOf(short)).toBe("none");
+
+    const degenerate = Array.from({ length: 21 }, () => [0.5, 0.5, 0]);
+    expect(nameOf(degenerate)).toBe("none");
   });
 });
