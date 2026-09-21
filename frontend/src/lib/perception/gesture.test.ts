@@ -166,76 +166,129 @@ describe("GestureClassifier", () => {
 // sat near the index tip. The fist() fixture above missed it because it places
 // the thumb BELOW the wrist — an inverted hand no raised fist makes.
 //
-// These build hands from anatomy instead: y grows downward, so a raised hand
-// has the wrist at the largest y, the knuckles above it, and curled fingertips
-// bent back down below their own knuckles.
+// These build hands from enforced anatomy: segment lengths are fractions of
+// palm length taken from published measurements, and the builder throws if a
+// pose would need a thumb longer than a thumb. The first version of these
+// fixtures did not do that, and its "genuine thumbs-up" had a tip bone 4.6x
+// too long — which is what a threshold then got calibrated against.
+
+// Segment lengths as fractions of palm length (wrist -> middle MCP), from
+// published adult hand anthropometry. The builder enforces them, because the
+// previous fixtures did not: their "genuine thumbs-up" had a thumb distal
+// phalanx of 1.146 palm-lengths against a real 0.25 — a tip bone longer than
+// the whole hand — and a threshold was calibrated against it. A fixture that
+// cannot exist will agree with any rule you like.
+const THUMB_MC1 = 0.46;
+const THUMB_PP = 0.32;
+const THUMB_DP = 0.25;
+const THUMB_CHAIN = THUMB_MC1 + THUMB_PP + THUMB_DP;
+const THUMB_CMC_ALONG = 0.18; // how far up the palm the thumb starts
+const THUMB_CMC_LATERAL = -0.28;
 
 interface HandOpts {
+  /** Where the thumb tip goes, in palm-lengths [lateral, along]. */
   thumb: [number, number];
   scale?: number;
   origin?: [number, number];
   rotation?: number;
   mirror?: boolean;
+  thumbZ?: number;
 }
 
-// A closed hand in a canonical frame, then optionally scaled, rotated,
-// translated and mirrored — so one description covers every required case.
-function builtHand({ thumb, scale = 1, origin = [0, 0], rotation = 0, mirror = false }: HandOpts): number[][] {
+function builtHand({
+  thumb, scale = 1, origin = [0.5, 0.6], rotation = 0, mirror = false, thumbZ = 0,
+}: HandOpts): number[][] {
+  const PALM = 0.3; // palm length in image units before `scale`
+  const cmc: [number, number] = [THUMB_CMC_LATERAL, -THUMB_CMC_ALONG];
+  const span = Math.hypot(thumb[0] - cmc[0], thumb[1] - cmc[1]);
+  if (span > THUMB_CHAIN) {
+    throw new Error(
+      `thumb tip is ${span.toFixed(3)} palm-lengths from its CMC but a thumb ` +
+      `chain is only ${THUMB_CHAIN}; this hand cannot exist`,
+    );
+  }
+
   const canonical: number[][] = [];
-  const set = (i: number, x: number, yy: number) => {
-    canonical[i] = [x, yy, 0];
+  const set = (i: number, x: number, y: number, z = 0) => {
+    canonical[i] = [x, y, z];
   };
-  set(0, 0.0, 0.30); // wrist
-  set(1, -0.06, 0.22); set(2, -0.08, 0.16); set(3, -0.07, 0.12);
-  set(4, thumb[0], thumb[1]); // thumb tip
-  const cols = [-0.06, 0.0, 0.06, 0.12];
-  [5, 9, 13, 17].forEach((mcp, k) => {
-    set(mcp, cols[k], 0.0);
-    set(mcp + 1, cols[k], 0.03);
-    set(mcp + 2, cols[k], 0.06);
-    set(mcp + 3, cols[k], 0.08); // tip below its knuckle = curled
+  set(0, 0, 0); // wrist; the palm runs in -y, so the knuckle line is at -PALM
+
+  // Thumb: joints placed along the CMC -> tip line at their real proportions,
+  // so a folded thumb is short in projection and a straight one is not.
+  const fracs = [0, THUMB_MC1 / THUMB_CHAIN, (THUMB_MC1 + THUMB_PP) / THUMB_CHAIN, 1];
+  const reach = span / THUMB_CHAIN; // <1 when the thumb is bent
+  [1, 2, 3, 4].forEach((idx, k) => {
+    const f = fracs[k] * (reach > 0 ? 1 : 0);
+    set(idx, cmc[0] + (thumb[0] - cmc[0]) * f, cmc[1] + (thumb[1] - cmc[1]) * f,
+        k === 3 ? thumbZ : thumbZ * f);
   });
+
+  // Four curled fingers: knuckles on the knuckle line, tips folded back toward
+  // the palm, which is what makes a fist a fist.
+  const cols = [-0.2, 0, 0.2, 0.4];
+  [5, 9, 13, 17].forEach((mcp, k) => {
+    set(mcp, cols[k], -1.0);
+    set(mcp + 1, cols[k], -0.75);
+    set(mcp + 2, cols[k], -0.55);
+    set(mcp + 3, cols[k], -0.45);
+  });
+
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
-  return canonical.map(([x, yy]) => {
+  return canonical.map(([x, y, z]) => {
     const mx = mirror ? -x : x;
     return [
-      origin[0] + scale * (mx * cos - yy * sin),
-      origin[1] + scale * (mx * sin + yy * cos),
-      0,
+      origin[0] + scale * PALM * (mx * cos - y * sin),
+      origin[1] + scale * PALM * (mx * sin + y * cos),
+      scale * PALM * z,
     ];
   });
 }
 
-// Two real fists, because they fail for different reasons. Folded across the
-// fingers, the thumb lands near the index tip and the PINCH branch claims it;
-// tucked alongside, it is far from every fingertip and the THUMB_UP branch
-// claims it. A single pose would leave half the defect untested — which is how
-// the original fist fixture passed while both branches were broken.
-const FIST_THUMB: [number, number] = [-0.03, 0.10];
-const FIST_THUMB_SIDE: [number, number] = [0.10, 0.02];
+// Poses, in palm-lengths [lateral, along-the-palm]. The knuckle line is -1.0.
+//
+// A thumbs-up: the thumb out to the side and up, clear of every finger bone.
+const UP_THUMB: [number, number] = [-0.62, -0.85];
+// Two fists, because they fail through different branches. Folded across, the
+// thumb lies on the curled fingers near the index tip; tucked alongside, it
+// rests against the index bones further down. Both are in CONTACT with the
+// hand, which is what "fist" means and what separates them from a thumbs-up.
+const FIST_THUMB: [number, number] = [-0.12, -0.46];
+const FIST_THUMB_SIDE: [number, number] = [-0.21, -0.72];
 const FIST_THUMBS: Array<[string, [number, number]]> = [
   ["folded across the fingers", FIST_THUMB],
   ["tucked alongside", FIST_THUMB_SIDE],
 ];
-// Held clear of the fist, well past the knuckle line.
-const UP_THUMB: [number, number] = [-0.02, -0.22];
 
-// A real pinch: the index reaches out past the knuckles and the thumb meets it
-// there. The repo had no pinch fixture at all, so "a valid pinch is still a
-// pinch" was never actually asserted — only "a fist is not one".
+// A genuine pinch: the index reaches out and the thumb meets it in front of
+// the palm. Where they meet is constrained by anatomy — the thumb chain is
+// 1.03 palm-lengths, so the contact point cannot be far past the knuckles,
+// which is exactly why index-reach cannot tell this pose from a fist.
+//
+// (frontend/src/lib/perception/pinch.test.ts already has a pinch factory with
+// mirrored/scaled/translated variants; an earlier comment here claimed the repo
+// had none, which was wrong. This one exists to exercise the thumbs-up branch
+// against a pinch, not to duplicate that coverage.)
+const PINCH_CONTACT: [number, number] = [-0.5, -1.15];
+
 function builtPinch(opts: { scale?: number; origin?: [number, number]; mirror?: boolean } = {}): number[][] {
   const { scale = 1, origin = [0.5, 0.6], mirror = false } = opts;
-  const lm = builtHand({ thumb: [-0.02, -0.11], scale, origin, mirror });
-  const place = (x: number, yy: number): number[] => [
-    origin[0] + scale * (mirror ? -x : x),
-    origin[1] + scale * yy,
+  const lm = builtHand({ thumb: PINCH_CONTACT, scale, origin, mirror });
+  const PALM = 0.3;
+  const place = (x: number, y: number): number[] => [
+    origin[0] + scale * PALM * (mirror ? -x : x),
+    origin[1] + scale * PALM * y,
     0,
   ];
-  lm[5] = place(-0.06, 0.0);
-  lm[6] = place(-0.05, -0.05);
-  lm[7] = place(-0.045, -0.09);
-  lm[8] = place(-0.04, -0.12); // index tip, out in front of the knuckles
+  // Index chain from its knuckle out to the contact point.
+  const mcp: [number, number] = [-0.2, -1.0];
+  [0.35, 0.7, 1].forEach((f, k) => {
+    lm[6 + k] = place(
+      mcp[0] + (PINCH_CONTACT[0] - mcp[0]) * f,
+      mcp[1] + (PINCH_CONTACT[1] - mcp[1]) * f,
+    );
+  });
   return lm;
 }
 
@@ -248,7 +301,7 @@ describe("a raised fist is not a thumbs-up", () => {
     expect(nameOf(builtHand({ thumb: UP_THUMB, origin: [0.5, 0.6] }))).toBe("confirm");
   });
 
-  it.each(FIST_THUMBS)("2. a raised fist (%s) is no recognized gesture", (_label, thumb) => {
+  it.each(FIST_THUMBS)("2. a raised fist (%s) is no recognized gesture", (_label, thumb: [number, number]) => {
     expect(nameOf(builtHand({ thumb, origin: [0.5, 0.6] }))).toBe("none");
   });
 
@@ -298,12 +351,22 @@ describe("a raised fist is not a thumbs-up", () => {
     }
   });
 
-  it("9. the verdict turns over at the documented boundary, not before", () => {
-    // Knuckle line is 1.0 hand-lengths from the wrist; the threshold is 1.25.
-    const below = builtHand({ thumb: [-0.02, -0.06], origin: [0.5, 0.6] }); // ~1.2
-    const above = builtHand({ thumb: [-0.02, -0.12], origin: [0.5, 0.6] }); // ~1.4
-    expect(nameOf(below)).toBe("none");
-    expect(nameOf(above)).toBe("confirm");
+  it("9. the verdict turns over at the documented clearance, not before", () => {
+    // The index bones run down x = -0.2, so a thumb tip at x = -0.2 - c sits
+    // exactly c palm-lengths clear of them. The threshold is 0.21.
+    const clearanceOf = (c: number) =>
+      builtHand({ thumb: [-0.2 - c, -0.7], origin: [0.5, 0.6] });
+    expect(nameOf(clearanceOf(0.18))).toBe("none");
+    expect(nameOf(clearanceOf(0.26))).toBe("confirm");
+  });
+
+  it("11. a thumb resting mid-bone is touching the hand, not clear of it", () => {
+    // Against the joints alone this thumb looks 0.22 palm-lengths away — past
+    // the threshold — because the nearest KNUCKLES are at the ends of the bone
+    // it is lying against. Measured to the bone itself it is 0.18 and touching.
+    // Point-to-landmark would call this a thumbs-up.
+    const restingOnTheShaft = builtHand({ thumb: [-0.38, -0.875], origin: [0.5, 0.6] });
+    expect(nameOf(restingOnTheShaft)).toBe("none");
   });
 
   it("10. a hand with missing or non-finite landmarks is never a gesture", () => {
