@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -16,6 +17,16 @@ var ErrTooManySessions = errors.New("audio: too many concurrent audio sessions")
 
 // ErrManagerStopped is returned by Acquire after Stop has run.
 var ErrManagerStopped = errors.New("audio: session manager stopped")
+
+// mutedOwnerTTL ages out the RETAINED RECORD below — the intent consulted when
+// a session is rebuilt. It does NOT bound a mute already applied to a running
+// worker: that flag is cleared only by an explicit tts_unmute or by the session
+// being torn down. What heals a live session is the browser's resync, which
+// re-states the truth every time the control socket opens (resyncTtsMuteState).
+// Chosen far longer than any single spoken reply, so a rebuilt session is never
+// unmuted mid-sentence, and short enough that a record left by a client which
+// never returns does not outlive the conversation.
+const mutedOwnerTTL = 60 * time.Second
 
 // TranscriptRouter delivers one transcript envelope to exactly the owner whose
 // audio produced it. The composition root binds this to hub.BroadcastToOwner.
@@ -60,6 +71,19 @@ type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	stopped  bool
+	// V3: owners whose TTS is currently playing, with the time the mute was
+	// taken. The browser sends tts_mute once when ARIA starts speaking and
+	// tts_unmute once when it stops, so the intent outlives any single worker:
+	// if the owner's /ws/audio socket blips mid-speech, the rebuilt session
+	// must come up muted rather than forward ARIA's own voice into Whisper.
+	//
+	// The timestamp bounds THIS RECORD, so a client that vanished mid-sentence
+	// cannot make every future session for that owner come up muted. It does
+	// not expire a mute already set on a live worker — see mutedOwnerTTL, and
+	// TestSessionManager_LiveSessionIsHealedByAnExplicitUnmute, which pins that
+	// distinction. A live session is healed by the browser's resync, not by
+	// this clock.
+	mutedOwners map[string]time.Time
 }
 
 // NewSessionManager creates a manager whose sessions are children of ctx.
@@ -76,6 +100,7 @@ func NewSessionManager(ctx context.Context, pythonBin, scriptPath, workDir, whis
 		route:        route,
 		log:          log.With().Str("component", "audio-sessions").Logger(),
 		sessions:     make(map[string]*Session),
+		mutedOwners:  make(map[string]time.Time),
 	}
 }
 
@@ -112,6 +137,11 @@ func (m *SessionManager) Acquire(owner string) error {
 	ctx, cancel := context.WithCancel(m.ctx)
 	sink := func(data []byte) { m.route(owner, data) }
 	w := New(m.pythonBin, m.scriptPath, m.workDir, m.whisperModel, sink)
+	if m.stillSpeakingLocked(owner, time.Now()) {
+		// Still mid-TTS: come up muted so the reconnect cannot leak ARIA's
+		// own voice into this owner's pipeline (V3).
+		w.Mute(true)
+	}
 	s := &Session{owner: owner, worker: w, refs: 1, cancel: cancel, done: make(chan struct{})}
 	m.sessions[owner] = s
 
@@ -149,6 +179,13 @@ func (m *SessionManager) Release(owner string) {
 	if cur, ok := m.sessions[owner]; ok && cur == s {
 		delete(m.sessions, owner)
 	}
+	for o, taken := range m.mutedOwners {
+		// Clients come and go here, so this is the natural moment to drop the
+		// mutes of owners who left mid-sentence and never came back.
+		if time.Since(taken) > mutedOwnerTTL {
+			delete(m.mutedOwners, o)
+		}
+	}
 	m.mu.Unlock()
 	m.log.Info().Str("owner", owner).Msg("audio session stopped")
 }
@@ -177,13 +214,63 @@ func (m *SessionManager) WriteAudio(owner string, pcm []byte) {
 // SetMuted gates owner's PCM at the edge while that owner's TTS plays. It
 // affects only owner's session.
 func (m *SessionManager) SetMuted(owner string, muted bool) {
+	// The lock is held across worker.Mute so two connections of one owner
+	// cannot update the map in one order and reach the worker in the other,
+	// leaving the flag and the record disagreeing. Mute is a non-blocking
+	// atomic store, so holding the lock costs nothing.
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if muted {
+		m.mutedOwners[owner] = time.Now()
+	} else {
+		delete(m.mutedOwners, owner)
+	}
 	s, ok := m.sessions[owner]
-	m.mu.Unlock()
 	if !ok {
+		// No live session yet. The intent is recorded, and Acquire applies it.
 		return
 	}
 	s.worker.Mute(muted)
+}
+
+// stillSpeakingLocked reports whether owner holds an unexpired TTS mute, and
+// drops the entry when it has aged out. Callers must hold m.mu.
+func (m *SessionManager) stillSpeakingLocked(owner string, now time.Time) bool {
+	taken, ok := m.mutedOwners[owner]
+	if !ok {
+		return false
+	}
+	if now.Sub(taken) > mutedOwnerTTL {
+		delete(m.mutedOwners, owner)
+		return false
+	}
+	return true
+}
+
+// ageMutedOwner backdates an owner's retained mute. Test-only seam for driving
+// TTL expiry without sleeping through it.
+func (m *SessionManager) ageMutedOwner(owner string, by time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if taken, ok := m.mutedOwners[owner]; ok {
+		m.mutedOwners[owner] = taken.Add(-by)
+	}
+}
+
+// mutedOwnerCount reports how many owners are currently marked as speaking.
+// Test-only window proving the set does not grow without bound.
+func (m *SessionManager) mutedOwnerCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.mutedOwners)
+}
+
+// isMutedOwner reports whether owner holds a retained mute. Test-only.
+func (m *SessionManager) isMutedOwner(owner string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.mutedOwners[owner]
+	return ok
 }
 
 // Running reports whether owner currently has a live subprocess.

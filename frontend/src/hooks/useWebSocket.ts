@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useAriaStore } from "@/store/ariaStore";
 import { abortCognitionRef } from "@/hooks/useCognition";
 import { visionCaptureActiveRef } from "@/hooks/visionCaptureState";
+import { ttsResyncRef } from "@/hooks/ttsResyncState";
 import { WS_URL } from "@/lib/config";
 import { parseWsFrame } from "@/lib/wsMessages";
 
@@ -78,6 +79,11 @@ export function useWebSocket() {
         if (sessionId) {
           ws.send(JSON.stringify({ type: "session_init", session_id: sessionId }));
         }
+        // V3: re-state whether ARIA is currently speaking. This socket carries
+        // the mic-suppression control messages, and they are dropped silently
+        // while it is down, so every fresh connection has to say what is true
+        // now instead of assuming the server still knows.
+        ttsResyncRef.current?.();
       };
 
       ws.onmessage = (event: MessageEvent) => {
