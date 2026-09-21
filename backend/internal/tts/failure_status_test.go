@@ -188,10 +188,12 @@ func TestTTSHandler_DoesNotLogTheUpstreamBody(t *testing.T) {
 	}
 }
 
-// 3 again, over a real socket. httptest.ResponseRecorder honours a late
-// WriteHeader that a real connection would have already sent, so a recorder
-// alone cannot see a status that was committed too early. This runs the handler
-// behind a real server and reads the status the way the browser does.
+// 3 again, through net/http end to end. A recorder agrees with the wire on
+// this case — an earlier version of this comment claimed otherwise and was
+// simply wrong — but the recorder cannot see everything: an aborted response
+// is invisible to it, which is why the truncation test below needs a real
+// server too. This one is here as end-to-end coverage of the status the
+// browser actually receives.
 func TestTTSHandler_TheClientSeesTheFailureStatusOnTheWire(t *testing.T) {
 	withoutLocalFallback(t)
 	c := New("", "")
@@ -266,4 +268,60 @@ func TestTTSHandler_ATruncatedStreamDoesNotLookLikeAWholeOne(t *testing.T) {
 			len(got),
 		)
 	}
+}
+
+// F5 — the failure paths are the ones an operator most needs in the duration
+// and length series, and they are the two that do not reach the completion log:
+// the 503 returns early and the abort unwinds past it. Reverting either set of
+// log fields left the whole suite green, so the fields get their own test.
+func TestTTSHandler_FailedTurnsStillCarryTheirTelemetry(t *testing.T) {
+	capture := func(t *testing.T, setup func(*Handler) string) string {
+		t.Helper()
+		var logged bytes.Buffer
+		prev := log.Logger
+		log.Logger = zerolog.New(&logged)
+		defer func() { log.Logger = prev }()
+
+		c := New("", "")
+		h := NewHandler(c)
+		url := setup(h)
+		c.SetPythonURL(url)
+		func() {
+			defer func() { _ = recover() }() // the abort path panics by design
+			post(t, h, `{"text":"hello there"}`)
+		}()
+		return logged.String()
+	}
+
+	t.Run("nothing could speak", func(t *testing.T) {
+		withoutLocalFallback(t)
+		out := capture(t, func(*Handler) string { return newFailingUpstream(t).URL })
+		for _, want := range []string{"tts stream failed", "text_length", "duration"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %q in: %s", want, out)
+			}
+		}
+	})
+
+	t.Run("the stream died mid-clip", func(t *testing.T) {
+		withoutLocalFallback(t)
+		out := capture(t, func(*Handler) string {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Length", "100000")
+				w.Write(bytes.Repeat([]byte("a"), 4096)) //nolint:errcheck
+				if hj, ok := w.(http.Hijacker); ok {
+					if conn, _, err := hj.Hijack(); err == nil {
+						conn.Close()
+					}
+				}
+			}))
+			t.Cleanup(srv.Close)
+			return srv.URL
+		})
+		for _, want := range []string{"tts stream interrupted after headers", "text_length", "duration"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %q in: %s", want, out)
+			}
+		}
+	})
 }

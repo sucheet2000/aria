@@ -92,7 +92,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// an empty audio body that looked exactly like ARIA choosing to say nothing.
 	stream, err := h.client.Open(r.Context(), req.Text, req.Emotion)
 	if err != nil {
-		h.log.Error().Err(err).Msg("tts stream failed")
+		h.log.Error().Err(err).
+			Int("text_length", len(req.Text)).
+			Dur("duration", time.Since(start)).
+			Msg("tts stream failed")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		// S2: the cause is logged, never echoed — an upstream body can quote the
@@ -109,8 +112,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := io.Copy(w, stream); err != nil {
 		// Carries the same telemetry as the completion log below, which the
-		// panic unwinds straight past — otherwise these turns would vanish from
-		// the duration and length series entirely (OBS-3).
+		// panic unwinds straight past — otherwise the turns that fail would be
+		// the only ones missing from the duration and length series.
 		h.log.Error().Err(err).
 			Int("text_length", len(req.Text)).
 			Dur("duration", time.Since(start)).
