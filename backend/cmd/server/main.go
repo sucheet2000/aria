@@ -75,10 +75,7 @@ func main() {
 	// are routed straight to the owning user's /ws clients (SEC-6).
 	var audioSessions *audio.SessionManager
 	if cfg.AudioEnabled {
-		audioSessions = audio.NewSessionManager(
-			ctx, cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel,
-			cfg.WhisperDevice, cfg.AudioMaxSessions, hub.BroadcastToOwner,
-		)
+		audioSessions = newAudioSessions(ctx, cfg, workDir, hub.BroadcastToOwner)
 		hub.SetAudio(audioSessions)
 	}
 
@@ -116,4 +113,15 @@ func main() {
 	}
 
 	log.Info().Msg("server stopped")
+}
+
+// newAudioSessions builds the per-owner STT session manager from the config.
+// It is split out of main so a test can prove each config field reaches the
+// worker's argv: NewSessionManager takes five positional strings, and swapping
+// two of them compiles.
+func newAudioSessions(ctx context.Context, cfg *config.Config, workDir string, route audio.TranscriptRouter) *audio.SessionManager {
+	return audio.NewSessionManager(
+		ctx, cfg.PythonBin, cfg.AudioScript, workDir, cfg.WhisperModel,
+		cfg.WhisperDevice, cfg.AudioMaxSessions, route,
+	)
 }
