@@ -297,3 +297,73 @@ func TestRouteGroups_WebSocketRoutesUpgradeForAnAuthenticatedCaller(t *testing.T
 		conn.Close()
 	}
 }
+
+// RATE-LIMIT-PIN — the limiter is tested on its own in ratelimit_test.go, but
+// nothing proved production attaches it: deleting either r.Use(rl.Middleware)
+// left the suite green.
+//
+// Each case gets a fresh production router whose per-owner bucket holds one
+// request and never refills during the test, so the wiring is observable from
+// outside: one owner's second request is refused before it reaches Python,
+// another owner still gets through (the bucket is keyed by the verified owner,
+// so auth ran first), and unauthenticated callers are always turned away by
+// auth, never by the limiter.
+func TestRouteGroups_LimitedRoutesAreRateLimitedPerVerifiedOwner(t *testing.T) {
+	limited := []struct {
+		name, method, path, body, upstream string
+	}{
+		{"paid: cognition", http.MethodPost, "/api/cognition", `{"message":"hi","session_id":"s1"}`, "/api/cognition"},
+		{"paid: tts", http.MethodPost, "/api/tts", `{"text":"hi"}`, "/api/tts"},
+		{"data control: export", http.MethodGet, "/api/memory/export", "", "/api/memory/export"},
+		{"data control: delete all", http.MethodDelete, "/api/memory", "", "/api/memory"},
+		{"data control: delete one", http.MethodDelete, "/api/memory/0123456789abcdef", "", "/api/memory/0123456789abcdef"},
+	}
+	verifier := ownerVerifier{"tok-a": "owner-a", "tok-b": "owner-b"}
+
+	for _, rt := range limited {
+		t.Run(rt.name, func(t *testing.T) {
+			python := newRecordingPython(t)
+			_, edge := newAuthRoutedServer(t, python.URL, verifier, func(c *config.Config) {
+				c.RateLimitRPS = 1e-9
+				c.RateLimitBurst = 1
+			})
+
+			for i := 0; i < 3; i++ {
+				resp := edgeRequest(t, rt.method, edge.URL+rt.path, rt.body, "")
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusUnauthorized {
+					t.Fatalf("unauthenticated request %d = %d, want 401 from auth (the limiter must not run before auth)",
+						i+1, resp.StatusCode)
+				}
+			}
+
+			first := edgeRequest(t, rt.method, edge.URL+rt.path, rt.body, "tok-a")
+			first.Body.Close()
+			if first.StatusCode == http.StatusTooManyRequests {
+				t.Fatalf("owner-a's first request was rate limited")
+			}
+			if calls := python.take(); len(calls) != 1 || calls[0].owner != "owner-a" || !strings.HasPrefix(calls[0].target, rt.upstream) {
+				t.Fatalf("owner-a's first request did not reach its handler: %+v", calls)
+			}
+
+			second := edgeRequest(t, rt.method, edge.URL+rt.path, rt.body, "tok-a")
+			second.Body.Close()
+			if second.StatusCode != http.StatusTooManyRequests {
+				t.Fatalf("owner-a's second request = %d, want 429: is rl.Middleware still attached to %s?",
+					second.StatusCode, rt.path)
+			}
+			if calls := python.take(); len(calls) != 0 {
+				t.Fatalf("a rate-limited request still reached Python: %+v", calls)
+			}
+
+			other := edgeRequest(t, rt.method, edge.URL+rt.path, rt.body, "tok-b")
+			other.Body.Close()
+			if other.StatusCode == http.StatusTooManyRequests {
+				t.Fatalf("owner-b was limited by owner-a's bucket: the limiter is not keyed by the verified owner")
+			}
+			if calls := python.take(); len(calls) != 1 || calls[0].owner != "owner-b" {
+				t.Fatalf("owner-b's request did not reach its handler as owner-b: %+v", calls)
+			}
+		})
+	}
+}
