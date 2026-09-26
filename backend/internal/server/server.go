@@ -374,11 +374,12 @@ func metricsGuardRefusesBoot(token, host, allowInsecure string) bool {
 	return allowInsecure != "1"
 }
 
-// isLoopback reports whether host is a loopback (or unset) bind address, i.e. one
-// that is not reachable from other machines.
+// isLoopback reports whether host is a loopback bind address, i.e. one that is
+// not reachable from other machines. An empty host is not: Config.Addr renders
+// it as ":port", and net.Listen binds that on every interface.
 func isLoopback(host string) bool {
 	switch host {
-	case "127.0.0.1", "localhost", "::1", "":
+	case "127.0.0.1", "localhost", "::1":
 		return true
 	default:
 		return false
