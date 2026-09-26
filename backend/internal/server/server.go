@@ -62,11 +62,8 @@ func (s *Server) Start(ctx context.Context) error {
 		verifier = auth.NewClerkVerifier(s.cfg.ClerkSecretKey, s.cfg.ClerkJWTIssuer)
 		log.Info().Msg("clerk auth enabled on /api and /ws")
 	} else {
-		if !isLoopback(s.cfg.Host) && os.Getenv("ALLOW_INSECURE_NO_AUTH") != "1" {
-			log.Fatal().Msgf(
-				"refusing to start: auth disabled on non-loopback bind %s; set CLERK_SECRET_KEY or ALLOW_INSECURE_NO_AUTH=1",
-				s.cfg.Host,
-			)
+		if err := s.clerkBootRefusal(); err != nil {
+			log.Fatal().Msg(err.Error())
 		}
 		log.Warn().Msg("clerk auth disabled on /api and /ws (CLERK_SECRET_KEY not set)")
 	}
@@ -333,17 +330,36 @@ func (s *Server) routes(ctx context.Context, verifier auth.Verifier, authEnabled
 	})
 }
 
-// metricsGuardRefusesBoot reports whether the server must refuse to start
-// because /metrics would be publicly readable with no credential.
-//
-// It deliberately does NOT honour ALLOW_INSECURE_NO_AUTH. That flag disables
-// Clerk for local work and docker-compose sets it to 1 by default alongside
-// HOST=0.0.0.0 and a published port — so reusing it meant anyone on the same
-// network could read Claude token spend from a developer's machine. Opening
-// metrics is a separate decision and needs its own deliberate flag.
-//
-// A whitespace-only token counts as unset: it cannot be typed into a scraper
-// config reliably and is far more likely to be an accident than an intent.
+// clerkBootRefusal is the decision Start makes when Clerk is not configured,
+// as an error rather than a log.Fatal so the decision can be tested directly.
+// The call site itself is pinned by a subprocess test that runs Start.
+func (s *Server) clerkBootRefusal() error {
+	if clerkGuardRefusesBoot(s.cfg.ClerkSecretKey, s.cfg.Host, os.Getenv(allowInsecureNoAuthEnv)) {
+		return fmt.Errorf(
+			"refusing to start: auth disabled on non-loopback bind %s; set CLERK_SECRET_KEY or %s=1",
+			s.cfg.Host, allowInsecureNoAuthEnv,
+		)
+	}
+	return nil
+}
+
+// allowInsecureNoAuthEnv is the one spelling of the Clerk opt-out, for the same
+// reason as allowInsecureMetricsEnv below.
+const allowInsecureNoAuthEnv = "ALLOW_INSECURE_NO_AUTH"
+
+// clerkGuardRefusesBoot reports whether the server must refuse to start because
+// /api, /ws and /ws/audio would be served with no authentication on a bind
+// other machines can reach.
+func clerkGuardRefusesBoot(clerkSecretKey, host, allowInsecure string) bool {
+	if clerkSecretKey != "" {
+		return false
+	}
+	if isLoopback(host) {
+		return false
+	}
+	return allowInsecure != "1"
+}
+
 // metricsBootRefusal is the decision Start actually makes, as an error rather
 // than a log.Fatal so a test can reach it. Testing only the pure predicate
 // below left the call site unproven: replacing it with `if false && ...`
@@ -364,6 +380,17 @@ func (s *Server) metricsBootRefusal() error {
 // disarmed the guard silently.
 const allowInsecureMetricsEnv = "ALLOW_INSECURE_METRICS"
 
+// metricsGuardRefusesBoot reports whether the server must refuse to start
+// because /metrics would be publicly readable with no credential.
+//
+// It deliberately does NOT honour ALLOW_INSECURE_NO_AUTH. That flag disables
+// Clerk for local work and docker-compose sets it to 1 by default alongside
+// HOST=0.0.0.0 and a published port — so reusing it meant anyone on the same
+// network could read Claude token spend from a developer's machine. Opening
+// metrics is a separate decision and needs its own deliberate flag.
+//
+// A whitespace-only token counts as unset: it cannot be typed into a scraper
+// config reliably and is far more likely to be an accident than an intent.
 func metricsGuardRefusesBoot(token, host, allowInsecure string) bool {
 	if strings.TrimSpace(token) != "" {
 		return false

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -23,30 +24,37 @@ import (
 // asserts the exit status — the standard Go idiom for an os.Exit path.
 const bootGuardSubprocessEnv = "ARIA_TEST_BOOT_GUARD_SUBPROCESS"
 
+// unroutableBindHost is a non-loopback address that no machine owns (RFC 5737
+// TEST-NET-1). isLoopback rejects it, so a boot guard must fire for it. If a
+// guard is ever bypassed, Start's listener fails to bind rather than opening a
+// LAN-reachable port with no credential, so running these tests against a
+// broken guard never exposes anything.
+const unroutableBindHost = "192.0.2.1"
+
 func TestMetrics_StartConsultsTheBootGuard(t *testing.T) {
 	if os.Getenv(bootGuardSubprocessEnv) == "1" {
 		// Child: a public bind with no scrape credential. Start must refuse.
 		s := newMetricsServer("http://127.0.0.1:1", os.Getenv("ARIA_TEST_BOOT_GUARD_TOKEN"))
-		s.cfg.Host = "0.0.0.0"
+		s.cfg.Host = unroutableBindHost
 		_ = s.Start(t.Context())
 		return
 	}
 
 	run := func(t *testing.T, token string) (string, bool) {
 		t.Helper()
-		// Bounded: a Start that does NOT refuse goes on to bind and serve, so
-		// the child would never exit. Not-exiting IS the failure, so it must be
-		// a timeout rather than a hang.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Bounded: a Start that does NOT refuse goes on to bind, and either
+		// serves until the deadline or returns once the bind fails. Both are
+		// the failure, so not-refusing must end in a timeout, not a hang.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestMetrics_StartConsultsTheBootGuard")
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMetrics_StartConsultsTheBootGuard$")
 		cmd.Env = append(os.Environ(),
 			bootGuardSubprocessEnv+"=1",
 			"ARIA_TEST_BOOT_GUARD_TOKEN="+token,
 			// Past the Clerk guard, which fires first on a public bind. This
 			// is also the compose default, so it doubles as proof that the
 			// Clerk opt-out does not disarm the metrics guard.
-			"ALLOW_INSECURE_NO_AUTH=1",
+			allowInsecureNoAuthEnv+"=1",
 			allowInsecureMetricsEnv+"=",
 		)
 		out, err := cmd.CombinedOutput()
@@ -59,9 +67,72 @@ func TestMetrics_StartConsultsTheBootGuard(t *testing.T) {
 
 	out, ok := run(t, "")
 	if ok {
-		t.Fatalf("Start booted with /metrics open on a public bind; output:\n%s", out)
+		t.Fatalf("Start did not refuse to boot with /metrics open on a public bind; output:\n%s", out)
 	}
 	if !strings.Contains(out, "METRICS_TOKEN") {
 		t.Fatalf("refused, but not for the metrics reason; output:\n%s", out)
+	}
+}
+
+// SECURITY-MIDDLE-1 — the Clerk guard's call site, the same way.
+//
+// Start refuses to serve with auth off on a non-loopback bind. The only
+// Start-level test above sets ALLOW_INSECURE_NO_AUTH=1 to get PAST this guard,
+// so deleting or inverting the call left the whole suite green while a build of
+// it would serve /api, /ws and /ws/audio on a public address to anyone.
+const clerkBootGuardSubprocessEnv = "ARIA_TEST_CLERK_BOOT_GUARD_SUBPROCESS"
+
+func TestClerk_StartConsultsTheBootGuard(t *testing.T) {
+	if os.Getenv(clerkBootGuardSubprocessEnv) == "1" {
+		// Child: no Clerk key, no opt-out, a public bind. A real scrape token
+		// keeps the metrics guard quiet, so only the Clerk guard can refuse.
+		s := newMetricsServer("http://127.0.0.1:1", testMetricsToken)
+		s.cfg.Host = unroutableBindHost
+		_ = s.Start(t.Context())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestClerk_StartConsultsTheBootGuard$")
+	cmd.Env = append(os.Environ(),
+		clerkBootGuardSubprocessEnv+"=1",
+		allowInsecureNoAuthEnv+"=",
+		allowInsecureMetricsEnv+"=",
+	)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("Start booted with auth disabled on a public bind (still serving at the deadline); output:\n%s", out)
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("Start did not refuse to boot with auth disabled on a public bind (err=%v); output:\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "auth disabled on non-loopback bind") {
+		t.Fatalf("refused, but not for the Clerk reason; output:\n%s", out)
+	}
+}
+
+func TestClerk_BootGuardDecision(t *testing.T) {
+	cases := []struct {
+		name          string
+		clerkKey      string
+		host          string
+		allowInsecure string
+		wantRefuse    bool
+	}{
+		{"public bind, no key", "", "0.0.0.0", "", true},
+		{"empty host is public, no key", "", "", "", true},
+		{"public bind, key set", "sk_test_x", "0.0.0.0", "", false},
+		{"loopback, no key", "", "127.0.0.1", "", false},
+		{"public bind, deliberate opt-out", "", "0.0.0.0", "1", false},
+		{"public bind, opt-out must be exactly 1", "", "0.0.0.0", "true", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := clerkGuardRefusesBoot(tc.clerkKey, tc.host, tc.allowInsecure); got != tc.wantRefuse {
+				t.Fatalf("refuseBoot = %v, want %v", got, tc.wantRefuse)
+			}
+		})
 	}
 }
