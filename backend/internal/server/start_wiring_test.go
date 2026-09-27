@@ -38,7 +38,7 @@ func TestStart_ClerkConfiguredServesAnAuthenticatedRouter(t *testing.T) {
 	base := startOnLoopback(t, &config.Config{
 		// Only the key's presence matters: no request here carries a token, so
 		// the verifier never makes a network call.
-		ClerkSecretKey:       "sk_test_session1_placeholder_not_a_real_key",
+		ClerkSecretKey:       "sk_test_placeholder_not_a_real_key",
 		MetricsToken:         testMetricsToken,
 		PythonBaseURL:        python.URL,
 		RateLimitRPS:         100,
@@ -95,36 +95,61 @@ var protectedRoutes = []struct{ method, path string }{
 
 // startOnLoopback runs the real Start on a free 127.0.0.1 port and returns the
 // base URL once /health answers. The listener is loopback-only, and the server
-// is shut down when the test ends.
+// is shut down when the test ends. The port is reserved and released before
+// Start binds it, so if something else takes it in between, Start returns the
+// bind error and this retries on a fresh port.
 func startOnLoopback(t *testing.T, cfg *config.Config) string {
 	t.Helper()
 	cfg.Host = "127.0.0.1"
-	cfg.Port = freeLoopbackPort(t)
+	for attempt := 1; ; attempt++ {
+		cfg.Port = freeLoopbackPort(t)
+		base, err := startOnce(t, cfg)
+		if err == nil {
+			return base
+		}
+		if attempt == 3 {
+			t.Fatalf("Start never served /health on a loopback port: %v", err)
+		}
+	}
+}
 
+func startOnce(t *testing.T, cfg *config.Config) (string, error) {
+	t.Helper()
 	s := New(cfg, NewHub(), memory.New(5))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- s.Start(ctx) }()
-	t.Cleanup(func() {
+	stop := func() {
 		cancel()
-		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
+		shutdownCtx, stopShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stopShutdown()
 		_ = s.Shutdown(shutdownCtx)
-		<-done
-	})
+	}
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
+		select {
+		case err := <-done:
+			stop()
+			return "", fmt.Errorf("start on %s returned early: %v", base, err)
+		default:
+		}
 		resp, err := http.Get(base + "/health")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return base
+				t.Cleanup(func() {
+					stop()
+					<-done
+				})
+				return base, nil
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("Start never served /health on %s (last error: %v)", base, err)
+			stop()
+			<-done
+			return "", fmt.Errorf("no /health on %s within 10s (last error: %v)", base, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

@@ -94,9 +94,9 @@ def test_anthropic_reliability_from_environment(monkeypatch: pytest.MonkeyPatch)
 # The predicate above is tested directly, and require_internal_auth is tested
 # against a missing or wrong header. What nothing tested is that the app
 # actually CONSULTS the predicate at startup: the call lives inside `lifespan`
-# (app/main.py), and every other test builds TestClient(app) without the
-# context manager, so lifespan never runs. Deleting the call left ruff clean
-# and 276 tests passing.
+# (app/main.py), most tests build TestClient(app) without the context manager
+# so lifespan never runs, and the few that do run it never look at the guard.
+# Deleting the call left ruff clean and the whole suite passing.
 #
 # It matters more since /metrics joined the internal boundary. When
 # INTERNAL_AUTH_SECRET is empty, require_internal_auth returns early

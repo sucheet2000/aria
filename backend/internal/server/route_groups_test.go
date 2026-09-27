@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -100,16 +99,11 @@ func newAuthRoutedServer(t *testing.T, pythonURL string, verifier auth.Verifier,
 	if mutate != nil {
 		mutate(s.cfg)
 	}
-	s.routes(context.Background(), verifier, true)
+	// t.Context() stops the limiter's sweep goroutine when the test ends.
+	s.routes(t.Context(), verifier, true)
 	edge := httptest.NewServer(s.router)
 	t.Cleanup(edge.Close)
 	return s, edge
-}
-
-func newRoutedServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	_, edge := newAuthRoutedServer(t, "http://127.0.0.1:1", stubVerifier{owner: routeTestOwner}, nil)
-	return edge
 }
 
 func edgeRequest(t *testing.T, method, url, body, bearer string) *http.Response {
@@ -192,7 +186,7 @@ func TestRouteGroups_MetricsUsesItsOwnCredential(t *testing.T) {
 func TestRouteGroups_ApiReflectsOnlyAllowedOrigins(t *testing.T) {
 	s := newMetricsServer("http://127.0.0.1:1", testMetricsToken)
 	s.cfg.AllowedOrigins = []string{"http://localhost:3000"}
-	s.routes(context.Background(), stubVerifier{owner: "user_1"}, true)
+	s.routes(t.Context(), stubVerifier{owner: "user_1"}, true)
 	edge := httptest.NewServer(s.router)
 	defer edge.Close()
 
@@ -280,7 +274,9 @@ func TestRouteGroups_EveryApiRouteReachesItsHandlerForTheVerifiedOwner(t *testin
 // The WebSocket routes exist and upgrade for an authenticated caller. The 401
 // assertions above would still pass if either registration were deleted.
 func TestRouteGroups_WebSocketRoutesUpgradeForAnAuthenticatedCaller(t *testing.T) {
-	_, edge := newAuthRoutedServer(t, "http://127.0.0.1:1", stubVerifier{owner: routeTestOwner}, nil)
+	s, edge := newAuthRoutedServer(t, "http://127.0.0.1:1", stubVerifier{owner: routeTestOwner}, nil)
+	// Without a running hub, ServeWs blocks forever registering the client.
+	go s.hub.Run(t.Context())
 	wsBase := "ws" + strings.TrimPrefix(edge.URL, "http")
 
 	for _, path := range []string{"/ws", "/ws/audio"} {

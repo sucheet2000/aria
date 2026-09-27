@@ -684,7 +684,7 @@ func TestMetrics_BearerSchemeIsCaseInsensitive(t *testing.T) {
 	}
 }
 
-// Session 1 — two guards in the relay path were masked by the json.Valid check
+// Two guards in the relay path were masked by the json.Valid check
 // that came after them, so removing either left the suite green (on main and
 // integration alike). Each case below is a body json.Valid accepts, which is
 // the only way to observe the guard that precedes it.

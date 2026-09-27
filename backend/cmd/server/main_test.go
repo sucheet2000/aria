@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sucheet2000/aria/backend/internal/audio"
 	"github.com/sucheet2000/aria/backend/internal/config"
 )
 
@@ -23,8 +25,9 @@ func TestNewAudioSessions_ConfigReachesTheWorkerArgv(t *testing.T) {
 	dir := t.TempDir()
 	argvFile := filepath.Join(dir, "argv")
 	script := filepath.Join(dir, "fake_audio_worker.sh")
-	// Record argv, then keep reading stdin until the manager closes it.
-	body := "printf '%s\\n' \"$@\" > \"$ARIA_TEST_ARGV_OUT\"\ncat > /dev/null\n"
+	// Record the script path and argv, then keep reading stdin until the
+	// manager closes it.
+	body := "printf '%s\\n' \"$0\" \"$@\" > \"$ARIA_TEST_ARGV_OUT\"\ncat > /dev/null\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatalf("write fake worker: %v", err)
 	}
@@ -47,10 +50,20 @@ func TestNewAudioSessions_ConfigReachesTheWorkerArgv(t *testing.T) {
 	}
 	defer sessions.Release("owner-1")
 
+	// AudioMaxSessions follows those five strings, and below 1 the manager is
+	// unbounded (one Whisper process per owner). The config's cap of 1 must
+	// reach it, so a second owner is refused.
+	if err := sessions.Acquire("owner-2"); !errors.Is(err, audio.ErrTooManySessions) {
+		if err == nil {
+			sessions.Release("owner-2")
+		}
+		t.Fatalf("second owner's acquire = %v, want ErrTooManySessions: the session cap never reached the manager", err)
+	}
+
 	var got []string
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if raw, err := os.ReadFile(argvFile); err == nil && strings.Count(string(raw), "\n") >= 4 {
+		if raw, err := os.ReadFile(argvFile); err == nil && strings.Count(string(raw), "\n") >= 5 {
 			got = strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 			break
 		}
@@ -60,8 +73,8 @@ func TestNewAudioSessions_ConfigReachesTheWorkerArgv(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	want := []string{"--model", "model-from-config", "--device", "device-from-config"}
+	want := []string{script, "--model", "model-from-config", "--device", "device-from-config"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("worker argv (after the script) = %q, want %q", got, want)
+		t.Fatalf("worker script and argv = %q, want %q", got, want)
 	}
 }

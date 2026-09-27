@@ -24,13 +24,18 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 _REAL_STORES = (_BACKEND_DIR / "memory", _BACKEND_DIR / "data")
 
 
+# SQLite side files come and go while a local ARIA is running against the
+# default DATA_DIR, so they are not evidence either way.
+_SQLITE_SIDE_FILES = ("-journal", "-wal", "-shm")
+
+
 def _real_store_files() -> set[str]:
     return {
         str(p)
         for root in _REAL_STORES
         if root.exists()
         for p in root.rglob("*")
-        if p.is_file()
+        if p.is_file() and not p.name.endswith(_SQLITE_SIDE_FILES)
     }
 
 
@@ -72,17 +77,25 @@ def test_subprocesses_inherit_the_test_data_dir() -> None:
 
 # The two canaries below run in file order. The first leaves the shared app
 # dirty on purpose; the second fails if anything the first left behind is
-# still there, which is what an order-dependent suite looks like.
+# still there, which is what an order-dependent suite looks like. The second
+# refuses to pass on its own (under -k, --lf or a reordering plugin), because
+# then it would prove nothing.
+_canary_1_ran = False
+
+
 def test_restoration_canary_1_dirties_the_shared_app() -> None:
+    global _canary_1_ran
     from app.main import app
 
     app.state.canary = object()
     app.dependency_overrides[_canary_dependency] = lambda: "leaked"
+    _canary_1_ran = True
 
 
 def test_restoration_canary_2_sees_a_clean_shared_app() -> None:
     from app.main import app
 
+    assert _canary_1_ran, "run canary 2 after canary 1 in the same session; alone it proves nothing"
     assert not hasattr(app.state, "canary")
     assert _canary_dependency not in app.dependency_overrides
     assert not hasattr(app.state, "memory")

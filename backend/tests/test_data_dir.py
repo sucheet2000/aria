@@ -17,7 +17,7 @@ def _unconfigured_data_dir(monkeypatch: pytest.MonkeyPatch) -> str:
     # live settings at a throwaway dir for every test, so the default has to be
     # read from a fresh Settings built without the env var or a .env file.
     monkeypatch.delenv("DATA_DIR", raising=False)
-    return Settings(_env_file=None).DATA_DIR  # type: ignore[call-arg]
+    return Settings(_env_file=None).DATA_DIR
 
 
 def test_default_data_dir_is_backend(monkeypatch: pytest.MonkeyPatch) -> None:
