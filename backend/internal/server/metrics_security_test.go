@@ -683,3 +683,33 @@ func TestMetrics_BearerSchemeIsCaseInsensitive(t *testing.T) {
 		t.Fatalf("an upper-cased token was accepted: %d", rec.Code)
 	}
 }
+
+// Two guards in the relay path were masked by the json.Valid check
+// that came after them, so removing either left the suite green (on main and
+// integration alike). Each case below is a body json.Valid accepts, which is
+// the only way to observe the guard that precedes it.
+
+// The size check: a valid document padded past the cap must still be refused.
+// Without the check, the first cap+1 bytes parse, and the edge relays a 200.
+func TestMetrics_OversizedValidJSONIsRefused(t *testing.T) {
+	body := `{"errors":0}` + strings.Repeat(" ", int(maxMetricsBodyBytes))
+	up := upstream(t, http.StatusOK, "application/json", body)
+
+	rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d for a valid JSON body over the %d-byte cap, want 502", rec.Code, maxMetricsBodyBytes)
+	}
+}
+
+// The declared-type check: a non-JSON declaration is refused even when the
+// body happens to parse, because the upstream is not speaking the protocol.
+func TestMetrics_NonJSONDeclaredTypeIsRefusedEvenIfTheBodyParses(t *testing.T) {
+	up := upstream(t, http.StatusOK, "text/html", `{"errors":0}`)
+
+	rec := scrape(newMetricsServer(up.URL, testMetricsToken), "Bearer "+testMetricsToken)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d for a text/html upstream with a parseable body, want 502", rec.Code)
+	}
+}

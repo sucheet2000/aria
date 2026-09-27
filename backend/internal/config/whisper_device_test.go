@@ -1,9 +1,6 @@
 package config
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 // The device setting is read from the environment in one place and consumed in
 // another; this asserts the value actually survives the journey. It did not:
@@ -24,7 +21,8 @@ func TestLoad_WhisperDeviceReachesTheConfig(t *testing.T) {
 }
 
 func TestLoad_WhisperDeviceDefaultsToCPU(t *testing.T) {
-	os.Unsetenv("WHISPER_DEVICE")
+	// t.Setenv restores the variable afterwards; os.Unsetenv leaked into later tests.
+	t.Setenv("WHISPER_DEVICE", "")
 
 	if got := Load().WhisperDevice; got != "cpu" {
 		t.Fatalf("WhisperDevice = %q, want the documented default %q", got, "cpu")
@@ -47,7 +45,7 @@ func TestLoad_MetricsTokenReachesTheConfig(t *testing.T) {
 }
 
 func TestLoad_MetricsTokenDefaultsToEmpty(t *testing.T) {
-	os.Unsetenv("METRICS_TOKEN")
+	t.Setenv("METRICS_TOKEN", "")
 
 	if got := Load().MetricsToken; got != "" {
 		t.Fatalf("MetricsToken = %q, want empty when unset", got)
